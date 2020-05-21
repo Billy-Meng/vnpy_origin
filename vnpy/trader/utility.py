@@ -164,7 +164,7 @@ class BarGenerator:
     """
     For:
     1. generating 1 minute bar data from tick data
-    2. generateing x minute bar/x hour bar data from 1 minute data
+    2. generating x minute bar/x hour bar data from 1 minute data
 
     Notice:
     1. for x minute bar, x must be able to divide 60: 2, 3, 5, 6, 10, 15, 20, 30
@@ -204,7 +204,16 @@ class BarGenerator:
 
         if not self.bar:
             new_minute = True
+        
+        # 官方版本合成方式。从每分钟的00秒开始，到本分钟59秒，合成一分钟bar，bar的时间戳为合成起始时间。Bug:会丢失交易所休市时最后一两个推送的Tick数据。
         elif self.bar.datetime.minute != tick.datetime.minute:
+        
+        # 从每分钟的50秒开始，到下一分钟的49秒，合成一分钟bar
+        # elif tick.datetime.second >= 50 and self.last_tick.datetime.second < 50:
+
+        # 从每分钟的01秒开始，到下一分钟的00秒，合成一分钟bar，bar的时间戳为合成结束时间。Bug:会丢失交易所休市时最后一分钟bar数据。
+        # elif tick.datetime.second >= 1 and self.last_tick.datetime.second < 1:
+
             self.bar.datetime = self.bar.datetime.replace(
                 second=0, microsecond=0
             )
@@ -276,8 +285,20 @@ class BarGenerator:
 
         if self.interval == Interval.MINUTE:
             # x-minute bar
-            if not (bar.datetime.minute + 1) % self.window:
-                finished = True
+
+            # 官方版本合成方式。整除60切分法进行N分钟K线合成，只能合成2, 3, 4, 5, 6, 10, 15, 20, 30等分钟K线
+            # if not (bar.datetime.minute + 1) % self.window:
+            #     finished = True
+            
+            # 计数切分法进行N分钟K线合成，可以合成任意分钟K线
+            if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+                self.interval_count += 1
+
+                if not self.interval_count % self.window:
+                    finished = True
+                    self.interval_count = 0
+
+        # 计数切分法进行N小时K线合成，可以合成任意小时K线
         elif self.interval == Interval.HOUR:
             if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
                 # 1-hour bar
@@ -311,6 +332,80 @@ class BarGenerator:
         self.bar = None
         return bar
 
+class SecondBarGenerator:
+    """ 秒K线合成器。可合成任意秒钟K线。 """
+
+    def __init__(self, on_second_bar: Callable, second_window: int = 0):
+                
+        self.on_second_bar: Callable = on_second_bar
+        self.second_window: int = second_window
+        self.interval: Interval = Interval.SECOND
+        self.second_interval_count: int = 0
+        self.last_second_tick: TickData = None
+        self.second_bar: BarData = None
+        self.last_second_bar: BarData = None
+
+    def update_second_tick(self, tick: TickData):
+        """
+        Update new tick data into second generator.
+        """
+        new_second = False
+
+        # Filter tick data with 0 last price
+        if not tick.last_price:
+            return
+        
+        if not self.second_bar:
+            new_second = True
+
+        # 合成指定周期的second_bar
+        elif tick.datetime.second != self.last_second_tick.datetime.second:
+            self.second_bar.datetime = self.second_bar.datetime.replace(microsecond=0)
+            self.second_interval_count += 1
+            if self.second_interval_count == self.second_window:
+                self.on_second_bar(self.second_bar)
+                self.second_interval_count = 0
+
+            new_second = True
+
+        if new_second:
+            self.second_bar = BarData(
+                symbol=tick.symbol,
+                exchange=tick.exchange,
+                interval=Interval.SECOND,
+                datetime=tick.datetime,
+                gateway_name=tick.gateway_name,
+                open_price=tick.last_price,
+                high_price=tick.last_price,
+                low_price=tick.last_price,
+                close_price=tick.last_price,
+                open_interest=tick.open_interest
+            )
+        else:
+            self.second_bar.high_price = max(self.second_bar.high_price, tick.last_price)
+            self.second_bar.low_price = min(self.second_bar.low_price, tick.last_price)
+            self.second_bar.close_price = tick.last_price
+            self.second_bar.open_interest = tick.open_interest
+            self.second_bar.datetime = tick.datetime
+
+        if self.last_second_tick:
+            volume_change = tick.volume - self.last_second_tick.volume
+            self.second_bar.volume += max(volume_change, 0)
+
+        self.last_second_tick = tick
+
+    def generate(self) -> None:
+        """
+        Generate the second_bar data and call callback immediately.
+        """
+        second_bar = self.second_bar
+
+        if self.second_bar:
+            second_bar.datetime = second_bar.datetime.replace(microsecond=0)
+            self.on_second_bar(second_bar)
+
+        self.second_bar = None
+        return second_bar
 
 class ArrayManager(object):
     """
