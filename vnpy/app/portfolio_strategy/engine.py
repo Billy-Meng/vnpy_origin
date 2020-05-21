@@ -39,8 +39,12 @@ from vnpy.trader.constant import (
 )
 from vnpy.trader.utility import load_json, save_json, extract_vt_symbol, round_to
 from vnpy.trader.database import database_manager
-from vnpy.trader.rqdata import rqdata_client
 from vnpy.trader.converter import OffsetConverter
+
+from vnpy.trader.datasource import datasource_client
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.setting import SETTINGS
 
 from .base import (
     APP_NAME,
@@ -97,17 +101,20 @@ class StrategyEngine(BaseEngine):
 
     def init_rqdata(self):
         """
-        Init RQData client.
+        Init JQData or RQData client.
         """
-        result = rqdata_client.init()
+        result = datasource_client.init()
+        data_source_api = SETTINGS["datasource.api"]
         if result:
-            self.write_log("RQData数据接口初始化成功")
+            self.write_log(f"{data_source_api}数据接口初始化成功")
+        else:
+            self.write_log(f"{data_source_api}数据接口初始化不成功")
 
     def query_bar_from_rq(
         self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
     ):
         """
-        Query bar data from RQData.
+        Query bar data from JQData or RQData.
         """
         req = HistoryRequest(
             symbol=symbol,
@@ -116,7 +123,12 @@ class StrategyEngine(BaseEngine):
             start=start,
             end=end
         )
-        data = rqdata_client.query_history(req)
+        if SETTINGS["datasource.api"] == "jqdata":
+            data = jqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "rqdata":
+            data = rqdata_client.query_history(req)
+
         return data
 
     def process_tick_event(self, event: Event):
