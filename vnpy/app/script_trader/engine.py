@@ -26,7 +26,11 @@ from vnpy.trader.object import (
     LogData,
     BarData
 )
-from vnpy.trader.rqdata import rqdata_client
+
+from vnpy.trader.datasource import datasource_client
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.setting import SETTINGS
 
 
 APP_NAME = "ScriptTrader"
@@ -49,9 +53,12 @@ class ScriptEngine(BaseEngine):
         """
         Start script engine.
         """
-        result = rqdata_client.init()
+        result = datasource_client.init()
+        data_source_api = SETTINGS["datasource.api"]
         if result:
-            self.write_log("RQData数据接口初始化成功")
+            self.write_log(f"{data_source_api}数据接口初始化成功")
+        else:
+            self.write_log(f"{data_source_api}数据接口初始化不成功")
 
     def start_strategy(self, script_path: str):
         """
@@ -257,7 +264,12 @@ class ScriptEngine(BaseEngine):
             interval=interval
         )
 
-        return get_data(rqdata_client.query_history, arg=req, use_df=use_df)
+        if SETTINGS["datasource.api"] == "jqdata":
+            data_client = jqdata_client.query_history
+        elif SETTINGS["datasource.api"] == "rqdata":
+            data_client = rqdata_client.query_history
+
+        return get_data(data_client, arg=req, use_df=use_df)
 
     def write_log(self, msg: str) -> None:
         """"""
