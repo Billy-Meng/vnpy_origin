@@ -5,6 +5,7 @@ General utility functions.
 import json
 import logging
 import sys
+import datetime
 from pathlib import Path
 from typing import Callable, Dict, Tuple, Union
 from decimal import Decimal
@@ -426,6 +427,12 @@ class ArrayManager(object):
         self.close_array: np.ndarray = np.zeros(size)
         self.volume_array: np.ndarray = np.zeros(size)
         self.open_interest_array: np.ndarray = np.zeros(size)
+
+        # 初始化每日OHLC价格数组，用于后续记录日K线数据
+        self.open_price_day = np.zeros(size)
+        self.high_price_day = np.zeros(size)
+        self.low_price_day = np.zeros(size)
+        self.close_price_day = np.zeros(size)
 
     def update_bar(self, bar: BarData) -> None:
         """
@@ -893,6 +900,103 @@ class ArrayManager(object):
         if array:
             return result
         return result[-1]
+
+
+    # 参考TB函数及公式建立工具箱
+    def Highest(self, PriceArrray:"Array", Length:"周期"=5) -> "HighestValue":
+        """求最高"""
+        HighestValue = PriceArrray[-1]
+        for i in range(-2, -Length-1, -1):
+            if PriceArrray[i] > HighestValue:
+                HighestValue = PriceArrray[i]
+        return HighestValue
+        # PriceArrray = PriceArrray[-Length:]
+        # return np.max(PriceArrray)
+
+    def Lowest(self, PriceArrray:"Array", Length:"周期"=5) -> "LowestValue":
+        """求最低"""
+        LowestValue = PriceArrray[-1]
+        for i in range(-2, -Length-1, -1):
+            if PriceArrray[i] > LowestValue:
+                LowestValue = PriceArrray[i]
+        return LowestValue
+        # PriceArrray = PriceArrray[-Length:]
+        # return np.min(PriceArrray)
+
+    def CrossOver(self, PriceArrray_1:"Array", PriceArrray_2:"Array") -> bool:
+        """求是否上穿"""
+        if PriceArrray_1[-2] < PriceArrray_2[-2] and PriceArrray_1[-1] >= PriceArrray_2[-1]:
+            return True
+        else:
+            return False
+
+    def CrossUnder(self, PriceArrray_1:"Array", PriceArrray_2:"Array") -> bool:
+        """求是否下破"""
+        if PriceArrray_1[-2] > PriceArrray_2[-2] and PriceArrray_1[-1] <= PriceArrray_2[-1]:
+            return True
+        else:
+            return False
+
+    def TrueDate(self, bar:BarData):
+        """"""
+        day_offset = datetime.timedelta(days=0)
+        if bar.datetime.hour >= 18:
+            if bar.datetime.isoweekday() == 5:         # 周五晚上
+                day_offset = datetime.timedelta(days=3)
+            elif bar.datetime.isoweekday() == 6:       # 周六晚上
+                day_offset = datetime.timedelta(days=2)
+            else:                                      # 周日晚上
+                day_offset = datetime.timedelta(days=1)
+
+        else:
+            if bar.datetime.isoweekday() == 6:         # 周六
+                day_offset = datetime.timedelta(days=2)
+            elif bar.datetime.isoweekday() == 7:       # 周日
+                day_offset = datetime.timedelta(days=1)
+        bar.datetime = bar.datetime + day_offset
+        return bar.datetime.date()
+
+    def OpenD(self, bar:BarData):
+        """记录每日开盘价"""
+        if bar.datetime.date() != self.TrueDate(bar):
+            self.open_price_day[:-1] = self.open_price_day[1:]
+            self.open_price_day[-1] = bar.open_price
+        else:
+            pass
+        return self.open_price_day
+
+    def HighD(self, bar:BarData):
+        """记录每日最高价"""
+        if bar.datetime.date() != self.TrueDate(bar):
+            self.high_price_day[:-1] = self.high_price_day[1:]
+            self.high_price_day[-1] = bar.high_price
+        else:
+            if self.high_price_day[-1] < bar.high_price:
+                self.high_price_day[-1] = bar.high_price
+            else:
+                pass
+        return self.high_price_day
+
+    def LowD(self, bar:BarData):
+        """记录每日最低价"""
+        if bar.datetime.date() != self.TrueDate(bar):
+            self.low_price_day[:-1] = self.low_price_day[1:]
+            self.low_price_day[-1] = bar.low_price
+        else:
+            if self.low_price_day[-1] > bar.low_price:
+                self.low_price_day[-1] = bar.low_price
+            else:
+                pass
+        return self.low_price_day
+
+    def CloseD(self, bar:BarData):
+        """记录每日收盘价"""
+        if bar.datetime.date() != self.TrueDate(bar):
+            self.close_price_day[:-1] = self.close_price_day[1:]
+            self.close_price_day[-1] = bar.close_price
+        else:
+            self.close_price_day[-1] = bar.close_price
+        return self.close_price_day
 
 
 def virtual(func: Callable) -> Callable:
