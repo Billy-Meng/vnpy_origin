@@ -434,6 +434,8 @@ class CtpTdApi(TdApi):
         self.positions = {}
         self.sysid_orderid_map = {}
 
+        self.account_date = None    #账户日期
+
     def onFrontConnected(self):
         """"""
         self.gateway.write_log("交易服务器连接成功")
@@ -584,13 +586,49 @@ class CtpTdApi(TdApi):
 
         account = AccountData(
             accountid=data["AccountID"],
-            balance=data["Balance"],
-            frozen=data["FrozenMargin"] + data["FrozenCash"] + data["FrozenCommission"],
-            gateway_name=self.gateway_name
+            balance=round(data["Balance"],3),
+            available = round(data["Available"],3),                   #可用资金
+            pre_balance = round(data['PreBalance'],3),                #上个交易日总资金
+            commission = round(data['Commission'],3),                 #手续费
+            margin = round(data['CurrMargin'] ,3),                    #账户保证金
+            close_profit = round(data['CloseProfit'],3),              #平仓盈亏
+            position_profit = round(data['PositionProfit'],3),        #持仓盈亏
+            frozen=data["FrozenMargin"] + data["FrozenCash"] + data["FrozenCommission"],        #冻结资金
+            date = str(datetime.now().date()),
+            time = str(datetime.now().time()),
+            gateway_name=self.gateway_name,
         )
-        account.available = data["Available"]
+        try:
+            account.percent = round(account.margin / account.balance,3) * 100      #资金使用率
+        except ZeroDivisionError:
+            account.percent = 0
 
         self.gateway.on_account(account)
+
+        # recording = True
+
+        # #周六周日不写入数据
+        # if datetime.today().weekday() == 5 or datetime.today().weekday() == 6:
+        #     recording = False
+
+        # if recording:
+        #     #通过CTP接口查询账户资金
+        #     account_info = account.__dict__
+        #     ctp_account_path = "C:\\Users\\Billy\\Desktop\\VNPY\\Account\\CTP_account_info\\account_info"+".csv"
+
+        #     if not os.path.exists(ctp_account_path): # 如果文件不存在，需要写header
+        #         with open(ctp_account_path, 'w', newline="") as f1:      # newline=""不自动换行
+        #             w1 = csv.DictWriter(f1, account_info.keys())
+        #             w1.writeheader()
+        #             w1.writerow(account_info)
+
+        #     else: # 文件存在，不需要写header
+        #         if self.account_date and self.account_date != account.datetime.date():        # 一天写入一次账户信息
+        #             with open(ctp_account_path, 'a', newline="") as f1:                             # a二进制追加形式写入
+        #                     w1 = csv.DictWriter(f1, account_info.keys())
+        #                     w1.writerow(account_info)
+
+        #         self.account_date = account.datetime.date()
 
     def onRspQryInstrument(self, data: dict, error: dict, reqid: int, last: bool):
         """
