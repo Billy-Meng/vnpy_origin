@@ -6,7 +6,10 @@ from vnpy.trader.engine import BaseEngine, MainEngine, EventEngine
 from vnpy.trader.constant import Interval, Exchange
 from vnpy.trader.object import BarData, HistoryRequest
 from vnpy.trader.database import database_manager
-from vnpy.trader.rqdata import rqdata_client
+
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.setting import SETTINGS
 
 
 APP_NAME = "DataManager"
@@ -207,8 +210,16 @@ class ManagerEngine(BaseEngine):
             data = self.main_engine.query_history(
                 req, contract.gateway_name
             )
+
+        # Otherwise use JQData to query data
+        elif SETTINGS["datasource.api"] == "jqdata":
+            if not jqdata_client.inited:
+                jqdata_client.init()
+
+            data = jqdata_client.query_history(req)
+
         # Otherwise use RQData to query data
-        else:
+        elif SETTINGS["datasource.api"] == "rqdata":
             if not rqdata_client.inited:
                 rqdata_client.init()
 
