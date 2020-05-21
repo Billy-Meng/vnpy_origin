@@ -126,6 +126,13 @@ class CtaTemplate(ABC):
         Callback of new bar data update.
         """
         pass
+    
+    @virtual
+    def on_second_bar(self, second_bar: BarData):
+        """
+        Callback of new second bar data update.
+        """
+        pass
 
     @virtual
     def on_trade(self, trade: TradeData):
