@@ -7,9 +7,9 @@ from rqdatac.services.basic import all_instruments as rqdata_all_instruments
 from rqdatac.services.get_price import get_price as rqdata_get_price
 from rqdatac.share.errors import AuthenticationFailed
 
-from vnpy.trader.setting import SETTINGS
-from vnpy.trader.constant import Exchange, Interval
-from vnpy.trader.object import BarData, HistoryRequest
+from .setting import SETTINGS
+from .constant import Exchange, Interval
+from .object import BarData, HistoryRequest
 
 
 INTERVAL_VT2RQ = {
