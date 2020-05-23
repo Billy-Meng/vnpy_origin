@@ -4,6 +4,7 @@ Global setting of VN Trader.
 
 from logging import INFO    # 控制日志输出的级别，日志输出从频繁到精简可以分成DEBUG、INFO、WARNING、ERROR、CRITICAL五个级别，分别对应10、20、30、40、50的整数值。
 from typing import Dict, Any
+from tzlocal import get_localzone
 
 from .utility import load_json
 
@@ -29,8 +30,9 @@ SETTINGS: Dict[str, Any] = {
     "rqdata.username": "",
     "rqdata.password": "",
 
-    "database.driver": "sqlite",  # see database.Driver
-    "database.database": "database.db",  # for sqlite, use this as filepath
+    "database.timezone": get_localzone().zone,
+    "database.driver": "sqlite",                # see database.Driver
+    "database.database": "database.db",         # for sqlite, use this as filepath
     "database.host": "localhost",
     "database.port": 3306,
     "database.user": "root",
