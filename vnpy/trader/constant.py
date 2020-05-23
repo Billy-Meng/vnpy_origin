@@ -148,6 +148,7 @@ class Interval(Enum):
     """
     Interval of bar data.
     """
+    SECOND = "1s"
     MINUTE = "1m"
     HOUR = "1h"
     DAILY = "d"

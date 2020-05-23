@@ -197,16 +197,36 @@ class AccountData(BaseData):
     available.
     """
 
-    accountid: str
+    accountid: str                      #账户ID
 
-    balance: float = 0
-    frozen: float = 0
+    balance: float = 0                  #总资金
+    available: float = 0                #可用资金
+    percent: float = 0                  #资金使用率
+    frozen: float = 0                   #冻结资金
+    pre_balance: float = 0              #上个交易日总资金(币圈交易所为人民币计价总资金)
+    commission: float = 0               #手续费
+    margin: float = 0                   #占用保证金
+    close_profit: float = 0             #平仓利润
+    position_profit: float = 0          #持仓利润
+    date: str = ""                      #日期
+    time: str = ""                      #时间
 
     def __post_init__(self):
         """"""
-        self.available = self.balance - self.frozen
         self.vt_accountid = f"{self.gateway_name}.{self.accountid}"
 
+        #账户当前日期
+        if self.date and '.' in self.time:
+            if '-' in self.date:
+                self.datetime = datetime.strptime(' '.join([self.date,self.time]),'%Y-%m-%d %H:%M:%S.%f')
+            else:
+                self.datetime = datetime.strptime(' '.join([self.date,self.time]),'%Y%m%d %H:%M:%S.%f')
+        else:
+            if self.date:
+                if '-' in self.date:
+                    self.datetime = datetime.strptime(' '.join([self.date,self.time]),'%Y-%m-%d %H:%M:%S')
+                else:
+                    self.datetime = datetime.strptime(' '.join([self.date,self.time]),'%Y%m%d %H:%M:%S')
 
 @dataclass
 class LogData(BaseData):
