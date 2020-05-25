@@ -4,10 +4,19 @@ from copy import copy
 from typing import Any, Callable
 
 from vnpy.trader.constant import Interval, Direction, Offset
-from vnpy.trader.object import BarData, TickData, OrderData, TradeData
+from vnpy.trader.object import BarData, TickData, OrderData, TradeData, AccountData, ContractData
 from vnpy.trader.utility import virtual
 
 from .base import StopOrder, EngineType
+
+# 弹窗提醒所需库
+from threading import Thread
+import win32api, win32con
+
+# 钉钉通知所需库
+import urllib, requests
+import json
+import time
 
 
 class CtaTemplate(ABC):
@@ -235,6 +244,7 @@ class CtaTemplate(ABC):
         self,
         days: int,
         interval: Interval = Interval.MINUTE,
+        tq_interval: int = 60,
         callback: Callable = None,
         use_database: bool = False
     ):
@@ -248,6 +258,7 @@ class CtaTemplate(ABC):
             self.vt_symbol,
             days,
             interval,
+            tq_interval,
             callback,
             use_database
         )
@@ -278,6 +289,89 @@ class CtaTemplate(ABC):
         """
         if self.trading:
             self.cta_engine.sync_strategy_data(self)
+
+
+    # 自定义增强功能
+
+    def get_contract_data(self) -> ContractData:
+        """
+        获取合约信息。策略初始化时调用，动态赋值contract_data, gateway_name, symbol, pricetick, size
+        
+        ContractData包含以下内容：
+        ContractData(gateway_name='CTP', symbol='rb2009', exchange=<Exchange.SHFE: 'SHFE'>, name='rb2009', 
+        product=<Product.FUTURES: '期货'>, size=10, pricetick=1.0, min_volume=1, stop_supported=False, 
+        net_position=False, history_data=False, option_strike=0, option_underlying='', option_type=None, 
+        option_expiry=None, option_portfolio='', option_index='')
+        """
+        self.contract_data = self.cta_engine.main_engine.get_contract(self.vt_symbol)
+
+        if self.contract_data:
+            
+            self.gateway_name = self.contract_data.gateway_name      # 接口名称
+            self.symbol = self.contract_data.symbol                  # 合约代码
+            self.pricetick = self.contract_data.pricetick            # 最小变动价位
+            self.size = self.contract_data.size                      # 合约乘数
+
+            return self.contract_data
+        else:
+            return None
+
+    def get_account_data(self, account_id:str) -> AccountData:
+        """获取账户信息"""
+        vt_account_id = f"{self.gateway_name}.{account_id}"
+        account_data = self.cta_engine.main_engine.get_account(vt_account_id)
+
+        if account_data:
+            return account_data
+        else:
+            return None
+        
+    def popup_warning(self, msg:str = "交易提醒"):
+        """
+        弹窗警告
+        # 弹窗提醒所需库
+            from threading import Thread
+            import win32api, win32con
+
+        在需要的地方添加以下代码：
+            msg = f"…………{}"
+            self.write_log(msg)
+            thread_popup = Thread(target=self.popup_warning, name="popup_warning", args=(msg,) )
+            thread_popup.start()
+        """
+        if self.inited and self.get_engine_type() == EngineType.LIVE:
+            symbol, _ = self.vt_symbol.split(".")
+            info_strategy = f"【{symbol}】{self.strategy_name}\n"
+            win32api.MessageBox(0, info_strategy + msg, "交易提醒", win32con.MB_ICONWARNING)
+
+    def dingding(self, msg:str = "", url:str = ""):
+        """
+        钉钉机器人【记得修改URL】
+        # 钉钉通知所需库
+            import urllib, requests
+            import json
+            import time
+
+        在需要的地方添加以下代码：
+            msg = f"…………{}"
+            self.write_log(msg)
+            thread_dingding = Thread(target=self.dingding, name="dingding", args=(msg, url) )
+            thread_dingding.start()
+        """
+        if self.inited and self.get_engine_type() == EngineType.LIVE:
+            
+            symbol, _ = self.vt_symbol.split(".")
+            info_strategy = f"【{symbol}】{self.strategy_name}\n"
+            info_time = f"\n时间：{time.asctime( time.localtime(time.time()))}"
+
+            program = {
+                "msgtype": "text",
+                "text": {"content": info_strategy + msg + info_time},
+            }
+
+            headers = {'Content-Type': 'application/json'}
+
+            requests.post(url, data=json.dumps(program), headers=headers)
 
 
 class CtaSignal(ABC):
