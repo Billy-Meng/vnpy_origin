@@ -273,6 +273,7 @@ class BarGenerator:
                 high_price=bar.high_price,
                 low_price=bar.low_price
             )
+
         # Otherwise, update high/low price into window bar
         else:
             self.window_bar.high_price = max(
@@ -340,14 +341,21 @@ class BarGenerator:
 class SecondBarGenerator:
     """ 秒K线合成器。可合成任意秒钟K线。 """
 
-    def __init__(self, on_second_bar: Callable, second_window: int = 0):
-                
+    def __init__(
+        self,
+        on_second_bar: Callable,
+        second_window: int = 0,
+        on_bar: Callable = None,
+    ):
+        
+        self.second_bar: BarData = None
         self.on_second_bar: Callable = on_second_bar
+        self.on_bar: Callable = on_bar
         self.second_window: int = second_window
+        self.second_window_bar: BarData = None
         self.interval: Interval = Interval.SECOND
         self.second_interval_count: int = 0
-        self.last_second_tick: TickData = None
-        self.second_bar: BarData = None
+        self.last_tick: TickData = None
         self.last_second_bar: BarData = None
 
     def update_second_tick(self, tick: TickData):
@@ -363,8 +371,8 @@ class SecondBarGenerator:
         if not self.second_bar:
             new_second = True
 
-        # 合成指定周期的second_bar
-        elif tick.datetime.second != self.last_second_tick.datetime.second:
+        # 合成指定秒数的second_bar
+        elif tick.datetime.second != self.last_tick.datetime.second:
             self.second_bar.datetime = self.second_bar.datetime.replace(microsecond=0)
             self.second_interval_count += 1
             if self.second_interval_count == self.second_window:
@@ -393,11 +401,64 @@ class SecondBarGenerator:
             self.second_bar.open_interest = tick.open_interest
             self.second_bar.datetime = tick.datetime
 
-        if self.last_second_tick:
-            volume_change = tick.volume - self.last_second_tick.volume
+        if self.last_tick:
+            volume_change = tick.volume - self.last_tick.volume
             self.second_bar.volume += max(volume_change, 0)
 
-        self.last_second_tick = tick
+        self.last_tick = tick
+
+    def update_1_minute_bar(self, bar: BarData) -> None:
+        """
+        用于策略初始化，载入天勤行情数据，将X秒钟的second_bar，合成1分钟bar,并回调on_bar
+        """
+        # 没有Tick推送时才运行
+        if self.last_tick:
+            return
+
+        # X秒钟的second_bar需为2, 3, 4, 5, 6, 10, 15, 20, 30等秒钟K线
+        if self.second_window not in [2, 3, 4, 5, 6, 10, 15, 20, 30]:
+            return
+
+        # If not inited, creaate window bar object
+        if not self.second_window_bar:
+            # Generate timestamp for bar data
+            dt = bar.datetime.replace(microsecond=0)
+
+            self.second_window_bar = BarData(
+                symbol=bar.symbol,
+                exchange=bar.exchange,
+                datetime=dt,
+                gateway_name=bar.gateway_name,
+                open_price=bar.open_price,
+                high_price=bar.high_price,
+                low_price=bar.low_price
+            )
+
+        # Otherwise, update high/low price into window bar
+        else:
+            self.second_window_bar.high_price = max(
+                self.second_window_bar.high_price, bar.high_price)
+            self.second_window_bar.low_price = min(
+                self.second_window_bar.low_price, bar.low_price)
+
+        # Update close price/volume into window bar
+        self.second_window_bar.close_price = bar.close_price
+        self.second_window_bar.volume += int(bar.volume)
+        self.second_window_bar.open_interest = bar.open_interest
+
+        # Check if window bar completed
+        new_minute = False
+
+        # 整除60切分法进行N分钟K线合成，只能合成2, 3, 4, 5, 6, 10, 15, 20, 30等秒钟K线
+        if self.second_window_bar.datetime.minute != bar.datetime.minute:
+            new_minute = True
+
+        if new_minute:
+            self.on_bar(self.second_window_bar)
+            self.second_window_bar = None
+
+        # Cache last second bar object
+        self.last_second_bar = bar
 
     def generate(self) -> None:
         """
@@ -1010,6 +1071,17 @@ def virtual(func: Callable) -> Callable:
     that can be (re)implemented by subclasses.
     """
     return func
+
+
+def run_time(func):
+    '''计算函数运行耗时装饰器'''
+    def wrapper(*args, **kwargs):
+        start_time = datetime.datetime.now()
+        result = func(*args, **kwargs)
+        end_time = datetime.datetime.now()
+        print (f"{func.__name__} 运行耗时： {(end_time - start_time).total_seconds()}秒")
+        return result
+    return wrapper
 
 
 file_handlers: Dict[str, logging.FileHandler] = {}
