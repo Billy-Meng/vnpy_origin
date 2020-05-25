@@ -7,8 +7,8 @@ from vnpy.trader.constant import Interval, Exchange
 from vnpy.trader.object import BarData, HistoryRequest
 from vnpy.trader.database import database_manager
 
-from vnpy.trader.datasource.jqdata import jqdata_client
 from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.datasource.jqdata import jqdata_client
 from vnpy.trader.setting import SETTINGS
 
 
@@ -212,7 +212,7 @@ class ManagerEngine(BaseEngine):
             )
 
         # Otherwise use JQData to query data
-        elif SETTINGS["datasource.api"] == "jqdata":
+        elif SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
             if not jqdata_client.inited:
                 jqdata_client.init()
 

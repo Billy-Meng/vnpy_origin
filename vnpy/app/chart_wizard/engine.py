@@ -31,6 +31,10 @@ class ChartWizardEngine(BaseEngine):
             if not rqdata_client.inited:
                 rqdata_client.init()
 
+        elif SETTINGS["datasource.api"] == "tqdata":
+            if not tqdata_client.inited:
+                tqdata_client.init()
+
     def query_history(
         self,
         vt_symbol: str,
@@ -66,7 +70,7 @@ class ChartWizardEngine(BaseEngine):
         if contract.history_data:
             data = self.main_engine.query_history(req, contract.gateway_name)
         
-        elif SETTINGS["datasource.api"] == "jqdata":
+        elif SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
             data = jqdata_client.query_history(req)
 
         elif SETTINGS["datasource.api"] == "rqdata":

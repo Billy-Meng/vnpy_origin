@@ -42,8 +42,9 @@ from vnpy.trader.database import database_manager
 from vnpy.trader.converter import OffsetConverter
 
 from vnpy.trader.datasource import datasource_client
-from vnpy.trader.datasource.jqdata import jqdata_client
 from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.tqdata import tqdata_client
 from vnpy.trader.setting import SETTINGS
 
 from .base import (
@@ -111,7 +112,7 @@ class StrategyEngine(BaseEngine):
             self.write_log(f"{data_source_api}数据接口初始化不成功")
 
     def query_bar_from_rq(
-        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
+        self, symbol: str, exchange: Exchange, interval: Interval, tq_interval: int, start: datetime, end: datetime
     ):
         """
         Query bar data from JQData or RQData.
@@ -128,6 +129,9 @@ class StrategyEngine(BaseEngine):
 
         elif SETTINGS["datasource.api"] == "rqdata":
             data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "tqdata":
+            data = tqdata_client.query_history(req, tq_interval)
 
         return data
 
@@ -247,7 +251,7 @@ class StrategyEngine(BaseEngine):
         req = order.create_cancel_request()
         self.main_engine.cancel_order(req, order.gateway_name)
 
-    def load_bars(self, strategy: StrategyTemplate, days: int, interval: Interval):
+    def load_bars(self, strategy: StrategyTemplate, days: int, interval: Interval, tq_interval: int):
         """"""
         vt_symbols = strategy.vt_symbols
         dts: Set[datetime] = set()
@@ -255,7 +259,7 @@ class StrategyEngine(BaseEngine):
 
         # Load data from rqdata/gateway/database
         for vt_symbol in vt_symbols:
-            data = self.load_bar(vt_symbol, days, interval)
+            data = self.load_bar(vt_symbol, days, interval, tq_interval)
 
             for bar in data:
                 dts.add(bar.datetime)
@@ -276,9 +280,13 @@ class StrategyEngine(BaseEngine):
                     dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                     self.write_log(f"数据缺失：{dt_str} {vt_symbol}", strategy)
 
-            self.call_strategy_func(strategy, strategy.on_bars, bars)
+            if tq_interval and tq_interval < 60:
+                self.call_strategy_func(strategy, strategy.on_second_bars, bars)
 
-    def load_bar(self, vt_symbol: str, days: int, interval: Interval) -> List[BarData]:
+            elif not tq_interval or tq_interval == 60:
+                self.call_strategy_func(strategy, strategy.on_bars, bars)
+
+    def load_bar(self, vt_symbol: str, days: int, interval: Interval, tq_interval: int) -> List[BarData]:
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
         end = datetime.now(get_localzone())
@@ -298,7 +306,7 @@ class StrategyEngine(BaseEngine):
             data = self.main_engine.query_history(req, contract.gateway_name)
         # Try to query bars from RQData, if not found, load from database.
         else:
-            data = self.query_bar_from_rq(symbol, exchange, interval, start, end)
+            data = self.query_bar_from_rq(symbol, exchange, interval, tq_interval, start, end)
 
         if not data:
             data = database_manager.load_bar_data(

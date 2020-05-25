@@ -28,8 +28,8 @@ from vnpy.trader.object import (
 )
 
 from vnpy.trader.datasource import datasource_client
-from vnpy.trader.datasource.jqdata import jqdata_client
 from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.datasource.jqdata import jqdata_client
 from vnpy.trader.setting import SETTINGS
 
 
@@ -264,8 +264,9 @@ class ScriptEngine(BaseEngine):
             interval=interval
         )
 
-        if SETTINGS["datasource.api"] == "jqdata":
+        if SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
             data_client = jqdata_client.query_history
+
         elif SETTINGS["datasource.api"] == "rqdata":
             data_client = rqdata_client.query_history
 
