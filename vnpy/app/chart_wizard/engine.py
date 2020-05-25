@@ -8,6 +8,7 @@ from vnpy.trader.constant import Interval
 from vnpy.trader.object import HistoryRequest, ContractData
 from vnpy.trader.datasource.rqdata import rqdata_client
 from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.tqdata import tqdata_client
 from vnpy.trader.setting import SETTINGS
 
 
@@ -30,6 +31,10 @@ class ChartWizardEngine(BaseEngine):
         elif SETTINGS["datasource.api"] == "rqdata":
             if not rqdata_client.inited:
                 rqdata_client.init()
+
+        elif SETTINGS["datasource.api"] == "tqdata":
+            if not tqdata_client.inited:
+                tqdata_client.init()
 
     def query_history(
         self,
@@ -71,6 +76,9 @@ class ChartWizardEngine(BaseEngine):
 
         elif SETTINGS["datasource.api"] == "rqdata":
             data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "tqdata":
+            data = tqdata_client.query_history(req)
 
         event = Event(EVENT_CHART_HISTORY, data)
         self.event_engine.put(event)
