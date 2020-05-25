@@ -1,9 +1,9 @@
-import jqdatasdk as jq
-
 from datetime import timedelta, datetime
 from typing import List, Optional
+from pytz import timezone
 
 from numpy import ndarray
+import jqdatasdk as jq
 
 from vnpy.trader.constant import Exchange, Interval
 from vnpy.trader.datasource.dataapi import DataSourceApi
@@ -21,6 +21,8 @@ INTERVAL_ADJUSTMENT_MAP_JQ = {
     Interval.HOUR: timedelta(hours=1),
     Interval.DAILY: timedelta()  # no need to adjust for daily bar
 }
+
+CHINA_TZ = timezone("Asia/Shanghai")
 
 
 class JqdataClient(DataSourceApi):
@@ -48,7 +50,7 @@ class JqdataClient(DataSourceApi):
         try:
             jq.auth(self.username, self.password)
         except Exception as ex:
-            print("jq auth fail:" + repr(ex))
+            print("聚宽接口初始化失败:" + repr(ex))
             return False
 
         self.inited = True
@@ -117,11 +119,10 @@ class JqdataClient(DataSourceApi):
         if not jq_interval:
             return None
 
-        # For adjust timestamp from bar close point (RQData) to open point (VN Trader)
+        # For adjust timestamp from bar close point (JQData) to open point (VN Trader)
         adjustment = INTERVAL_ADJUSTMENT_MAP_JQ.get(interval)
 
-        # For querying night trading period data
-        # end += timedelta(1)
+        # 聚宽传入未来时间仍会生成数据，开高低收为最近收盘价，为避免冗余数据，调整为取当前时间
         now = datetime.now()
 
         if end >= now:
@@ -136,7 +137,7 @@ class JqdataClient(DataSourceApi):
             start_date=start,
             end_date=end,
             fq=None,
-            panel=True,
+            panel=False,
             skip_paused=True
         )
 
@@ -144,11 +145,14 @@ class JqdataClient(DataSourceApi):
 
         if df is not None:
             for ix, row in df.iterrows():
+                dt = row.name - adjustment
+                dt = dt.replace(tzinfo=CHINA_TZ)
+
                 bar = BarData(
                     symbol=symbol,
                     exchange=exchange,
                     interval=interval,
-                    datetime=row.name.to_pydatetime() - adjustment,
+                    datetime=dt,
                     open_price=row["open"],
                     high_price=row["high"],
                     low_price=row["low"],
@@ -159,6 +163,5 @@ class JqdataClient(DataSourceApi):
                 data.append(bar)
 
         return data
-
 
 jqdata_client = JqdataClient()
