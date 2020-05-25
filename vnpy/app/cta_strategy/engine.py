@@ -41,8 +41,9 @@ from vnpy.trader.database import database_manager
 from vnpy.trader.converter import OffsetConverter
 
 from vnpy.trader.datasource import datasource_client
-from vnpy.trader.datasource.jqdata import jqdata_client
 from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.tqdata import tqdata_client
 from vnpy.trader.setting import SETTINGS
 
 from .base import (
@@ -138,7 +139,7 @@ class CtaEngine(BaseEngine):
             self.write_log(f"{data_source_api}数据接口初始化不成功")
 
     def query_bar_from_rq(
-        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
+        self, symbol: str, exchange: Exchange, interval: Interval, tq_interval: int, start: datetime, end: datetime
     ):
         """
         Query bar data from RQData.
@@ -155,6 +156,9 @@ class CtaEngine(BaseEngine):
             
         elif SETTINGS["datasource.api"] == "rqdata":
             data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "tqdata":
+            data = tqdata_client.query_history(req, tq_interval)
 
         return data
 
@@ -540,6 +544,7 @@ class CtaEngine(BaseEngine):
         vt_symbol: str,
         days: int,
         interval: Interval,
+        tq_interval: int,
         callback: Callable[[BarData], None],
         use_database: bool
     ):
@@ -566,7 +571,7 @@ class CtaEngine(BaseEngine):
 
             # Try to query bars from RQData, if not found, load from database.
             else:
-                bars = self.query_bar_from_rq(symbol, exchange, interval, start, end)
+                bars = self.query_bar_from_rq(symbol, exchange, interval, tq_interval, start, end)
 
         if not bars:
             bars = database_manager.load_bar_data(
