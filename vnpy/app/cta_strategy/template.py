@@ -1,7 +1,7 @@
 """"""
 from abc import ABC
 from copy import copy
-from typing import Any, Callable
+from typing import Any, Callable, Union
 
 from vnpy.trader.constant import Interval, Direction, Offset
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData, AccountData, ContractData
@@ -137,7 +137,7 @@ class CtaTemplate(ABC):
         pass
     
     @virtual
-    def on_second_bar(self, second_bar: BarData):
+    def on_second_bar(self, bar: BarData):
         """
         Callback of new second bar data update.
         """
@@ -244,7 +244,7 @@ class CtaTemplate(ABC):
         self,
         days: int,
         interval: Interval = Interval.MINUTE,
-        tq_interval: int = 60,
+        frequency: Union[int, str] = 60,
         callback: Callable = None,
         use_database: bool = False
     ):
@@ -258,16 +258,16 @@ class CtaTemplate(ABC):
             self.vt_symbol,
             days,
             interval,
-            tq_interval,
+            frequency,
             callback,
             use_database
         )
 
-    def load_tick(self, days: int):
+    def load_tick(self, days: int, use_database: bool = False):
         """
         Load historical tick data for initializing strategy.
         """
-        self.cta_engine.load_tick(self.vt_symbol, days, self.on_tick)
+        self.cta_engine.load_tick(self.vt_symbol, days, self.on_tick, use_database)
 
     def put_event(self):
         """

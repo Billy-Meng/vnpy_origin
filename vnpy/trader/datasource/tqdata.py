@@ -102,7 +102,7 @@ class TqdataClient(DataSourceApi):
         df["datetime"] = pd.to_datetime(df["datetime"] + TIME_UTC8)
 
         # 过滤开始结束时间
-        # df = df[(df['datetime'] >= start - timedelta(days=1)) & (df['datetime'] < end)]
+        # df = df[(df['datetime'] >= start.replace(tzinfo=CHINA_TZ) - timedelta(days=1)) & (df['datetime'] < end.replace(tzinfo=CHINA_TZ))]
 
         data: List[BarData] = []
 

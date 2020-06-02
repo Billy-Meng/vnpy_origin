@@ -292,11 +292,11 @@ class BarGenerator:
         if self.interval == Interval.MINUTE:
             # x-minute bar
 
-            # 官方版本合成方式。整除60切分法进行N分钟K线合成，只能合成2, 3, 4, 5, 6, 10, 15, 20, 30等分钟K线
+            # 官方版本合成方式。整除切分法进行分钟K线合成，只能合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟K线
             # if not (bar.datetime.minute + 1) % self.window:
             #     finished = True
             
-            # 计数切分法进行N分钟K线合成，可以合成任意分钟K线
+            # 计数切分法进行分钟K线合成，可以合成任意分钟K线
             if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
                 self.interval_count += 1
 
@@ -338,50 +338,64 @@ class BarGenerator:
         self.bar = None
         return bar
 
-class SecondBarGenerator:
-    """ 秒K线合成器。可合成任意秒钟K线。 """
+class NewBarGenerator:
+    """ 增强版K线合成器。可合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60秒钟K线。 """
 
     def __init__(
         self,
-        on_second_bar: Callable,
-        second_window: int = 0,
+        on_second_bar: Callable = None,
+        second_window: int = 60,
         on_bar: Callable = None,
+        minute_window: int = 1,
+        on_window_bar: Callable = None
     ):
+        
+        self.second_window: int = second_window
+        self.second_bar_range = [i for i in range(0, 60, self.second_window)]
         
         self.second_bar: BarData = None
         self.on_second_bar: Callable = on_second_bar
-        self.on_bar: Callable = on_bar
-        self.second_window: int = second_window
-        self.second_window_bar: BarData = None
-        self.interval: Interval = Interval.SECOND
-        self.second_interval_count: int = 0
         self.last_tick: TickData = None
-        self.last_second_bar: BarData = None
 
-    def update_second_tick(self, tick: TickData):
+        self.second_window_bar: BarData = None
+        self.on_bar: Callable = on_bar
+
+        self.minute_window_bar: BarData = None        
+        self.interval_count: int = 0
+        
+        self.last_bar: BarData = None
+        self.minute_window: int = minute_window
+        self.on_window_bar: Callable = on_window_bar
+
+    def update_second_bar(self, tick: TickData):
         """
         Update new tick data into second generator.
         """
-        new_second = False
+        # 待合成的second_bar仅限 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60秒钟 K线
+        if self.second_window not in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]:
+            return
 
         # Filter tick data with 0 last price
         if not tick.last_price:
             return
+
+        # Filter tick data with older timestamp
+        if self.last_tick and tick.datetime < self.last_tick.datetime:
+            return
+
+
+        new_second_bar = False
         
         if not self.second_bar:
-            new_second = True
+            new_second_bar = True
 
-        # 合成指定秒数的second_bar
-        elif tick.datetime.second != self.last_tick.datetime.second:
-            self.second_bar.datetime = self.second_bar.datetime.replace(microsecond=0)
-            self.second_interval_count += 1
-            if self.second_interval_count == self.second_window:
-                self.on_second_bar(self.second_bar)
-                self.second_interval_count = 0
+        elif (tick.datetime.second in self.second_bar_range) and (tick.datetime.second != self.last_tick.datetime.second):
+            bar_second = (tick.datetime - datetime.timedelta(seconds=self.second_window)).second
+            self.second_bar.datetime = self.second_bar.datetime.replace(second=bar_second, microsecond=0)
+            self.on_second_bar(self.second_bar)
+            new_second_bar = True
 
-            new_second = True
-
-        if new_second:
+        if new_second_bar:
             self.second_bar = BarData(
                 symbol=tick.symbol,
                 exchange=tick.exchange,
@@ -405,26 +419,60 @@ class SecondBarGenerator:
             volume_change = tick.volume - self.last_tick.volume
             self.second_bar.volume += max(volume_change, 0)
 
+        # Cache last tick object
         self.last_tick = tick
 
-    def update_1_minute_bar(self, bar: BarData) -> None:
+    def update_1_minute_bar(self, second_bar: BarData) -> None:
         """
-        用于策略初始化，载入天勤行情数据，将X秒钟的second_bar，合成1分钟bar,并回调on_bar
+        策略初始化时载入行情数据，将X秒钟的second_bar，合成1分钟bar,并回调on_bar。
         """
-        # 没有Tick推送时才运行
-        if self.last_tick:
-            return
-
-        # X秒钟的second_bar需为2, 3, 4, 5, 6, 10, 15, 20, 30等秒钟K线
-        if self.second_window not in [2, 3, 4, 5, 6, 10, 15, 20, 30]:
-            return
-
-        # If not inited, creaate window bar object
+        # If not inited, creaate second window bar object
         if not self.second_window_bar:
             # Generate timestamp for bar data
-            dt = bar.datetime.replace(microsecond=0)
+            dt = second_bar.datetime.replace(second=0, microsecond=0)
 
             self.second_window_bar = BarData(
+                symbol=second_bar.symbol,
+                exchange=second_bar.exchange,
+                datetime=dt,
+                gateway_name=second_bar.gateway_name,
+                open_price=second_bar.open_price,
+                high_price=second_bar.high_price,
+                low_price=second_bar.low_price
+            )
+
+        # Otherwise, update high/low price into window bar
+        else:
+            self.second_window_bar.high_price = max(
+                self.second_window_bar.high_price, second_bar.high_price)
+            self.second_window_bar.low_price = min(
+                self.second_window_bar.low_price, second_bar.low_price)
+
+        # Update close price/volume into window bar
+        self.second_window_bar.close_price = second_bar.close_price
+        self.second_window_bar.volume += int(second_bar.volume)
+        self.second_window_bar.open_interest = second_bar.open_interest
+
+        new_minute = False
+
+        # 传入的second_bar已经走完一分钟，则启动 on_bar
+        if (second_bar.datetime + datetime.timedelta(seconds=self.second_window)).second == 0:
+            new_minute = True
+
+        if new_minute:
+            self.on_bar(self.second_window_bar)
+            self.second_window_bar = None
+
+    def update_x_minute_bar(self, bar: BarData) -> None:
+        """
+        Update 1 minute bar into generator
+        """
+        # If not inited, creaate window bar object
+        if not self.minute_window_bar:
+            # Generate timestamp for bar data
+            dt = bar.datetime.replace(second=0, microsecond=0)
+
+            self.minute_window_bar = BarData(
                 symbol=bar.symbol,
                 exchange=bar.exchange,
                 datetime=dt,
@@ -436,29 +484,33 @@ class SecondBarGenerator:
 
         # Otherwise, update high/low price into window bar
         else:
-            self.second_window_bar.high_price = max(
-                self.second_window_bar.high_price, bar.high_price)
-            self.second_window_bar.low_price = min(
-                self.second_window_bar.low_price, bar.low_price)
+            self.minute_window_bar.high_price = max(self.minute_window_bar.high_price, bar.high_price)
+            self.minute_window_bar.low_price  = min(self.minute_window_bar.low_price, bar.low_price)
 
         # Update close price/volume into window bar
-        self.second_window_bar.close_price = bar.close_price
-        self.second_window_bar.volume += int(bar.volume)
-        self.second_window_bar.open_interest = bar.open_interest
+        self.minute_window_bar.close_price = bar.close_price
+        self.minute_window_bar.volume += int(bar.volume)
+        self.minute_window_bar.open_interest = bar.open_interest
 
-        # Check if window bar completed
-        new_minute = False
+        # Check if minute window bar completed
+        finished = False
 
-        # 整除60切分法进行N分钟K线合成，只能合成2, 3, 4, 5, 6, 10, 15, 20, 30等秒钟K线
-        if self.second_window_bar.datetime.minute != bar.datetime.minute:
-            new_minute = True
+        if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+            if self.minute_window == 1:
+                finished = True
+            
+            else:
+                self.interval_count += 1
+                if not self.interval_count % self.minute_window:
+                    finished = True
+                    self.interval_count = 0
 
-        if new_minute:
-            self.on_bar(self.second_window_bar)
-            self.second_window_bar = None
+        if finished:
+            self.on_window_bar(self.minute_window_bar)
+            self.minute_window_bar = None
 
-        # Cache last second bar object
-        self.last_second_bar = bar
+        # Cache last bar object
+        self.last_bar = bar
 
     def generate(self) -> None:
         """

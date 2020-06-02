@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-# @Time    : 2019/9/20 9:18
-# @Author  : Tony
+
 """外部行情数据接口"""
 from abc import ABC, abstractmethod
 

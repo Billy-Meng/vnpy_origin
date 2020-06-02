@@ -1,6 +1,6 @@
 from datetime import timedelta, datetime
 from typing import List, Optional
-from pytz import timezone
+# from pytz import timezone
 
 from numpy import ndarray
 import jqdatasdk as jq
@@ -22,7 +22,7 @@ INTERVAL_ADJUSTMENT_MAP_JQ = {
     Interval.DAILY: timedelta()  # no need to adjust for daily bar
 }
 
-CHINA_TZ = timezone("Asia/Shanghai")
+# CHINA_TZ = timezone("Asia/Shanghai")
 
 
 class JqdataClient(DataSourceApi):
@@ -137,7 +137,7 @@ class JqdataClient(DataSourceApi):
             start_date=start,
             end_date=end,
             fq=None,
-            panel=False,
+            panel=True,
             skip_paused=True
         )
 
@@ -145,8 +145,10 @@ class JqdataClient(DataSourceApi):
 
         if df is not None:
             for ix, row in df.iterrows():
-                dt = row.name - adjustment
-                dt = dt.replace(tzinfo=CHINA_TZ)
+                # dt = row.name - adjustment
+                # dt = dt.replace(tzinfo=CHINA_TZ)
+
+                dt = row.name.to_pydatetime() - adjustment
 
                 bar = BarData(
                     symbol=symbol,
