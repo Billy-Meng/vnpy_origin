@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, Sequence, List
 
@@ -8,6 +8,8 @@ from vnpy.trader.constant import Exchange, Interval
 from vnpy.trader.object import BarData, TickData
 
 from .database import BaseDatabaseManager, Driver, DB_TZ
+
+TZ_OFFSET = int(datetime.now(DB_TZ).utcoffset().total_seconds()/60/60)      # 当前时区偏移量（东八区）
 
 
 def init(_: Driver, settings: dict):
@@ -76,7 +78,7 @@ class DbBarData(Document):
         db_bar.symbol = bar.symbol
         db_bar.exchange = bar.exchange.value
         db_bar.datetime = dt
-        db_bar.interval = bar.interval.value
+        db_bar.interval = bar.interval.value if isinstance(bar.interval, Enum) else bar.interval
         db_bar.volume = bar.volume
         db_bar.open_interest = bar.open_interest
         db_bar.open_price = bar.open_price
@@ -93,7 +95,7 @@ class DbBarData(Document):
         bar = BarData(
             symbol=self.symbol,
             exchange=Exchange(self.exchange),
-            datetime=self.datetime.replace(tzinfo=DB_TZ),
+            datetime=DB_TZ.localize(self.datetime + timedelta(hours=TZ_OFFSET)),    # 转换成东八区时间
             interval=Interval(self.interval),
             volume=self.volume,
             open_interest=self.open_interest,
@@ -224,7 +226,7 @@ class DbTickData(Document):
         tick = TickData(
             symbol=self.symbol,
             exchange=Exchange(self.exchange),
-            datetime=self.datetime.replace(tzinfo=DB_TZ),
+            datetime=DB_TZ.localize(self.datetime + timedelta(hours=TZ_OFFSET)),    # 转换成东八区时间
             name=self.name,
             volume=self.volume,
             open_interest=self.open_interest,
@@ -280,7 +282,7 @@ class MongoManager(BaseDatabaseManager):
         s = DbBarData.objects(
             symbol=symbol,
             exchange=exchange.value,
-            interval=interval.value,
+            interval=interval.value if isinstance(interval, Enum) else interval,
             datetime__gte=start,
             datetime__lte=end,
         )
@@ -313,7 +315,9 @@ class MongoManager(BaseDatabaseManager):
             updates.pop("set__vt_symbol")
             (
                 DbBarData.objects(
-                    symbol=d.symbol, interval=d.interval.value, datetime=d.datetime
+                    symbol=d.symbol,
+                    interval=d.interval.value if isinstance(d.interval, Enum) else d.interval,
+                    datetime=d.datetime
                 ).update_one(upsert=True, **updates)
             )
 
@@ -335,7 +339,7 @@ class MongoManager(BaseDatabaseManager):
             DbBarData.objects(
                 symbol=symbol,
                 exchange=exchange.value,
-                interval=interval.value
+                interval=interval.value if isinstance(interval, Enum) else interval
             )
             .order_by("-datetime")
             .first()
@@ -351,7 +355,7 @@ class MongoManager(BaseDatabaseManager):
             DbBarData.objects(
                 symbol=symbol,
                 exchange=exchange.value,
-                interval=interval.value
+                interval=interval.value if isinstance(interval, Enum) else interval
             )
             .order_by("+datetime")
             .first()
@@ -408,7 +412,7 @@ class MongoManager(BaseDatabaseManager):
         count = DbBarData.objects(
             symbol=symbol,
             exchange=exchange.value,
-            interval=interval.value
+            interval=interval.value if isinstance(interval, Enum) else interval
         ).delete()
 
         return count

@@ -548,15 +548,18 @@ class CtaEngine(BaseEngine):
         vt_symbol: str,
         days: int,
         interval: Interval,
-        frequency: Union[int, str],
+        frequency: int,
         callback: Callable[[BarData], None],
         use_database: bool
     ):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
         end = datetime.now(get_localzone())
-        start = end - timedelta(days)
+        start = end - timedelta(days=days)
         bars = []
+
+        if SETTINGS["datasource.api"] == "jjdata":
+            frequency = f"{frequency}s"
 
         # Pass gateway and RQData if use_database set to True
         if not use_database:
@@ -599,7 +602,7 @@ class CtaEngine(BaseEngine):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
         end = datetime.now(get_localzone())
-        start = end - timedelta(days)
+        start = end - timedelta(days=days)
 
         interval = None
         frequency = "tick"

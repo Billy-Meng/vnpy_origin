@@ -244,7 +244,7 @@ class CtaTemplate(ABC):
         self,
         days: int,
         interval: Interval = Interval.MINUTE,
-        frequency: Union[int, str] = 60,
+        frequency: int = 60,
         callback: Callable = None,
         use_database: bool = False
     ):

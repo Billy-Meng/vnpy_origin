@@ -29,6 +29,7 @@ SETTINGS: Dict[str, Any] = {
     "jqdata.password": "",
     "rqdata.username": "",
     "rqdata.password": "",
+    "jjdata.token": "",
 
     "database.timezone": get_localzone().zone,
     "database.driver": "sqlite",                # see database.Driver

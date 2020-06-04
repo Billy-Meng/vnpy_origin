@@ -399,7 +399,7 @@ class NewBarGenerator:
             self.second_bar = BarData(
                 symbol=tick.symbol,
                 exchange=tick.exchange,
-                interval=Interval.SECOND,
+                interval=f"{self.second_window}s",
                 datetime=tick.datetime,
                 gateway_name=tick.gateway_name,
                 open_price=tick.last_price,
@@ -434,6 +434,7 @@ class NewBarGenerator:
             self.second_window_bar = BarData(
                 symbol=second_bar.symbol,
                 exchange=second_bar.exchange,
+                interval=Interval.MINUTE,
                 datetime=dt,
                 gateway_name=second_bar.gateway_name,
                 open_price=second_bar.open_price,
@@ -475,6 +476,7 @@ class NewBarGenerator:
             self.minute_window_bar = BarData(
                 symbol=bar.symbol,
                 exchange=bar.exchange,
+                interval=f"{self.minute_window}m",
                 datetime=dt,
                 gateway_name=bar.gateway_name,
                 open_price=bar.open_price,

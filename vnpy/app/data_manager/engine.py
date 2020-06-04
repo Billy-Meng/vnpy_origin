@@ -9,6 +9,7 @@ from vnpy.trader.database import database_manager
 
 from vnpy.trader.datasource.rqdata import rqdata_client
 from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.jjdata import jjdata_client
 from vnpy.trader.setting import SETTINGS
 
 
@@ -197,7 +198,8 @@ class ManagerEngine(BaseEngine):
         req = HistoryRequest(
             symbol=symbol,
             exchange=exchange,
-            interval=Interval(interval),
+            # interval=Interval(interval),
+            interval=Interval.MINUTE,          # 设置默认下载数据均为一分钟K线数据
             start=start,
             end=datetime.now()
         )
@@ -224,6 +226,12 @@ class ManagerEngine(BaseEngine):
                 rqdata_client.init()
 
             data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "jjdata":
+            if not jjdata_client.inited:
+                jjdata_client.init()
+
+            data = jjdata_client.query_history(req, interval)
 
         if data:
             database_manager.save_bar_data(data)

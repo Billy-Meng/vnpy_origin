@@ -5,6 +5,7 @@ Basic data structure used for general trading function in VN Trader.
 from dataclasses import dataclass
 from datetime import datetime
 from logging import INFO
+from typing import Union
 
 from .constant import Direction, Exchange, Interval, Offset, Status, Product, OptionType, OrderType
 
@@ -86,7 +87,7 @@ class BarData(BaseData):
     exchange: Exchange
     datetime: datetime
 
-    interval: Interval = None
+    interval: Union[Interval, str] = None
     volume: float = 0
     open_interest: float = 0
     open_price: float = 0

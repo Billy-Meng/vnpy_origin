@@ -18,12 +18,6 @@ INTERVAL_VT2TQ = {
     Interval.DAILY: 60 * 60 * 24,
 }
 
-INTERVAL_ADJUSTMENT_MAP = {
-    Interval.MINUTE: timedelta(minutes=1),
-    Interval.HOUR: timedelta(hours=1),
-    Interval.DAILY: timedelta()         # no need to adjust for daily bar
-}
-
 CHINA_TZ = timezone("Asia/Shanghai")
 
 class TqdataClient(DataSourceApi):
@@ -88,10 +82,6 @@ class TqdataClient(DataSourceApi):
         if not tq_interval:
             return None
 
-        # For adjust timestamp from bar close point (TQData) to open point (VN Trader)
-        # 调整 K线时间戳为 K线起始时间
-        adjustment = INTERVAL_ADJUSTMENT_MAP[interval]
-
         # For querying night trading period data
         end += timedelta(minutes=1)
 
@@ -101,15 +91,12 @@ class TqdataClient(DataSourceApi):
         # 转换为东八区时间
         df["datetime"] = pd.to_datetime(df["datetime"] + TIME_UTC8)
 
-        # 过滤开始结束时间
-        # df = df[(df['datetime'] >= start.replace(tzinfo=CHINA_TZ) - timedelta(days=1)) & (df['datetime'] < end.replace(tzinfo=CHINA_TZ))]
 
         data: List[BarData] = []
 
         if df is not None:
             for ix, row in df.iterrows():
-                dt = row.datetime - adjustment
-                dt = dt.replace(tzinfo=CHINA_TZ)
+                dt = CHINA_TZ.localize(row.datetime.to_pydatetime().replace(tzinfo=None))
 
                 bar = BarData(
                     symbol=symbol,
