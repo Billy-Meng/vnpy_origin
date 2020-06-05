@@ -553,6 +553,19 @@ class ArrayManager(object):
         self.low_price_day = np.zeros(size)
         self.close_price_day = np.zeros(size)
 
+    def update_daily_ohlc(self, tick: TickData):
+        """Tick级别更新每日开高低收价格序列"""
+        if tick.datetime.date() != self.TrueDate(tick):
+            self.open_price_day[:-1] = self.open_price_day[1:]
+            self.high_price_day[:-1] = self.high_price_day[1:]
+            self.low_price_day[:-1] = self.low_price_day[1:]
+            self.close_price_day[:-1] = self.close_price_day[1:]
+
+            self.open_price_day[-1] = tick.last_price
+            self.high_price_day[-1] = tick.last_price
+            self.low_price_day[-1] = tick.last_price
+            self.close_price_day[-1] = tick.last_price
+
     def update_bar(self, bar: BarData) -> None:
         """
         Update new bar data into array manager.
@@ -574,6 +587,18 @@ class ArrayManager(object):
         self.close_array[-1] = bar.close_price
         self.volume_array[-1] = bar.volume
         self.open_interest_array[-1] = bar.open_interest
+
+        """Bar级别更新每日开高低收价格序列"""
+        if bar.datetime.date() != self.TrueDate(bar):
+            self.open_price_day[:-1] = self.open_price_day[1:]
+            self.high_price_day[:-1] = self.high_price_day[1:]
+            self.low_price_day[:-1] = self.low_price_day[1:]
+            self.close_price_day[:-1] = self.close_price_day[1:]
+
+            self.open_price_day[-1] = bar.open_price
+            self.high_price_day[-1] = bar.high_price
+            self.low_price_day[-1] = bar.low_price
+            self.close_price_day[-1] = bar.close_price
 
     @property
     def open(self) -> np.ndarray:
@@ -1056,66 +1081,92 @@ class ArrayManager(object):
         else:
             return False
 
-    def TrueDate(self, bar:BarData):
+    def TrueDate(self, data: Union[TickData, BarData]):
         """"""
         day_offset = datetime.timedelta(days=0)
-        if bar.datetime.hour >= 18:
-            if bar.datetime.isoweekday() == 5:         # 周五晚上
+        if data.datetime.hour >= 18:
+            if data.datetime.isoweekday() == 5:         # 周五晚上
                 day_offset = datetime.timedelta(days=3)
-            elif bar.datetime.isoweekday() == 6:       # 周六晚上
+            elif data.datetime.isoweekday() == 6:       # 周六晚上
                 day_offset = datetime.timedelta(days=2)
             else:                                      # 周日晚上
                 day_offset = datetime.timedelta(days=1)
 
         else:
-            if bar.datetime.isoweekday() == 6:         # 周六
+            if data.datetime.isoweekday() == 6:         # 周六
                 day_offset = datetime.timedelta(days=2)
-            elif bar.datetime.isoweekday() == 7:       # 周日
+            elif data.datetime.isoweekday() == 7:       # 周日
                 day_offset = datetime.timedelta(days=1)
-        bar.datetime = bar.datetime + day_offset
-        return bar.datetime.date()
+        data.datetime = data.datetime + day_offset
+        return data.datetime.date()
 
-    def OpenD(self, bar:BarData):
-        """记录每日开盘价"""
-        if bar.datetime.date() != self.TrueDate(bar):
-            self.open_price_day[:-1] = self.open_price_day[1:]
-            self.open_price_day[-1] = bar.open_price
-        else:
-            pass
+    @property
+    def OpenD(self) -> np.ndarray:
+        """每日开盘价价格序列"""
         return self.open_price_day
 
-    def HighD(self, bar:BarData):
-        """记录每日最高价"""
-        if bar.datetime.date() != self.TrueDate(bar):
-            self.high_price_day[:-1] = self.high_price_day[1:]
-            self.high_price_day[-1] = bar.high_price
-        else:
-            if self.high_price_day[-1] < bar.high_price:
-                self.high_price_day[-1] = bar.high_price
-            else:
-                pass
+    @property
+    def HighD(self) -> np.ndarray:
+        """每日最高价价格序列"""
         return self.high_price_day
 
-    def LowD(self, bar:BarData):
-        """记录每日最低价"""
-        if bar.datetime.date() != self.TrueDate(bar):
-            self.low_price_day[:-1] = self.low_price_day[1:]
-            self.low_price_day[-1] = bar.low_price
-        else:
-            if self.low_price_day[-1] > bar.low_price:
-                self.low_price_day[-1] = bar.low_price
-            else:
-                pass
+    @property
+    def LowD(self) -> np.ndarray:
+        """每日最低价价格序列"""
         return self.low_price_day
 
-    def CloseD(self, bar:BarData):
-        """记录每日收盘价"""
-        if bar.datetime.date() != self.TrueDate(bar):
-            self.close_price_day[:-1] = self.close_price_day[1:]
-            self.close_price_day[-1] = bar.close_price
-        else:
-            self.close_price_day[-1] = bar.close_price
+    @property
+    def CloseD(self) -> np.ndarray:
+        """每日收盘价价格序列"""
         return self.close_price_day
+
+    def sma_day(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """日线简单移动平均线"""
+        result = talib.SMA(self.CloseD, n)
+        if array:
+            return result
+        return result[-1]
+
+    def ema_day(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """日线指数移动平均线"""
+        result = talib.EMA(self.CloseD, n)
+        if array:
+            return result
+        return result[-1]
+
+    def atr_day(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """日线平均真实波幅"""
+        result = talib.ATR(self.HighD, self.LowD, self.CloseD, n)
+        if array:
+            return result
+        return result[-1]
+
+    def rsi_day(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """日线相对强弱指标"""
+        result = talib.RSI(self.CloseD, n)
+        if array:
+            return result
+        return result[-1]
+
+    def macd_day(
+        self,
+        fast_period: int,
+        slow_period: int,
+        signal_period: int,
+        array: bool = False
+    ) -> Union[
+        Tuple[np.ndarray, np.ndarray, np.ndarray],
+        Tuple[float, float, float]
+    ]:
+        """
+        MACD.
+        """
+        macd, signal, hist = talib.MACD(
+            self.CloseD, fast_period, slow_period, signal_period
+        )
+        if array:
+            return macd, signal, hist
+        return macd[-1], signal[-1], hist[-1]
 
 
 def virtual(func: Callable) -> Callable:

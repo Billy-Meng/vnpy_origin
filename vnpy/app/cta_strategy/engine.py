@@ -581,13 +581,23 @@ class CtaEngine(BaseEngine):
                 bars = self.query_bar_from_rq(symbol, exchange, interval, frequency, start, end)
 
         if not bars:
-            bars = database_manager.load_bar_data(
-                symbol=symbol,
-                exchange=exchange,
-                interval=interval,
-                start=start,
-                end=end,
-            )
+            if SETTINGS["datasource.api"] == "jjdata":
+                bars = database_manager.load_bar_data(
+                    symbol=symbol,
+                    exchange=exchange,
+                    interval=frequency,
+                    start=start,
+                    end=end,
+                )
+
+            else:
+                bars = database_manager.load_bar_data(
+                    symbol=symbol,
+                    exchange=exchange,
+                    interval=interval,
+                    start=start,
+                    end=end,
+                )
 
         for bar in bars:
             callback(bar)

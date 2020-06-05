@@ -255,12 +255,12 @@ class CtaTemplate(ABC):
             callback = self.on_bar
 
         self.cta_engine.load_bar(
-            self.vt_symbol,
-            days,
-            interval,
-            frequency,
-            callback,
-            use_database
+            vt_symbol = self.vt_symbol,
+            days = days,
+            interval = interval,
+            frequency = frequency,
+            callback = callback,
+            use_database = use_database
         )
 
     def load_tick(self, days: int, use_database: bool = False):
@@ -303,28 +303,30 @@ class CtaTemplate(ABC):
         net_position=False, history_data=False, option_strike=0, option_underlying='', option_type=None, 
         option_expiry=None, option_portfolio='', option_index='')
         """
-        self.contract_data = self.cta_engine.main_engine.get_contract(self.vt_symbol)
+        if self.get_engine_type() == EngineType.LIVE:
+            self.contract_data = self.cta_engine.main_engine.get_contract(self.vt_symbol)
 
-        if self.contract_data:
-            
-            self.gateway_name = self.contract_data.gateway_name      # 接口名称
-            self.symbol = self.contract_data.symbol                  # 合约代码
-            self.pricetick = self.contract_data.pricetick            # 最小变动价位
-            self.size = self.contract_data.size                      # 合约乘数
+            if self.contract_data:
+                
+                self.gateway_name = self.contract_data.gateway_name      # 接口名称
+                self.symbol = self.contract_data.symbol                  # 合约代码
+                self.pricetick = self.contract_data.pricetick            # 最小变动价位
+                self.size = self.contract_data.size                      # 合约乘数
 
-            return self.contract_data
-        else:
-            return None
+                return self.contract_data
+            else:
+                return None
 
     def get_account_data(self, account_id:str) -> AccountData:
         """获取账户信息"""
-        vt_account_id = f"{self.gateway_name}.{account_id}"
-        account_data = self.cta_engine.main_engine.get_account(vt_account_id)
+        if self.get_engine_type() == EngineType.LIVE:
+            vt_account_id = f"{self.gateway_name}.{account_id}"
+            account_data = self.cta_engine.main_engine.get_account(vt_account_id)
 
-        if account_data:
-            return account_data
-        else:
-            return None
+            if account_data:
+                return account_data
+            else:
+                return None
         
     def popup_warning(self, msg:str = "交易提醒"):
         """

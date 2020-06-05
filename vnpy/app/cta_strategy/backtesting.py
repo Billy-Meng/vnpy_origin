@@ -129,6 +129,7 @@ class BacktestingEngine:
 
         self.interval = None
         self.days = 0
+        self.frequency = None
         self.callback = None
         self.history_data = []
 
@@ -747,7 +748,8 @@ class BacktestingEngine:
 
         self.cross_limit_order()
         self.cross_stop_order()
-        self.strategy.on_bar(bar)
+        # self.strategy.on_bar(bar)
+        self.strategy.on_second_bar(bar)
 
         self.update_daily_close(bar.close_price)
 
@@ -926,11 +928,13 @@ class BacktestingEngine:
         vt_symbol: str,
         days: int,
         interval: Interval,
+        frequency: int,
         callback: Callable,
         use_database: bool
     ):
         """"""
         self.days = days
+        self.frequency = frequency
         self.callback = callback
 
     def load_tick(self, vt_symbol: str, days: int, callback: Callable):

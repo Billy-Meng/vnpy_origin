@@ -78,7 +78,7 @@ class JjdataClient(DataSourceApi):
         if frequency == "tick":
             fields = "created_at, open, high, low, price, cum_volume, cum_amount, trade_type, last_volume, cum_position, last_amount, quotes"
 
-            print("开始从掘金获取Tick数据……")
+            print(f"开始从掘金获取 {jj_symbol} Tick 数据……")
             for i in range(10000):
 
                 if first_df:
@@ -89,6 +89,10 @@ class JjdataClient(DataSourceApi):
                 else:
                     bar_data = history_n(symbol=jj_symbol, frequency=frequency, end_time=bacd_time, count=33000, fields=fields, df=True)
                     df = pd.concat([bar_data, df[1:]], ignore_index=True)
+                    
+                    if bacd_time == df["created_at"][1]:
+                        break
+
                     bacd_time = df["created_at"][1]
 
                 print(f"第 {i+1} 次循环获取数据，数据起始时间为：{bacd_time}")
@@ -106,7 +110,7 @@ class JjdataClient(DataSourceApi):
         else:
             fields = "bob, open, high, low, close, volume, position"
             
-            print(f"开始从掘金获取 {frequency} K线数据……")
+            print(f"开始从掘金获取 {jj_symbol} {frequency} K线数据……")
             for i in range(10000):
 
                 if first_df:
@@ -117,6 +121,10 @@ class JjdataClient(DataSourceApi):
                 else:
                     bar_data = history_n(symbol=jj_symbol, frequency=frequency, end_time=bacd_time, count=33000, fields=fields, df=True)
                     df = pd.concat([bar_data, df[1:]], ignore_index=True)
+                    
+                    if bacd_time == df["bob"][1]:
+                        break
+
                     bacd_time = df["bob"][1]
 
                 print(f"第 {i+1} 次循环获取数据，数据起始时间为：{bacd_time}")
