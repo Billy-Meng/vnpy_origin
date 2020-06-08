@@ -378,10 +378,15 @@ class CtaTemplate(ABC):
             requests.post(url, data=json.dumps(program), headers=headers)
 
     def product_trade_time(self) -> dict:
-        """获取品种的交易时间信息，包括字段：symbol, exchange, name, am_start, rest_start, rest_end, am_end, pm_start, pm_end, night_start, night_end"""
+        """获取品种的交易时间信息，包括字段：symbol, exchange, name, am_start, rest_start, rest_end, am_end, pm_start, pm_end, night_trade, night_start, night_end"""
+
         filepath = get_file_path("期货品种交易时间.xlsx")
 
         if filepath.exists():
+
+            if self.get_engine_type() == EngineType.BACKTESTING:
+                self.vt_symbol = self.cta_engine.vt_symbol
+
             for count, word in enumerate(self.vt_symbol):
                 if word.isdigit():
                     break
@@ -390,6 +395,7 @@ class CtaTemplate(ABC):
             df = pd.read_excel(filepath)
             df["symbol"] = df["symbol"].apply(lambda x: x.upper())
             df = df.set_index("symbol")
+            
             self.trade_time = df.loc[product].to_dict()
 
             return self.trade_time

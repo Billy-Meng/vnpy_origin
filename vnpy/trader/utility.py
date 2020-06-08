@@ -1102,7 +1102,7 @@ class ArrayManager(object):
 
     def CrossOver(self, PriceArrray_1:"Array", Price_2:"Array or int") -> bool:
         """求是否上穿"""
-        if isinstance(PriceArrray_2, int):
+        if isinstance(Price_2, int):
             if PriceArrray_1[-2] < Price_2 and PriceArrray_1[-1] >= Price_2:
                 return True
             else:
@@ -1115,7 +1115,7 @@ class ArrayManager(object):
 
     def CrossUnder(self, PriceArrray_1:"Array", Price_2:"Array or int") -> bool:
         """求是否下破"""
-        if isinstance(PriceArrray_2, int):
+        if isinstance(Price_2, int):
             if PriceArrray_1[-2] > Price_2 and PriceArrray_1[-1] <= Price_2:
                 return True
             else:
