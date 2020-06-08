@@ -1,6 +1,4 @@
-"""
-"""
-
+# -*- coding:utf-8 -*-
 import logging
 from logging import Logger
 import smtplib

@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 """
 Basic data structure used for general trading function in VN Trader.
 """

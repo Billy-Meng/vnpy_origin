@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Callable
@@ -748,8 +749,12 @@ class BacktestingEngine:
 
         self.cross_limit_order()
         self.cross_stop_order()
-        # self.strategy.on_bar(bar)
-        self.strategy.on_second_bar(bar)
+
+        try:
+            if self.strategy.bg_second:
+                self.strategy.on_second_bar(bar)
+        except AttributeError:
+            self.strategy.on_bar(bar)
 
         self.update_daily_close(bar.close_price)
 

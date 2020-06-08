@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 """
 Defines constants and objects used in CtaStrategy App.
 """

@@ -1,5 +1,4 @@
-""""""
-
+# -*- coding:utf-8 -*-
 import sys
 from threading import Thread
 from queue import Queue, Empty

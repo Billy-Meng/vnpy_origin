@@ -1,11 +1,13 @@
-""""""
+# -*- coding:utf-8 -*-
 from abc import ABC
 from copy import copy
 from typing import Any, Callable, Union
 
+import pandas as pd
+
 from vnpy.trader.constant import Interval, Direction, Offset
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData, AccountData, ContractData
-from vnpy.trader.utility import virtual
+from vnpy.trader.utility import virtual, get_file_path
 
 from .base import StopOrder, EngineType
 
@@ -374,6 +376,26 @@ class CtaTemplate(ABC):
             headers = {'Content-Type': 'application/json'}
 
             requests.post(url, data=json.dumps(program), headers=headers)
+
+    def product_trade_time(self) -> dict:
+        """获取品种的交易时间信息，包括字段：symbol, exchange, name, am_start, rest_start, rest_end, am_end, pm_start, pm_end, night_start, night_end"""
+        filepath = get_file_path("期货品种交易时间.xlsx")
+
+        if filepath.exists():
+            for count, word in enumerate(self.vt_symbol):
+                if word.isdigit():
+                    break
+            product = self.vt_symbol[:count].upper()
+
+            df = pd.read_excel(filepath)
+            df["symbol"] = df["symbol"].apply(lambda x: x.upper())
+            df = df.set_index("symbol")
+            self.trade_time = df.loc[product].to_dict()
+
+            return self.trade_time
+
+        else:
+            self.write_log("找不到该品种交易时间")
 
 
 class CtaSignal(ABC):

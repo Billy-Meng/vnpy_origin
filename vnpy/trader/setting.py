@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 """
 Global setting of VN Trader.
 """

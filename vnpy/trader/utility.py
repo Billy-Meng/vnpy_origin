@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 """
 General utility functions.
 """
@@ -252,7 +253,7 @@ class BarGenerator:
 
         self.last_tick = tick
 
-    def update_bar(self, bar: BarData) -> None:
+    def update_x_minute_bar(self, bar: BarData) -> None:
         """
         Update 1 minute bar into generator
         """
@@ -261,7 +262,7 @@ class BarGenerator:
             # Generate timestamp for bar data
             if self.interval == Interval.MINUTE:
                 dt = bar.datetime.replace(second=0, microsecond=0)
-            else:
+            elif self.interval == Interval.HOUR:
                 dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
 
             self.window_bar = BarData(
@@ -344,7 +345,7 @@ class NewBarGenerator:
     def __init__(
         self,
         on_second_bar: Callable = None,
-        second_window: int = 60,
+        second_window: int = 30,
         on_bar: Callable = None,
         minute_window: int = 1,
         on_window_bar: Callable = None
@@ -552,10 +553,15 @@ class ArrayManager(object):
         self.high_price_day = np.zeros(size)
         self.low_price_day = np.zeros(size)
         self.close_price_day = np.zeros(size)
+        self.last_tick = None
+        self.last_bar = None
+        self.new_day = False
 
-    def update_daily_ohlc(self, tick: TickData):
+    def tick_update_daily_ohlc(self, tick: TickData):
         """Tick级别更新每日开高低收价格序列"""
-        if tick.datetime.date() != self.TrueDate(tick):
+        if self.last_tick and self.last_tick.datetime.date() != self.TrueDate(tick):
+            self.new_day = True     # 新一天的 Tick
+
             self.open_price_day[:-1] = self.open_price_day[1:]
             self.high_price_day[:-1] = self.high_price_day[1:]
             self.low_price_day[:-1] = self.low_price_day[1:]
@@ -565,6 +571,12 @@ class ArrayManager(object):
             self.high_price_day[-1] = tick.last_price
             self.low_price_day[-1] = tick.last_price
             self.close_price_day[-1] = tick.last_price
+
+        else:
+            self.new_day = False
+
+        # 缓存上一个 Tick
+        self.last_tick = tick
 
     def update_bar(self, bar: BarData) -> None:
         """
@@ -589,7 +601,9 @@ class ArrayManager(object):
         self.open_interest_array[-1] = bar.open_interest
 
         """Bar级别更新每日开高低收价格序列"""
-        if bar.datetime.date() != self.TrueDate(bar):
+        if self.last_bar and self.last_bar.datetime.date() != self.TrueDate(bar):
+            self.new_day = True     # 新一天的 Bar
+
             self.open_price_day[:-1] = self.open_price_day[1:]
             self.high_price_day[:-1] = self.high_price_day[1:]
             self.low_price_day[:-1] = self.low_price_day[1:]
@@ -599,6 +613,12 @@ class ArrayManager(object):
             self.high_price_day[-1] = bar.high_price
             self.low_price_day[-1] = bar.low_price
             self.close_price_day[-1] = bar.close_price
+
+        else:
+            self.new_day = False
+
+        # 缓存上一根 Bar
+        self.last_bar = bar
 
     @property
     def open(self) -> np.ndarray:
@@ -1046,6 +1066,19 @@ class ArrayManager(object):
         return result[-1]
 
 
+    # 丰富 Talib 库指标
+    def kdj(self, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
+        """
+        KDJ指标，Stochastic (Momentum Indicators)
+        matype: 0=SMA(默认), 1=EMA, 2=WMA, 3=DEMA, 4=TEMA, 5=TRIMA, 6=KAMA, 7=MAMA, 8=T3
+        """
+        k_value, d_value = talib.STOCH(self.high, self.low, self.close, fastk_period=9, slowk_period=3, slowk_matype=0, slowd_period=3, slowd_matype=0)
+        j_value = 3 * k_value - 2 * d_value
+        if array:
+            return k_value, d_value, j_value
+        return k_value[-1], d_value[-1], j_value[-1]
+
+
     # 参考TB函数及公式建立工具箱
     def Highest(self, PriceArrray:"Array", Length:"周期"=5) -> "HighestValue":
         """求最高"""
@@ -1067,19 +1100,31 @@ class ArrayManager(object):
         # PriceArrray = PriceArrray[-Length:]
         # return np.min(PriceArrray)
 
-    def CrossOver(self, PriceArrray_1:"Array", PriceArrray_2:"Array") -> bool:
+    def CrossOver(self, PriceArrray_1:"Array", Price_2:"Array or int") -> bool:
         """求是否上穿"""
-        if PriceArrray_1[-2] < PriceArrray_2[-2] and PriceArrray_1[-1] >= PriceArrray_2[-1]:
-            return True
+        if isinstance(PriceArrray_2, int):
+            if PriceArrray_1[-2] < Price_2 and PriceArrray_1[-1] >= Price_2:
+                return True
+            else:
+                return False
         else:
-            return False
+            if PriceArrray_1[-2] < Price_2[-2] and PriceArrray_1[-1] >= Price_2[-1]:
+                return True
+            else:
+                return False
 
-    def CrossUnder(self, PriceArrray_1:"Array", PriceArrray_2:"Array") -> bool:
+    def CrossUnder(self, PriceArrray_1:"Array", Price_2:"Array or int") -> bool:
         """求是否下破"""
-        if PriceArrray_1[-2] > PriceArrray_2[-2] and PriceArrray_1[-1] <= PriceArrray_2[-1]:
-            return True
+        if isinstance(PriceArrray_2, int):
+            if PriceArrray_1[-2] > Price_2 and PriceArrray_1[-1] <= Price_2:
+                return True
+            else:
+                return False
         else:
-            return False
+            if PriceArrray_1[-2] > Price_2[-2] and PriceArrray_1[-1] <= Price_2[-1]:
+                return True
+            else:
+                return False
 
     def TrueDate(self, data: Union[TickData, BarData]):
         """"""
@@ -1089,7 +1134,7 @@ class ArrayManager(object):
                 day_offset = datetime.timedelta(days=3)
             elif data.datetime.isoweekday() == 6:       # 周六晚上
                 day_offset = datetime.timedelta(days=2)
-            else:                                      # 周日晚上
+            elif data.datetime.isoweekday() == 7:       # 周日晚上
                 day_offset = datetime.timedelta(days=1)
 
         else:

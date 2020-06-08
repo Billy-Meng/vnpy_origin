@@ -1,4 +1,4 @@
-""""""
+# -*- coding:utf-8 -*-
 from abc import ABC
 from copy import copy
 from typing import Dict, Set, List, TYPE_CHECKING

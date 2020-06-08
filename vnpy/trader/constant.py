@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 """
 General constant string used in VN Trader.
 """
