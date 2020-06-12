@@ -390,6 +390,17 @@ class BacktestingEngine:
             return_std = 0
             sharpe_ratio = 0
             return_drawdown_ratio = 0
+
+            total_trade = 0
+            max_profit = 0
+            max_loss = 0
+            profit_times = 0
+            loss_times = 0
+            rate_of_win = 0
+            total_profit = 0
+            total_loss = 0
+            profit_loss_ratio = 0
+
         else:
             # Calculate balance related time series data
             df["balance"] = df["net_pnl"].cumsum() + self.capital
@@ -447,6 +458,18 @@ class BacktestingEngine:
 
             return_drawdown_ratio = -total_return / max_ddpercent
 
+            
+            trade_result = self.calculate_trade_result()
+            total_trade = len(trade_result)
+            max_profit = float(trade_result["trade_pro"].max())
+            max_loss = float(trade_result["trade_pro"].min())
+            profit_times = len(trade_result[trade_result["trade_pro"] >= 0])
+            loss_times = len(trade_result[trade_result["trade_pro"] < 0])
+            rate_of_win = profit_times / (profit_times + loss_times) * 100
+            total_profit = float(trade_result[trade_result["trade_pro"] >= 0].sum())
+            total_loss = float(trade_result[trade_result["trade_pro"] < 0].sum())
+            profit_loss_ratio = (total_profit/profit_times) / abs(total_loss / loss_times)
+
         # Output
         if output:
             self.output("-" * 30)
@@ -470,7 +493,7 @@ class BacktestingEngine:
             self.output(f"总手续费：\t{total_commission:,.2f}")
             self.output(f"总滑点：\t{total_slippage:,.2f}")
             self.output(f"总成交金额：\t{total_turnover:,.2f}")
-            self.output(f"总成交笔数：\t{total_trade_count}")
+            self.output(f"总成交次数：\t{total_trade_count}")
 
             self.output(f"日均盈亏：\t{daily_net_pnl:,.2f}")
             self.output(f"日均手续费：\t{daily_commission:,.2f}")
@@ -482,6 +505,16 @@ class BacktestingEngine:
             self.output(f"收益标准差：\t{return_std:,.2f}%")
             self.output(f"Sharpe Ratio：\t{sharpe_ratio:,.2f}")
             self.output(f"收益回撤比：\t{return_drawdown_ratio:,.2f}")
+
+            self.output(f"总交易笔数：\t{total_trade}")
+            self.output(f"单笔最大盈利：\t{max_profit:,.2f}")
+            self.output(f"单笔最大亏损：\t{max_loss:,.2f}")
+            self.output(f"交易盈利笔数：\t{profit_times}")
+            self.output(f"交易亏损笔数：\t{loss_times}")
+            self.output(f"胜率：\t{rate_of_win:,.2f}%")                # 胜率 = 盈利的所有次数 / 总交易场次 x 100%
+            self.output(f"盈利总金额：\t{total_profit:,.2f}")
+            self.output(f"亏损总金额：\t{total_loss:,.2f}")
+            self.output(f"盈亏比：\t{profit_loss_ratio:,.2f}")         # 盈亏比 = 盈利的平均金额 / 亏损的平均金额
 
         statistics = {
             "start_date": start_date,
@@ -510,6 +543,15 @@ class BacktestingEngine:
             "return_std": return_std,
             "sharpe_ratio": sharpe_ratio,
             "return_drawdown_ratio": return_drawdown_ratio,
+            "total_trade": total_trade,
+            "max_profit": max_profit,
+            "max_loss": max_loss,
+            "profit_times": profit_times,
+            "loss_times": loss_times,
+            "rate_of_win": rate_of_win,
+            "total_profit": total_profit,
+            "total_loss": total_loss,
+            "profit_loss_ratio": profit_loss_ratio,
         }
 
         # Filter potential error infinite value
@@ -836,10 +878,11 @@ class BacktestingEngine:
                 gateway_name=self.gateway_name,
             )
 
+            self.trades[trade.vt_tradeid] = trade
+                        
             self.strategy.pos += pos_change
             self.strategy.on_trade(trade)
 
-            self.trades[trade.vt_tradeid] = trade
 
     def cross_stop_order(self):
         """
@@ -1117,6 +1160,77 @@ class BacktestingEngine:
         Return all daily result data.
         """
         return list(self.daily_results.values())
+
+
+    # 新增回测统计指标
+    def get_trade_df(self):
+        """提取成交记录，并生成 DataFrame"""
+        trades = self.get_all_trades()
+        trade_list = [trade.__dict__ for trade in trades]
+        trade_df = DataFrame(trade_list)
+        trade_df = trade_df.set_index("datetime")
+        # trade_df包括字段："gateway_name", "symbol", "exchange", "orderid", "tradeid", "direction", "offset", "price", "volume", "vt_symbol", "vt_orderid", "vt_tradeid"
+        trade_df = trade_df.rename(columns={"price": "trade_price", "volume": "trade_volume"})
+        trade_df["exchange"] = trade_df.exchange.apply(lambda x : x.value)
+        trade_df["direction"] = trade_df.direction.apply(lambda x : x.value)
+        trade_df["offset"] = trade_df.offset.apply(lambda x : x.value)
+        
+        return trade_df
+
+    def calculate_trade_result(self):
+        """计算每笔交易盈亏"""
+        trade_result = DataFrame()
+        volume_count = 0
+        trade_count = 1
+        trade_number_list = []
+        trade_profit_list = []
+        trade_df = self.get_trade_df()
+
+        for ix, row in trade_df.iterrows():
+            trade_number_list.append(trade_count)
+
+            if row.direction == "多":
+                trade_profit_list.append(self.size * row.trade_price * row.trade_volume * (-1 - self.rate) - self.size * self.slippage)
+            else:
+                trade_profit_list.append(self.size * row.trade_price * row.trade_volume * ( 1 - self.rate) - self.size * self.slippage)
+
+            if row.offset == "开":
+                volume_count += row.trade_volume
+            else:
+                volume_count -= row.trade_volume
+
+            if volume_count == 0:
+                trade_count += 1
+
+        trade_df["trade_num"] = trade_number_list
+
+        # 处理最后为开仓的情况
+        offset_list_reverse = trade_df.offset.to_list()[::-1]
+        if offset_list_reverse[0] == "开":
+            for count, offset in enumerate(offset_list_reverse):
+                if offset == "平":
+                    break
+        else:
+            count = 0
+
+        if count == 0:
+            trade_df["trade_pro"] = trade_profit_list
+        else:
+            last_close_price = self.daily_df.close_price.to_list()[-1]          # 获取回测期最后收盘价
+            modify_list = []
+
+            for ix, row in trade_df.iloc[-count:].iterrows():
+                if row.direction == "多":
+                    modify_list.append(self.size * (last_close_price * (1 - self.rate) - row.trade_price * ( 1 + self.rate)) * row.trade_volume - 2 * self.size * self.slippage)
+                else:
+                    modify_list.append(self.size * (row.trade_price * (1 - self.rate) - last_close_price * ( 1 + self.rate)) * row.trade_volume - 2 * self.size * self.slippage)
+
+            trade_profit_list[-count:] = modify_list
+            trade_df["trade_pro"] = trade_profit_list
+
+        trade_result = trade_df[["trade_pro", "trade_num"]].groupby("trade_num").sum()
+
+        return trade_result
 
 
 class DailyResult:

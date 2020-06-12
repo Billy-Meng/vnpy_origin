@@ -202,10 +202,10 @@ class AccountData(BaseData):
     accountid: str                      #账户ID
 
     balance: float = 0                  #总资金
+    pre_balance: float = 0              #上个交易日总资金(币圈交易所为人民币计价总资金)
     available: float = 0                #可用资金
     percent: float = 0                  #资金使用率
     frozen: float = 0                   #冻结资金
-    pre_balance: float = 0              #上个交易日总资金(币圈交易所为人民币计价总资金)
     commission: float = 0               #手续费
     margin: float = 0                   #占用保证金
     close_profit: float = 0             #平仓利润
@@ -256,6 +256,7 @@ class ContractData(BaseData):
     product: Product
     size: int
     pricetick: float
+    margin_rate: float = 0.1        # 保证金比率
 
     min_volume: float = 1           # minimum trading volume of the contract
     stop_supported: bool = False    # whether server supports stop order

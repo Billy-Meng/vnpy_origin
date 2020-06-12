@@ -293,18 +293,21 @@ class BarGenerator:
         if self.interval == Interval.MINUTE:
             # x-minute bar
 
-            # 官方版本合成方式。整除切分法进行分钟K线合成，只能合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟K线
-            # if not (bar.datetime.minute + 1) % self.window:
-            #     finished = True
+            # ****************************************************************************************************
+            # 官方版本合成方式。整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟整点K线
+            if not (bar.datetime.minute + 1) % self.window:
+                finished = True
             
-            # 计数切分法进行分钟K线合成，可以合成任意分钟K线
-            if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
-                self.interval_count += 1
+            # ****************************************************************************************************
+            # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
+            # if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+            #     self.interval_count += 1
 
-                if not self.interval_count % self.window:
-                    finished = True
-                    self.interval_count = 0
-
+            #     if not self.interval_count % self.window:
+            #         finished = True
+            #         self.interval_count = 0
+            # ****************************************************************************************************
+            
         # 计数切分法进行N小时K线合成，可以合成任意小时K线
         elif self.interval == Interval.HOUR:
             if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
@@ -662,300 +665,316 @@ class ArrayManager(object):
         """
         return self.open_interest_array
 
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # Overlap Studies 重叠研究指标
     def sma(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        Simple moving average.
+        Simple moving average. 简单移动平均线
         """
-        result = talib.SMA(self.close, n)
+        result = talib.SMA(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def ema(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        Exponential moving average.
+        Exponential moving average.  指数移动平均线：趋向类指标，其构造原理是仍然对价格收盘价进行算术平均，并根据计算结果来进行分析，用于判断价格未来走势的变动趋势。
         """
-        result = talib.EMA(self.close, n)
+        result = talib.EMA(self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def dema(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Double Exponential Moving Average.  双指数移动平均线：两条指数移动平均线来产生趋势信号，较长期者用来识别趋势，较短期者用来选择时机。正是两条平均线及价格三者的相互作用，才共同产生了趋势信号。
+        """
+        result = talib.DEMA(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def kama(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        KAMA.
+        KAMA. 考夫曼自适应移动平均线：短期均线贴近价格走势，灵敏度高，但会有很多噪声，产生虚假信号；长期均线在判断趋势上一般比较准确 ，但是长期均线有着严重滞后的问题。
+        我们想得到这样的均线，当价格沿一个方向快速移动时，短期的移动 平均线是最合适的；当价格在横盘的过程中，长期移动平均线是合适的。
         """
-        result = talib.KAMA(self.close, n)
+        result = talib.KAMA(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def wma(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        WMA.
+        Weighted Moving Average. 加权移动平均线
         """
-        result = talib.WMA(self.close, n)
+        result = talib.WMA(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
-    def apo(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def ma(self, n: int, matype: int = 0, array: bool = False) -> Union[float, np.ndarray]:
         """
-        APO.
+        Moving average.  移动平均线：matype: 0=SMA(默认), 1=EMA(指数移动平均线), 2=WMA(加权移动平均线), 3=DEMA(双指数移动平均线), 4=TEMA(三重指数移动平均线), 5=TRIMA, 6=KAMA(考夫曼自适应移动平均线), 7=MAMA, 8=T3(三重指数移动平均线)
         """
-        result = talib.APO(self.close, n)
+        result = talib.MA(self.close, timeperiod=n, matype=matype)
+        if array:
+            return result
+        return result[-1]
+
+    def sar(self, acceleration: int = 0, maximum: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Parabolic SAR.  抛物线指标：抛物线转向也称停损点转向，是利用抛物线方式，随时调整停损点位置以观察买卖点。由于停损点（又称转向点SAR）以弧形的方式移动，故称之为抛物线转向指标。
+        """
+        result = talib.SAR(self.hith, self.low, acceleration=n, maximum=maximum)
+        if array:
+            return result
+        return result[-1]
+
+    def boll(self, n: int, dev_up: float = 2, dev_dn: float = 2, array: bool = False, matype: int = 0) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
+        """
+        Bollinger Channel.  布林线指标：其利用统计原理，求出股价的标准差及其信赖区间，从而确定股价的波动范围及未来走势，利用波带显示股价的安全高低价位，因而也被称为布林带。
+        """
+        upperband, middleband, lowerband = talib.BBANDS(self.close, timeperiod=n, nbdevup=dev_up, nbdevdn=dev_dn, matype=matype)
+
+        if array:
+            return upperband, middleband, lowerband
+        return upperband[-1], middleband[-1], lowerband[-1]
+
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # Momentum Indicator 动量指标
+    def apo(self, fastperiod: int = 12, slowperiod: int = 26, matype: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Absolute Price Oscillator.
+        """
+        result = talib.APO(self.close, fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
         if array:
             return result
         return result[-1]
 
     def cmo(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        CMO.
+        Chande Momentum Oscillator. 钱德动量摆动指标：与其他动量指标摆动指标如相对强弱指标（RSI）和随机指标（KDJ）不同，钱德动量指标在计算公式的分子中采用上涨日和下跌日的数据。 计算公式：CMO=（Su－Sd）*100/（Su+Sd）
+        其中：Su是今日收盘价与昨日收盘价（上涨日）差值加总。若当日下跌，则增加值为0；Sd是今日收盘价与做日收盘价（下跌日）差值的绝对值加总。若当日上涨，则增加值为0。
+        指标应用：本指标类似RSI指标。当本指标下穿-50水平时是买入信号，上穿+50水平是卖出信号。钱德动量摆动指标的取值介于-100和100之间。本指标也能给出良好的背离信号。当股票价格创出新低而本指标未能创出新低时，出现牛市背离；
+        当股票价格创出新高而本指标未能创出新高时，当出现熊市背离时。我们可以用移动均值对该指标进行平滑。
         """
-        result = talib.CMO(self.close, n)
+        result = talib.CMO(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def mom(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        MOM.
+        Momentum. 动量，上升动向值：
         """
-        result = talib.MOM(self.close, n)
+        result = talib.MOM(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
-    def ppo(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def ppo(self, fastperiod: int = 12, slowperiod: int = 26, matype: int = 0, array: bool = False) -> Union[float, np.ndarray]:
         """
-        PPO.
+        Percentage Price Oscillator. 价格震荡百分比指数：PPO标准设定和MACD设定非常相似：12,26,9和PPO，和MACD一样说明了两条移动平均线的差距，但是它们有一个差别是PPO是用百分比说明。
         """
-        result = talib.PPO(self.close, n)
+        result = talib.PPO(self.close, fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
         if array:
             return result
         return result[-1]
 
     def roc(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        ROC.
+        Rate of change. 变动率指标：ROC是由当天的股价与一定的天数之前的某一天股价比较，其变动速度的大小,来反映股票市变动的快慢程度。
+        ROC ＝ (当日收盘价－N天前的收盘价) ÷ N天前的收盘价 * 100% 
+        指标研判：
+        当ROC向下则表示弱势,以100为中心线,由中心线上下穿小于100时为卖出信号。
+        当股价创新高时,ROC未能创新高,出现背离,表示头部形成。
+        当股价创新低时,ROC未能创新低,出现背离,表示底部形成。
         """
-        result = talib.ROC(self.close, n)
+        result = talib.ROC(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def rocr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        ROCR.
+        Rate of change ratio. (price/prevPrice)
         """
-        result = talib.ROCR(self.close, n)
+        result = talib.ROCR(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def rocp(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        ROCP.
+        Rate of change Percentage. (price-prevPrice)/prevPrice
         """
-        result = talib.ROCP(self.close, n)
+        result = talib.ROCP(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def rocr_100(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        ROCR100.
+        Rate of change ratio 100 scale. (price/prevPrice)*100
         """
-        result = talib.ROCR100(self.close, n)
+        result = talib.ROCR100(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def trix(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        TRIX.
+        1-day Rate-Of-Change (ROC) of a Triple Smooth EMA.
         """
-        result = talib.TRIX(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def std(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """
-        Standard deviation.
-        """
-        result = talib.STDDEV(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def obv(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """
-        OBV.
-        """
-        result = talib.OBV(self.close, self.volume)
+        result = talib.TRIX(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def cci(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        Commodity Channel Index (CCI).
+        Commodity Channel Index (CCI). 顺势指标：该指标用来测量股价脱离正常价格范围之变异性，正常波动范围在±100之间。属于超买超卖类指标中较特殊的一种，是专门对付极端行情的。在一般常态行情下，CCI指标不会发生作用，当CCI扫描到异常股价波动时，立求速战速决，胜负瞬间立即分晓，赌输了也必须立刻加速逃逸。
+        指标应用
+        1.当CCI指标曲线在+100线～-100线的常态区间里运行时,CCI指标参考意义不大，可以用KDJ等其它技术指标进行研判。
+        2.当CCI指标曲线从上向下突破+100线而重新进入常态区间时，表明市场价格的上涨阶段可能结束，将进入一个比较长时间的震荡整理阶段，应及时平多做空。
+        3.当CCI指标曲线从上向下突破-100线而进入另一个非常态区间（超卖区）时，表明市场价格的弱势状态已经形成，将进入一个比较长的寻底过程，可以持有空单等待更高利润。如果CCI指标曲线在超卖区运行了相当长的一段时间后开始掉头向上，表明价格的短期底部初步探明，可以少量建仓。CCI指标曲线在超卖区运行的时间越长，确认短期的底部的准确度越高。
+        4.CCI指标曲线从下向上突破-100线而重新进入常态区间时，表明市场价格的探底阶段可能结束，有可能进入一个盘整阶段，可以逢低少量做多。
+        5.CCI指标曲线从下向上突破+100线而进入非常态区间(超买区)时，表明市场价格已经脱离常态而进入强势状态，如果伴随较大的市场交投，应及时介入成功率将很大。
+        6.CCI指标曲线从下向上突破+100线而进入非常态区间(超买区)后，只要CCI指标曲线一直朝上运行，表明价格依然保持强势可以继续持有待涨。但是，如果在远离+100线的地方开始掉头向下时，则表明市场价格的强势状态将可能难以维持，涨势可能转弱，应考虑卖出。如果前期的短期涨幅过高同时价格回落时交投活跃，则应该果断逢高卖出或做空。
+        CCI主要是在超买和超卖区域发生作用，对急涨急跌的行情检测性相对准确。非常适用于股票、外汇、贵金属等市场的短期操作。
+        计算方法：
+        TP = (最高价 + 最低价 + 收盘价) ÷ 3
+        MA = 最近n日每日TP之和÷n 
+        MD = 最近n日 ABS(MATP - 每日TP)累计和 ÷ n
+        CCI(n) = (TP－ MA) ÷MD ÷0.015
         """
-        result = talib.CCI(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def atr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """
-        Average True Range (ATR).
-        """
-        result = talib.ATR(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def natr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """
-        NATR.
-        """
-        result = talib.NATR(self.high, self.low, self.close, n)
+        result = talib.CCI(self.high, self.low, self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def rsi(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        Relative Strenght Index (RSI).
+        Relative Strenght Index (RSI). 相对强弱指数：通过比较一段时期内的平均收盘涨数和平均收盘跌数来分析市场买沽盘的意向和实力，从而作出未来市场的走势。
         """
-        result = talib.RSI(self.close, n)
+        result = talib.RSI(self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
-    def macd(
-        self,
-        fast_period: int,
-        slow_period: int,
-        signal_period: int,
-        array: bool = False
-    ) -> Union[
-        Tuple[np.ndarray, np.ndarray, np.ndarray],
-        Tuple[float, float, float]
-    ]:
+    def macd(self, fast_period: int, slow_period: int, signal_period: int, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
         """
-        MACD.
+        Moving Average Convergence/Divergence. 平滑异同移动平均线：利用收盘价的短期（常用为12日）指数移动平均线与长期（常用为26日）指数移动平均线之间的聚合与分离状况，对买进、卖出时机作出研判的技术指标。
         """
-        macd, signal, hist = talib.MACD(
-            self.close, fast_period, slow_period, signal_period
-        )
+        macd, signal, hist = talib.MACD(self.close, fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
         if array:
             return macd, signal, hist
         return macd[-1], signal[-1], hist[-1]
+    
+    def bop(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Balance Of Power. 均势指标
+        """
+        result = talib.BOP(self.open, self.high, self.low, self.close)
 
-    def adx(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """
-        ADX.
-        """
-        result = talib.ADX(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def adxr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """
-        ADXR.
-        """
-        result = talib.ADXR(self.high, self.low, self.close, n)
         if array:
             return result
         return result[-1]
 
     def dx(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        DX.
+        Directional Movement Index. 动向指标或趋向指标：通过分析股票价格在涨跌过程中买卖双方力量均衡点的变化情况，即多空双方的力量的变化受价格波动的影响而发生由均衡到失衡的循环过程，从而提供对趋势判断依据的一种技术指标。
         """
-        result = talib.DX(self.high, self.low, self.close, n)
+        result = talib.DX(self.high, self.low, self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def adx(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Average Directional Movement Index. 平均趋向指标：使用ADX指标，指标判断盘整、振荡和单边趋势。
+        指标应用：
+        1、+DI与–DI表示多空相反的二个动向，当据此绘出的两条曲线彼此纠结相缠时，代表上涨力道与下跌力道相当，多空势均力敌。当 +DI与–DI彼此穿越时，由下往上的一方其力道开始压过由上往下的另一方，此时出现买卖讯号。
+        2、ADX可作为趋势行情的判断依据，当行情明显朝多空任一方向进行时，ADX数值都会显著上升，趋势走强。若行情呈现盘整格局时，ADX会低于 +DI与–DI二条线。若ADX数值低于20，则不论DI表现如何，均显示市场没有明显趋势。
+        3、ADX持续偏高时，代表“超买”（Overbought）或“超卖”（Oversold）的现象，行情反转的机会将增加，此时则不适宜顺势操作。当ADX数值从上升趋势转为下跌时，则代表行情即将反转；若ADX数值由下跌趋势转为上升时，行情将止跌回升。
+        4、总言之，DMI指标包含4条线：+DI、-DI、ADX和ADXR。+DI代表买盘的强度、-DI代表卖盘的强度；ADX代表趋势的强度、ADXR则为ADX的移动平均。
+        """
+        result = talib.ADX(self.high, self.low, self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def adxr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Average Directional Movement Index Rating. 平均趋向指数的趋向指数：使用ADXR指标判断ADX趋势，ADXR则为ADX的移动平均。
+        """
+        result = talib.ADXR(self.high, self.low, self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def minus_di(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        MINUS_DI.
+        Minus Directional Indicator. DMI 中的DI指标，负方向指标，下升动向值：通过分析股票价格在涨跌过程中买卖双方力量均衡点的变化情况，即多空双方的力量的变化受价格波动的影响而发生由均衡到失衡的循环过程，从而提供对趋势判断依据的一种技术指标。
         """
-        result = talib.MINUS_DI(self.high, self.low, self.close, n)
+        result = talib.MINUS_DI(self.high, self.low, self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def minus_dm(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Minus Directional Movement. DMI中的DM代表正趋向变动值，即上升动向值：通过分析股票价格在涨跌过程中买卖双方力量均衡点的变化情况，即多空双方的力量的变化受价格波动的影响而发生由均衡到失衡的循环过程，从而提供对趋势判断依据的一种技术指标。
+        """
+        result = talib.MINUS_DM(self.high, self.low, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
     def plus_di(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        PLUS_DI.
+        Plus Directional Indicator.
         """
-        result = talib.PLUS_DI(self.high, self.low, self.close, n)
+        result = talib.PLUS_DI(self.high, self.low, self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def plus_dm(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Plus Directional Movement.
+        """
+        result = talib.PLUS_DM(self.high, self.low, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
     def willr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        WILLR.
+        Williams' %R. 威廉指标：WMS表示的是市场处于超买还是超卖状态。
         """
-        result = talib.WILLR(self.high, self.low, self.close, n)
+        result = talib.WILLR(self.high, self.low, self.close, timeperiod=n)
         if array:
             return result
         return result[-1]
 
     def ultosc(self, array: bool = False) -> Union[float, np.ndarray]:
         """
-        Ultimate Oscillator.
+        Ultimate Oscillator. 终极波动指标：UOS是一种多方位功能的指标，除了趋势确认及超买超卖方面的作用之外，它的“突破”讯号不仅可以提供最适当的交易时机之外，更可以进一步加强指标的可靠度。
         """
         result = talib.ULTOSC(self.high, self.low, self.close)
         if array:
             return result
         return result[-1]
 
-    def trange(self, array: bool = False) -> Union[float, np.ndarray]:
+    def keltner(self, n: int, dev: float, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
         """
-        TRANGE.
-        """
-        result = talib.TRANGE(self.high, self.low, self.close)
-        if array:
-            return result
-        return result[-1]
-
-    def boll(
-        self,
-        n: int,
-        dev: float,
-        array: bool = False
-    ) -> Union[
-        Tuple[np.ndarray, np.ndarray],
-        Tuple[float, float]
-    ]:
-        """
-        Bollinger Channel.
-        """
-        mid = self.sma(n, array)
-        std = self.std(n, array)
-
-        up = mid + std * dev
-        down = mid - std * dev
-
-        return up, down
-
-    def keltner(
-        self,
-        n: int,
-        dev: float,
-        array: bool = False
-    ) -> Union[
-        Tuple[np.ndarray, np.ndarray],
-        Tuple[float, float]
-    ]:
-        """
-        Keltner Channel.
+        Keltner Channel. 金肯特纳通道
         """
         mid = self.sma(n, array)
         atr = self.atr(n, array)
@@ -965,14 +984,9 @@ class ArrayManager(object):
 
         return up, down
 
-    def donchian(
-        self, n: int, array: bool = False
-    ) -> Union[
-        Tuple[np.ndarray, np.ndarray],
-        Tuple[float, float]
-    ]:
+    def donchian(self, n: int, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
         """
-        Donchian Channel.
+        Donchian Channel. 唐奇安通道
         """
         up = talib.MAX(self.high, n)
         down = talib.MIN(self.low, n)
@@ -981,18 +995,14 @@ class ArrayManager(object):
             return up, down
         return up[-1], down[-1]
 
-    def aroon(
-        self,
-        n: int,
-        array: bool = False
-    ) -> Union[
-        Tuple[np.ndarray, np.ndarray],
-        Tuple[float, float]
-    ]:
+    def aroon(self, n: int, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
         """
-        Aroon indicator.
+        Aroon indicator. 阿隆指标：通过计算自价格达到近期最高值和最低值以来所经过的期间数，阿隆指标帮助你预测价格趋势到趋势区域（或者反过来，从趋势区域到趋势）的变化。
+        计算公式：
+        Aroon(上升)=[(计算期天数-最高价后的天数)/计算期天数]*100
+        Aroon(下降)=[(计算期天数-最低价后的天数)/计算期天数]*100
         """
-        aroon_up, aroon_down = talib.AROON(self.high, self.low, n)
+        aroon_up, aroon_down = talib.AROON(self.high, self.low, timeperiod=n)
 
         if array:
             return aroon_up, aroon_down
@@ -1000,29 +1010,9 @@ class ArrayManager(object):
 
     def aroonosc(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        Aroon Oscillator.
+        Aroon Oscillator. 阿隆振荡
         """
-        result = talib.AROONOSC(self.high, self.low, n)
-
-        if array:
-            return result
-        return result[-1]
-
-    def minus_dm(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """
-        MINUS_DM.
-        """
-        result = talib.MINUS_DM(self.high, self.low, n)
-
-        if array:
-            return result
-        return result[-1]
-
-    def plus_dm(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """
-        PLUS_DM.
-        """
-        result = talib.PLUS_DM(self.high, self.low, n)
+        result = talib.AROONOSC(self.high, self.low, timeperiod=n)
 
         if array:
             return result
@@ -1030,55 +1020,840 @@ class ArrayManager(object):
 
     def mfi(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
         """
-        Money Flow Index.
+        Money Flow Index. 资金流量指标
         """
-        result = talib.MFI(self.high, self.low, self.close, self.volume, n)
+        result = talib.MFI(self.high, self.low, self.close, self.volume, timeperiod=n)
         if array:
             return result
         return result[-1]
 
-    def ad(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # Volume Indicators 成交量指标
+    def ad(self, array: bool = False) -> Union[float, np.ndarray]:
         """
-        AD.
+        Accumulation/Distribution Line. 量价指标（累积/派发线）：平衡交易量指标，以当日的收盘价位来估算成交流量，用于估定一段时间内该证券累积的资金流量。
+        计算公式：
+        多空对比 = [（收盘价- 最低价） - （最高价 - 收盘价）] / （最高价 - 最低价)
+        若最高价等于最低价： 多空对比 = （收盘价 / 昨收盘） - 1
+        研判：
+        1、A/D测量资金流向，向上的A/D表明买方占优势，而向下的A/D表明卖方占优势
+        2、A/D与价格的背离可视为买卖信号，即底背离考虑买入，顶背离考虑卖出
+        3、应当注意A/D忽略了缺口的影响，事实上，跳空缺口的意义是不能轻易忽略的
+        A/D指标无需设置参数，但在应用时，可结合指标的均线进行分析
         """
-        result = talib.AD(self.high, self.low, self.close, self.volume, n)
+        result = talib.AD(self.high, self.low, self.close, self.volume)
+        if array:
+            return result
+        return result[-1]
+    
+    def obv(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        On Balance Volume 能量潮指标：通过统计成交量变动的趋势推测股价趋势。
+        计算公式：以某日为基期，逐日累计每日上市股票总成交量，若隔日指数或股票上涨 ，则基期OBV加上本日成交量为本日OBV。隔日指数或股票下跌， 则基期OBV减去本日成交量为本日OBV
+        研判：
+        1、以“N”字型为波动单位，一浪高于一浪称“上升潮”，下跌称“跌潮”；上升潮买进，跌潮卖出
+        2、须配合K线图走势
+        3、用多空比率净额法进行修正，但不知TA-Lib采用哪种方法
+        计算公式： 多空比率净额= [（收盘价－最低价）－（最高价-收盘价）] ÷（ 最高价－最低价）× 成交量
+        """
+        result = talib.OBV(self.close, self.volume)
         if array:
             return result
         return result[-1]
 
-    def adosc(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def adosc(self, fastperiod:int = 3, slowperiod:int = 10, array: bool = False) -> Union[float, np.ndarray]:
         """
-        ADOSC.
+        ADOSC. 震荡指标：将资金流动情况与价格行为相对比，检测市场中资金流入和流出的情况。
         """
-        result = talib.ADOSC(self.high, self.low, self.close, self.volume, n)
+        result = talib.ADOSC(self.high, self.low, self.close, self.volume, fastperiod=fastperiod, slowperiod=slowperiod)
         if array:
             return result
         return result[-1]
 
-    def bop(self, array: bool = False) -> Union[float, np.ndarray]:
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # Volatility Indicator 波动率指标
+    def trange(self, array: bool = False) -> Union[float, np.ndarray]:
         """
-        BOP.
+        TRANGE. 真实波动幅度 = max(当日最高价, 昨日收盘价) − min(当日最低价, 昨日收盘价)
         """
-        result = talib.BOP(self.open, self.high, self.low, self.close)
-
+        result = talib.TRANGE(self.high, self.low, self.close)
         if array:
             return result
         return result[-1]
 
+    def atr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Average True Range (ATR). 平均真实波动幅度：真实波动幅度的 N 日 指数移动平均数。
+        """
+        result = talib.ATR(self.high, self.low, self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
 
+    def natr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Normalized Average True Range. 归一化波动幅度均值
+        """
+        result = talib.NATR(self.high, self.low, self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # Statistic 统计学指标
+    def std(self, n: int, dev: int = 1, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Standard deviation. 标准偏差：量度数据分布的分散程度之标准，用以衡量数据值偏离算术平均值的程度。标准偏差越小，这些值偏离平均值就越少，反之亦然。标准偏差的大小可通过标准偏差与平均值的倍率关系来衡量。
+        """
+        result = talib.STDDEV(self.close, timeperiod=n, nbdev=dev)
+        if array:
+            return result
+        return result[-1]
+
+    def var(self, n: int, dev: int = 1, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        VAR. 方差：用来计算每一个变量（观察值）与总体均数之间的差异。为避免出现离均差总和为零，离均差平方和受样本含量的影响，统计学采用平均离均差平方和来描述变量的变异程度。
+        """
+        result = talib.VAR(self.close, timeperiod=n, nbdev=dev)
+        if array:
+            return result
+        return result[-1]
+
+    def linearreg(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Linear Regression. 直线回归方程
+        """
+        result = talib.LINEARREG(self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def intercept(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Linear Regression Intercept. 线性回归截距
+        """
+        result = talib.LINEARREG_INTERCEPT(self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def slope(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Linear Regression Slope. 线性回归斜率
+        """
+        result = talib.LINEARREG_SLOPE(self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def angle(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Linear Regression Angle. 线性回归角度
+        """
+        result = talib.LINEARREG_ANGLE(self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def tsf(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Time Series Forecast. 时间序列预测：一种历史资料延伸预测，也称历史引伸预测法。是以时间数列所能反映的社会经济现象的发展过程和规律性，进行引伸外推，预测其发展趋势的方法。
+        """
+        result = talib.TSF(self.close, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def beta(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Beta. β系数(贝塔系数)：一种风险指数，用来衡量个别股票或 股票基金相对于整个股市的价格波动情况 贝塔系数衡量股票收益相对于业绩评价基准收益的总体波动性，是一个相对指标。
+        β 越高，意味着股票相对于业绩评价基准的波动性越大。 β 大于 1 ， 则股票的波动性大于业绩评价基准的波动性。
+        """
+        result = talib.BETA(self.high, self.low, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def correl(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Pearson's Correlation Coefficient. 皮尔逊相关系数：用于度量两个变量X和Y之间的相关（线性相关），其值介于-1与1之间皮尔逊相关系数是一种度量两个变量间相关程度的方法。
+        它是一个介于 1 和 -1 之间的值， 其中，1 表示变量完全正相关， 0 表示无关，-1 表示完全负相关。
+        """
+        result = talib.CORREL(self.high, self.low, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # Pattern Recognition 形态识别
+    def CDL2CROWS(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Two Crows 两只乌鸦：三日K线模式，第一天长阳，第二天高开收阴，第三天再次高开继续收阴， 收盘比前一日收盘价低，预示股价下跌。
+        """
+        result = talib.CDL2CROWS(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDL3BLACKCROWS(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Three Black Crows 三只乌鸦：三日K线模式，连续三根阴线，每日收盘价都下跌且接近最低价， 每日开盘价都在上根K线实体内，预示股价下跌。
+        """
+        result = talib.CDL3BLACKCROWS(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDL3INSIDE(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Three-Line Strike 三线打击：四日K线模式，前三根阳线，每日收盘价都比前一日高， 开盘价在前一日实体内，第四日市场高开，收盘价低于第一日开盘价，预示股价下跌。
+        """
+        result = talib.CDL3INSIDE(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDL3OUTSIDE(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Three Outside Up/Down 三外部上涨和下跌：三日K线模式，与三内部上涨和下跌类似，K线为阴阳阳，但第一日与第二日的K线形态相反， 以三外部上涨为例，第一日K线在第二日K线内部，预示着股价上涨。
+        """
+        result = talib.CDL3OUTSIDE(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDL3STARSINSOUTH(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Three Stars In The South 南方三星：三日K线模式，与大敌当前相反，三日K线皆阴，第一日有长下影线， 第二日与第一日类似，K线整体小于第一日，第三日无下影线实体信号， 成交价格都在第一日振幅之内，预示下跌趋势反转，股价上升。
+        """
+        result = talib.CDL3STARSINSOUTH(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDL3WHITESOLDIERS(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Three Advancing White Soldiers 三个白兵：三日K线模式，三日K线皆阳， 每日收盘价变高且接近最高价，开盘价在前一日实体上半部，预示股价上升。
+        """
+        result = talib.CDL3WHITESOLDIERS(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLABANDONEDBABY(self, penetration: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Abandoned Baby 弃婴：三日K线模式，第二日价格跳空且收十字星（开盘价与收盘价接近， 最高价最低价相差不大），预示趋势反转，发生在顶部下跌，底部上涨。
+        """
+        result = talib.CDLABANDONEDBABY(self.open, self.high, self.low, self.close, penetration=penetration)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLADVANCEBLOCK(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Advance Block 大敌当前：三日K线模式，三日都收阳，每日收盘价都比前一日高， 开盘价都在前一日实体以内，实体变短，上影线变长。
+        """
+        result = talib.CDLADVANCEBLOCK(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+        
+    def CDLBELTHOLD(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Belt-hold 捉腰带线：两日K线模式，下跌趋势中，第一日阴线， 第二日开盘价为最低价，阳线，收盘价接近最高价，预示价格上涨。
+        """
+        result = talib.CDLBELTHOLD(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLBREAKAWAY(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Breakaway 脱离：五日K线模式，以看涨脱离为例，下跌趋势中，第一日长阴线，第二日跳空阴线，延续趋势开始震荡， 第五日长阳线，收盘价在第一天收盘价与第二天开盘价之间，预示价格上涨。
+        """
+        result = talib.CDLBREAKAWAY(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLCLOSINGMARUBOZU(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Closing Marubozu 收盘缺影线：一日K线模式，以阳线为例，最低价低于开盘价，收盘价等于最高价， 预示着趋势持续。
+        """
+        result = talib.CDLCLOSINGMARUBOZU(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLCONCEALBABYSWALL(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Concealing Baby Swallow 藏婴吞没：四日K线模式，下跌趋势中，前两日阴线无影线 ，第二日开盘、收盘价皆低于第二日，第三日倒锤头， 第四日开盘价高于前一日最高价，收盘价低于前一日最低价，预示着底部反转。
+        """
+        result = talib.CDLCONCEALBABYSWALL(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLCOUNTERATTACK(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Counterattack 反击线：二日K线模式，与分离线类似。
+        """
+        result = talib.CDLCOUNTERATTACK(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLDARKCLOUDCOVER(self, penetration: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Dark Cloud Cover 乌云压顶：二日K线模式，第一日长阳，第二日开盘价高于前一日最高价， 收盘价处于前一日实体中部以下，预示着股价下跌。
+        """
+        result = talib.CDLDARKCLOUDCOVER(self.open, self.high, self.low, self.close, penetration=penetration)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLDOJI(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Doji 十字：一日K线模式，开盘价与收盘价基本相同。
+        """
+        result = talib.CDLDOJI(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLDOJISTAR(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Doji Star 十字星：一日K线模式，开盘价与收盘价基本相同，上下影线不会很长，预示着当前趋势反转。
+        """
+        result = talib.CDLDOJISTAR(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLDRAGONFLYDOJI(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Dragonfly Doji 蜻蜓十字/T形十字：一日K线模式，开盘后价格一路走低， 之后收复，收盘价与开盘价相同，预示趋势反转。
+        """
+        result = talib.CDLDRAGONFLYDOJI(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLENGULFING(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Engulfing Pattern 吞噬模式：两日K线模式，分多头吞噬和空头吞噬，以多头吞噬为例，第一日为阴线， 第二日阳线，第一日的开盘价和收盘价在第二日开盘价收盘价之内，但不能完全相同。
+        """
+        result = talib.CDLENGULFING(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLEVENINGDOJISTAR(self, penetration: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Evening Doji Star 十字暮星：三日K线模式，基本模式为暮星，第二日收盘价和开盘价相同，预示顶部反转。
+        """
+        result = talib.CDLEVENINGDOJISTAR(self.open, self.high, self.low, self.close, penetration=penetration)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLEVENINGSTAR(self, penetration: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Evening Star 暮星：三日K线模式，与晨星相反，上升趋势中, 第一日阳线，第二日价格振幅较小，第三日阴线，预示顶部反转。
+        """
+        result = talib.CDLEVENINGSTAR(self.open, self.high, self.low, self.close, penetration=penetration)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLGAPSIDESIDEWHITE(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Up/Down-gap side-by-side white lines 向上/下跳空并列阳线：二日K线模式，上升趋势向上跳空，下跌趋势向下跳空, 第一日与第二日有相同开盘价，实体长度差不多，则趋势持续。
+        """
+        result = talib.CDLGAPSIDESIDEWHITE(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLGRAVESTONEDOJI(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Gravestone Doji 墓碑十字/倒T十字：一日K线模式，开盘价与收盘价相同，上影线长，无下影线，预示底部反转。
+        """
+        result = talib.CDLGRAVESTONEDOJI(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLHAMMER(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Hammer 锤头：一日K线模式，实体较短，无上影线， 下影线大于实体长度两倍，处于下跌趋势底部，预示反转。
+        """
+        result = talib.CDLHAMMER(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLHANGINGMAN(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Hanging Man 上吊线：一日K线模式，形状与锤子类似，处于上升趋势的顶部，预示着趋势反转。
+        """
+        result = talib.CDLHANGINGMAN(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLHARAMI(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Harami Pattern 母子线：二日K线模式，分多头母子与空头母子，两者相反，以多头母子为例，在下跌趋势中，第一日K线长阴， 第二日开盘价收盘价在第一日价格振幅之内，为阳线，预示趋势反转，股价上升。
+        """
+        result = talib.CDLHARAMI(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLHARAMICROSS(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Harami Cross Pattern 十字孕线：二日K线模式，与母子县类似，若第二日K线是十字线， 便称为十字孕线，预示着趋势反转。
+        """
+        result = talib.CDLHARAMICROSS(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLHIGHWAVE(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        High-Wave Candle 风高浪大线：三日K线模式，具有极长的上/下影线与短的实体，预示着趋势反转。
+        """
+        result = talib.CDLHIGHWAVE(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLHIKKAKE(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Hikkake Pattern 陷阱：三日K线模式，与母子类似，第二日价格在前一日实体范围内, 第三日收盘价高于前两日，反转失败，趋势继续。
+        """
+        result = talib.CDLHIKKAKE(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLHIKKAKEMOD(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Modified Hikkake Pattern 修正陷阱：三日K线模式，与陷阱类似，上升趋势中，第三日跳空高开； 下跌趋势中，第三日跳空低开，反转失败，趋势继续。
+        """
+        result = talib.CDLHIKKAKEMOD(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLHOMINGPIGEON(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Homing Pigeon 家鸽：二日K线模式，与母子线类似，不同的的是二日K线颜色相同， 第二日最高价、最低价都在第一日实体之内，预示着趋势反转。
+        """
+        result = talib.CDLHOMINGPIGEON(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLIDENTICAL3CROWS(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Identical Three Crows 三胞胎乌鸦：三日K线模式，上涨趋势中，三日都为阴线，长度大致相等， 每日开盘价等于前一日收盘价，收盘价接近当日最低价，预示价格下跌。
+        """
+        result = talib.CDLIDENTICAL3CROWS(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLINNECK(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        In-Neck Pattern 颈内线：二日K线模式，下跌趋势中，第一日长阴线， 第二日开盘价较低，收盘价略高于第一日收盘价，阳线，实体较短，预示着下跌继续。
+        """
+        result = talib.CDLINNECK(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLINVERTEDHAMMER(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Inverted Hammer 倒锤头：一日K线模式，上影线较长，长度为实体2倍以上， 无下影线，在下跌趋势底部，预示着趋势反转。
+        """
+        result = talib.CDLINVERTEDHAMMER(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLKICKING(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Kicking 反冲形态：二日K线模式，与分离线类似，两日K线为秃线，颜色相反，存在跳空缺口。
+        """
+        result = talib.CDLKICKING(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLKICKINGBYLENGTH(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Kicking - bull/bear determined by the longer marubozu 由较长缺影线决定的反冲形态：二日K线模式，与反冲形态类似，较长缺影线决定价格的涨跌。
+        """
+        result = talib.CDLKICKINGBYLENGTH(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLLADDERBOTTOM(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Ladder Bottom 梯底：五日K线模式，下跌趋势中，前三日阴线， 开盘价与收盘价皆低于前一日开盘、收盘价，第四日倒锤头，第五日开盘价高于前一日开盘价， 阳线，收盘价高于前几日价格振幅，预示着底部反转。
+        """
+        result = talib.CDLLADDERBOTTOM(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLLONGLEGGEDDOJI(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Long Legged Doji 长脚十字：一日K线模式，开盘价与收盘价相同居当日价格中部，上下影线长， 表达市场不确定性。
+        """
+        result = talib.CDLLONGLEGGEDDOJI(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLLONGLINE(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Long Line Candle 长蜡烛：一日K线模式，K线实体长，无上下影线。
+        """
+        result = talib.CDLLONGLINE(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLMARUBOZU(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Marubozu 光头光脚/缺影线：一日K线模式，上下两头都没有影线的实体， 阴线预示着熊市持续或者牛市反转，阳线相反。
+        """
+        result = talib.CDLMARUBOZU(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLMATCHINGLOW(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Matching Low 相同低价：二日K线模式，下跌趋势中，第一日长阴线， 第二日阴线，收盘价与前一日相同，预示底部确认，该价格为支撑位。
+        """
+        result = talib.CDLMATCHINGLOW(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLMATHOLD(self, penetration: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Mat Hold 铺垫：五日K线模式，上涨趋势中，第一日阳线，第二日跳空高开影线， 第三、四日短实体影线，第五日阳线，收盘价高于前四日，预示趋势持续。
+        """
+        result = talib.CDLMATHOLD(self.open, self.high, self.low, self.close, penetration=penetration)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLMORNINGDOJISTAR(self, penetration: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Morning Doji Star 十字晨星：三日K线模式， 基本模式为晨星，第二日K线为十字星，预示底部反转。
+        """
+        result = talib.CDLMORNINGDOJISTAR(self.open, self.high, self.low, self.close, penetration=penetration)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLMORNINGSTAR(self, penetration: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Morning Star 晨星：三日K线模式，下跌趋势，第一日阴线， 第二日价格振幅较小，第三天阳线，预示底部反转。
+        """
+        result = talib.CDLMORNINGSTAR(self.open, self.high, self.low, self.close, penetration=penetration)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLONNECK(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        On-Neck Pattern 颈上线：二日K线模式，下跌趋势中，第一日长阴线，第二日开盘价较低， 收盘价与前一日最低价相同，阳线，实体较短，预示着延续下跌趋势。
+        """
+        result = talib.CDLONNECK(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLPIERCING(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Piercing Pattern 刺透形态：两日K线模式，下跌趋势中，第一日阴线，第二日收盘价低于前一日最低价， 收盘价处在第一日实体上部，预示着底部反转。
+        """
+        result = talib.CDLPIERCING(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLRICKSHAWMAN(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Rickshaw Man 黄包车夫：一日K线模式，与长腿十字线类似， 若实体正好处于价格振幅中点，称为黄包车夫。
+        """
+        result = talib.CDLRICKSHAWMAN(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLRISEFALL3METHODS(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Rising/Falling Three Methods 上升/下降三法：五日K线模式，以上升三法为例，上涨趋势中， 第一日长阳线，中间三日价格在第一日范围内小幅震荡， 第五日长阳线，收盘价高于第一日收盘价，预示股价上升。
+        """
+        result = talib.CDLRISEFALL3METHODS(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLSEPARATINGLINES(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Shooting Star 射击之星：一日K线模式，上影线至少为实体长度两倍， 没有下影线，预示着股价下跌。
+        """
+        result = talib.CDLSEPARATINGLINES(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLSHORTLINE(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Short Line Candle 短蜡烛：一日K线模式，实体短，无上下影线。
+        """
+        result = talib.CDLSHORTLINE(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLSPINNINGTOP(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Spinning Top 纺锤：一日K线，实体小。
+        """
+        result = talib.CDLSPINNINGTOP(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLSTALLEDPATTERN(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Stalled Pattern 停顿形态：三日K线模式，上涨趋势中，第二日长阳线， 第三日开盘于前一日收盘价附近，短阳线，预示着上涨结束。
+        """
+        result = talib.CDLSTALLEDPATTERN(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLSTICKSANDWICH(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Stick Sandwich 条形三明治：三日K线模式，第一日长阴线，第二日阳线，开盘价高于前一日收盘价， 第三日开盘价高于前两日最高价，收盘价于第一日收盘价相同。
+        """
+        result = talib.CDLSTICKSANDWICH(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLTAKURI(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Takuri (Dragonfly Doji with very long lower shadow) 探水竿：一日K线模式，大致与蜻蜓十字相同，下影线长度长。
+        """
+        result = talib.CDLTAKURI(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLTASUKIGAP(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Tasuki Gap 跳空并列阴阳线：三日K线模式，分上涨和下跌，以上升为例， 前两日阳线，第二日跳空，第三日阴线，收盘价于缺口中，上升趋势持续。
+        """
+        result = talib.CDLTASUKIGAP(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLTHRUSTING(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Thrusting Pattern 插入：二日K线模式，与颈上线类似，下跌趋势中，第一日长阴线，第二日开盘价跳空， 收盘价略低于前一日实体中部，与颈上线相比实体较长，预示着趋势持续。
+        """
+        result = talib.CDLTHRUSTING(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLTRISTAR(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Tristar Pattern 三星：三日K线模式，由三个十字组成， 第二日十字必须高于或者低于第一日和第三日，预示着反转。
+        """
+        result = talib.CDLTRISTAR(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLUNIQUE3RIVER(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Unique 3 River 奇特三河床：三日K线模式，下跌趋势中，第一日长阴线，第二日为锤头，最低价创新低，第三日开盘价低于第二日收盘价，收阳线， 收盘价不高于第二日收盘价，预示着反转，第二日下影线越长可能性越大。
+        """
+        result = talib.CDLUNIQUE3RIVER(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLUPSIDEGAP2CROWS(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        TUpside Gap Two Crows 向上跳空的两只乌鸦：三日K线模式，第一日阳线，第二日跳空以高于第一日最高价开盘， 收阴线，第三日开盘价高于第二日，收阴线，与第一日比仍有缺口。
+        """
+        result = talib.CDLUPSIDEGAP2CROWS(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    def CDLXSIDEGAP3METHODS(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        Upside/Downside Gap Three Methods 上升/下降跳空三法：五日K线模式，以上升跳空三法为例，上涨趋势中，第一日长阳线，第二日短阳线，第三日跳空阳线，第四日阴线，开盘价与收盘价于前两日实体内， 第五日长阳线，收盘价高于第一日收盘价，预示股价上升。
+        """
+        result = talib.CDLXSIDEGAP3METHODS(self.open, self.high, self.low, self.close)
+        if array:
+            return result
+        return result[-1]
+
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # Math Operators 数学运算
+    def ADD(self, price_1, price_2, array: bool = False):
+        """
+        Vector Arithmetic Add. 向量加法运算
+        """
+        result = talib.ADD(price_1, price_2)
+        if array:
+            return result
+        return result[-1]
+
+    def SUB(self, price_1, price_2, array: bool = False):
+        """
+        Vector Arithmetic Substraction. 向量减法运算
+        """
+        result = talib.SUB(price_1, price_2)
+        if array:
+            return result
+        return result[-1]
+
+    def MULT(self, price_1, price_2, array: bool = False):
+        """
+        Vector Arithmetic Mult. 向量乘法运算
+        """
+        result = talib.MULT(price_1, price_2)
+        if array:
+            return result
+        return result[-1]
+
+    def DIV(self, price_1, price_2, array: bool = False):
+        """
+        Vector Arithmetic Div. 向量除法运算
+        """
+        result = talib.DIV(price_1, price_2)
+        if array:
+            return result
+        return result[-1]
+
+    def SUM(self, price, n, array: bool = False):
+        """
+        Summation. 周期内求和
+        """
+        result = talib.SUM(price, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def MAX(self, price, n, array: bool = False):
+        """
+        Highest value over a specified period. 周期内最大值（未满足周期返回nan）
+        """
+        result = talib.MAX(price, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def MIN(self, price, n, array: bool = False):
+        """
+        Lowest value over a specified period. 周期内最小值 （未满足周期返回nan）
+        """
+        result = talib.MIN(price, timeperiod=n)
+        if array:
+            return result
+        return result[-1]
+
+    def MAXINDEX(self, price, n, array: bool = False):
+        """
+        Index of highest value over a specified period. 周期内最大值的索引，返回整数，索引为倒数第几个
+        """
+        result = talib.MAXINDEX(price, timeperiod=n)
+        if array:
+            return result - self.size
+        return result[-1] - self.size
+
+    def MININDEX(self, price, n, array: bool = False):
+        """
+        Index of lowest value over a specified period. 周期内最小值的索引，返回整数
+        """
+        result = talib.MININDEX(price, timeperiod=n)
+        if array:
+            return result - self.size
+        return result[-1] - self.size
+
+    def MINMAX(self, price, n, array: bool = False):
+        """
+        Lowest and highest values over a specified period. 周期内最小值和最大值，返回元组系列
+        """
+        min_, max_ = talib.MINMAX(price, timeperiod=n)
+        if array:
+            return min_, max_
+        return min_[-1], max_[-1]
+
+    def MINMAXINDEX(self, price, n, array: bool = False):
+        """
+        Indexes of lowest and highest values over a specified period. 周期内最小值和最大值索引，返回元组整数
+        """
+        minidx, maxidx = talib.MINMAXINDEX(price, timeperiod=n)
+        if array:
+            return minidx - self.size, maxidx - self.size
+        return minidx[-1] - self.size, maxidx - self.size
+
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
     # 丰富 Talib 库指标
-    def kdj(self, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
+    def bias(self, n: int, array: bool = False, matype = 0) -> Union[float, np.ndarray]:
         """
-        KDJ指标，Stochastic (Momentum Indicators)
-        matype: 0=SMA(默认), 1=EMA, 2=WMA, 3=DEMA, 4=TEMA, 5=TRIMA, 6=KAMA, 7=MAMA, 8=T3
+        BIAS. 乖离率指标 (乖离率=[(当日收盘价-N日平均价)/N日平均价]*100%)
+        乖离率（BIAS）简称Y值也叫偏离率，是反映一定时期内股价与其移动平均数偏离程度的指标。
         """
-        k_value, d_value = talib.STOCH(self.high, self.low, self.close, fastk_period=9, slowk_period=3, slowk_matype=0, slowd_period=3, slowd_matype=0)
+        MA_array = talib.MA(self.close, timeperiod=n, matype=matype)
+        result = ((self.close - MA_array) / MA_array) * 100
+        if array:
+            return result
+        return result[-1]
+
+    def kdj(self, array: bool = False, fastk_period=9, slowk_period=3, slowd_period=3, matype=1) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
+        """
+        KDJ随机指标，Stochastic (Momentum Indicators)
+        指标计算方法：
+        N日RSV = (N日收盘价 - N日内最低价) ÷ (N日内最高价-N日内最低价) × 100 　
+        当日K值 = 2/3前1日K值 + 1/3当日RSV；　　
+        当日D值 = 2/3前1日D值 + 1/3当日K值； 　　
+        当日J值 = 3当日K值 - 2当日D值。            
+        若无前一日K 值与D值，则可分别用50来代替。
+        """
+        k_value, d_value = talib.STOCH(self.high, self.low, self.close, fastk_period=fastk_period, slowk_period=slowk_period, slowk_matype=matype, slowd_period=slowd_period, slowd_matype=matype)
         j_value = 3 * k_value - 2 * d_value
         if array:
             return k_value, d_value, j_value
         return k_value[-1], d_value[-1], j_value[-1]
 
-
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
     # 参考TB函数及公式建立工具箱
     def Highest(self, PriceArrray:"Array", Length:"周期"=5) -> "HighestValue":
         """求最高"""
@@ -1145,6 +1920,10 @@ class ArrayManager(object):
         data.datetime = data.datetime + day_offset
         return data.datetime.date()
 
+
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # 日线级别指标
     @property
     def OpenD(self) -> np.ndarray:
         """每日开盘价价格序列"""
@@ -1193,22 +1972,9 @@ class ArrayManager(object):
             return result
         return result[-1]
 
-    def macd_day(
-        self,
-        fast_period: int,
-        slow_period: int,
-        signal_period: int,
-        array: bool = False
-    ) -> Union[
-        Tuple[np.ndarray, np.ndarray, np.ndarray],
-        Tuple[float, float, float]
-    ]:
-        """
-        MACD.
-        """
-        macd, signal, hist = talib.MACD(
-            self.CloseD, fast_period, slow_period, signal_period
-        )
+    def macd_day(self, fast_period: int, slow_period: int, signal_period: int, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
+        """日线MACD指标"""
+        macd, signal, hist = talib.MACD(self.CloseD, fast_period, slow_period, signal_period)
         if array:
             return macd, signal, hist
         return macd[-1], signal[-1], hist[-1]

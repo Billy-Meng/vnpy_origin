@@ -73,7 +73,7 @@ class BollChannelStrategy(CtaTemplate):
         """
         Callback of new bar data update.
         """
-        self.bg.update_bar(bar)
+        self.bg.update_x_minute_bar(bar)
 
     def on_15min_bar(self, bar: BarData):
         """"""

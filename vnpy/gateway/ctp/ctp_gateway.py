@@ -595,13 +595,13 @@ class CtpTdApi(TdApi):
         account = AccountData(
             accountid=data["AccountID"],
             balance=round(data["Balance"],3),
-            available = round(data["Available"],3),                   #可用资金
             pre_balance = round(data['PreBalance'],3),                #上个交易日总资金
+            available = round(data["Available"],3),                   #可用资金
             commission = round(data['Commission'],3),                 #手续费
             margin = round(data['CurrMargin'] ,3),                    #账户保证金
             close_profit = round(data['CloseProfit'],3),              #平仓盈亏
             position_profit = round(data['PositionProfit'],3),        #持仓盈亏
-            frozen=data["FrozenMargin"] + data["FrozenCash"] + data["FrozenCommission"],        #冻结资金
+            frozen=round(data["FrozenMargin"] + data["FrozenCash"] + data["FrozenCommission"], 3),        #冻结资金
             date = str(datetime.now().date()),
             time = str(datetime.now().time()),
             gateway_name=self.gateway_name,
@@ -653,6 +653,11 @@ class CtpTdApi(TdApi):
                 pricetick=data["PriceTick"],
                 gateway_name=self.gateway_name
             )
+
+            # 保证金比率
+            contract.margin_rate = max(data.get('LongMarginRatio', 0), data.get('ShortMarginRatio', 0))
+            if contract.margin_rate == 0:
+                contract.margin_rate = 0.1
 
             # For option only
             if contract.product == Product.OPTION:

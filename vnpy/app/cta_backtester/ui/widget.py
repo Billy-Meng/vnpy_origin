@@ -68,7 +68,7 @@ class BacktesterManager(QtWidgets.QWidget):
         # Setting Part
         self.class_combo = QtWidgets.QComboBox()
 
-        self.symbol_line = QtWidgets.QLineEdit("IF88.CFFEX")
+        self.symbol_line = QtWidgets.QLineEdit("IF9999.CFFEX")
 
         self.interval_combo = QtWidgets.QComboBox()
         for inteval in Interval:
@@ -538,7 +538,17 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "daily_return": "日均收益率",
         "return_std": "收益标准差",
         "sharpe_ratio": "夏普比率",
-        "return_drawdown_ratio": "收益回撤比"
+        "return_drawdown_ratio": "收益回撤比",
+
+        "total_trade": "总交易笔数",
+        "max_profit": "单笔最大盈利",
+        "max_loss": "单笔最大亏损",
+        "profit_times": "交易盈利笔数",
+        "loss_times": "交易亏损笔数",
+        "rate_of_win": "胜率",
+        "total_profit": "盈利总金额",
+        "total_loss": "亏损总金额",
+        "profit_loss_ratio": "盈亏比",
     }
 
     def __init__(self):
@@ -591,6 +601,16 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         data["return_std"] = f"{data['return_std']:,.2f}%"
         data["sharpe_ratio"] = f"{data['sharpe_ratio']:,.2f}"
         data["return_drawdown_ratio"] = f"{data['return_drawdown_ratio']:,.2f}"
+
+        data["total_trade"] = f"{data['total_trade']}"
+        data["max_profit"] = f"{data['max_profit']:,.2f}"
+        data["max_loss"] = f"{data['max_loss']:,.2f}"
+        data["profit_times"] = f"{data['profit_times']}"
+        data["loss_times"] = f"{data['loss_times']}"
+        data["rate_of_win"] = f"{data['rate_of_win']:,.2f}%"
+        data["total_profit"] = f"{data['total_profit']:,.2f}"
+        data["total_loss"] = f"{data['total_loss']:,.2f}"
+        data["profit_loss_ratio"] = f"{data['profit_loss_ratio']:,.2f}"
 
         for key, cell in self.cells.items():
             value = data.get(key, "")

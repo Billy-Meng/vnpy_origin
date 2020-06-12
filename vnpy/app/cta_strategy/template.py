@@ -1,24 +1,25 @@
 # -*- coding:utf-8 -*-
+import os
 from abc import ABC
-from copy import copy
+from copy import copy, deepcopy
 from typing import Any, Callable, Union
+from datetime import datetime, timedelta
+from threading import Thread, Timer
 
 import pandas as pd
 
 from vnpy.trader.constant import Interval, Direction, Offset
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData, AccountData, ContractData
-from vnpy.trader.utility import virtual, get_file_path
+from vnpy.trader.utility import virtual, get_file_path, save_json
 
 from .base import StopOrder, EngineType
 
 # 弹窗提醒所需库
-from threading import Thread
 import win32api, win32con
 
 # 钉钉通知所需库
 import urllib, requests
 import json
-import time
 
 
 class CtaTemplate(ABC):
@@ -50,6 +51,9 @@ class CtaTemplate(ABC):
         self.variables.insert(0, "inited")
         self.variables.insert(1, "trading")
         self.variables.insert(2, "pos")
+
+        self.trade_data_list = []        # 成交信息列表
+        self.trade_data_dict = dict()    # 成交信息字典
 
         self.update_setting(setting)
 
@@ -297,27 +301,26 @@ class CtaTemplate(ABC):
 
     def get_contract_data(self) -> ContractData:
         """
-        获取合约信息。策略初始化时调用，动态赋值contract_data, gateway_name, symbol, pricetick, size
-        
-        ContractData包含以下内容：
-        ContractData(gateway_name='CTP', symbol='rb2009', exchange=<Exchange.SHFE: 'SHFE'>, name='rb2009', 
-        product=<Product.FUTURES: '期货'>, size=10, pricetick=1.0, min_volume=1, stop_supported=False, 
-        net_position=False, history_data=False, option_strike=0, option_underlying='', option_type=None, 
-        option_expiry=None, option_portfolio='', option_index='')
+        获取合约信息。策略初始化时调用，动态赋值contract_data, gateway_name, symbol, pricetick, size, margin_rate
         """
         if self.get_engine_type() == EngineType.LIVE:
             self.contract_data = self.cta_engine.main_engine.get_contract(self.vt_symbol)
 
-            if self.contract_data:
-                
+            if self.contract_data:                
                 self.gateway_name = self.contract_data.gateway_name      # 接口名称
                 self.symbol = self.contract_data.symbol                  # 合约代码
                 self.pricetick = self.contract_data.pricetick            # 最小变动价位
                 self.size = self.contract_data.size                      # 合约乘数
+                self.margin_rate = self.contract_data.margin_rate        # 保证金比率
+                self.write_log(f"合约信息查询成功：Symbol【 {self.symbol} 】，Pricetick【 {self.pricetick} 】，Size【 {self.size} 】，Margin_Rate【 {self.margin_rate} 】")
 
-                return self.contract_data
-            else:
-                return None
+        else:
+            self.gateway_name = self.cta_engine.gateway_name      # 接口名称，回测的gateway_name为"BACKTESTING"
+            self.vt_symbol = self.cta_engine.vt_symbol            # 本地合约代码
+            self.symbol = self.cta_engine.symbol                  # 合约代码
+            self.pricetick = self.cta_engine.pricetick            # 最小变动价位
+            self.size = self.cta_engine.size                      # 合约乘数
+            self.write_log(f"合约信息查询成功：Symbol【 {self.symbol} 】，Pricetick【 {self.pricetick} 】，Size【 {self.size} 】")
 
     def get_account_data(self, account_id:str) -> AccountData:
         """获取账户信息"""
@@ -330,52 +333,41 @@ class CtaTemplate(ABC):
             else:
                 return None
         
-    def popup_warning(self, msg:str = "交易提醒"):
+    def popup_warning(self, msg:str):
         """
-        弹窗警告
-        # 弹窗提醒所需库
-            from threading import Thread
-            import win32api, win32con
+        弹窗消息通知
+        """
+        def run_popup_warning(msg:str):
 
-        在需要的地方添加以下代码：
-            msg = f"…………{}"
-            self.write_log(msg)
-            thread_popup = Thread(target=self.popup_warning, name="popup_warning", args=(msg,) )
+            info_strategy = f"【{self.symbol}】{self.strategy_name}\n"
+            info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
+            win32api.MessageBox(0, info_strategy + msg + info_time, "交易提醒", win32con.MB_ICONWARNING)
+
+        if self.inited and self.get_engine_type() == EngineType.LIVE:
+            thread_popup = Thread(target=run_popup_warning, name="popup_warning", args=(msg,) )
             thread_popup.start()
-        """
-        if self.inited and self.get_engine_type() == EngineType.LIVE:
-            symbol, _ = self.vt_symbol.split(".")
-            info_strategy = f"【{symbol}】{self.strategy_name}\n"
-            win32api.MessageBox(0, info_strategy + msg, "交易提醒", win32con.MB_ICONWARNING)
 
-    def dingding(self, msg:str = "", url:str = ""):
+    def dingding(self, msg:str, url:str):
         """
-        钉钉机器人【记得修改URL】
-        # 钉钉通知所需库
-            import urllib, requests
-            import json
-            import time
-
-        在需要的地方添加以下代码：
-            msg = f"…………{}"
-            self.write_log(msg)
-            thread_dingding = Thread(target=self.dingding, name="dingding", args=(msg, url) )
-            thread_dingding.start()
+        钉钉机器人消息通知【记得修改URL】
         """
-        if self.inited and self.get_engine_type() == EngineType.LIVE:
+        def run_dingding(msg:str, url:str):
             
-            symbol, _ = self.vt_symbol.split(".")
-            info_strategy = f"【{symbol}】{self.strategy_name}\n"
-            info_time = f"\n时间：{time.asctime( time.localtime(time.time()))}"
+                info_strategy = f"【{self.symbol}】{self.strategy_name}\n"
+                info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
 
-            program = {
-                "msgtype": "text",
-                "text": {"content": info_strategy + msg + info_time},
-            }
+                program = {
+                    "msgtype": "text",
+                    "text": {"content": info_strategy + msg + info_time},
+                }
 
-            headers = {'Content-Type': 'application/json'}
+                headers = {'Content-Type': 'application/json'}
 
-            requests.post(url, data=json.dumps(program), headers=headers)
+                requests.post(url, data=json.dumps(program), headers=headers)
+
+        if self.inited and self.get_engine_type() == EngineType.LIVE:
+            thread_dingding = Thread(target=run_dingding, name="dingding", args=(msg, url) )
+            thread_dingding.start()
 
     def product_trade_time(self) -> dict:
         """获取品种的交易时间信息，包括字段：symbol, exchange, name, am_start, rest_start, rest_end, am_end, pm_start, pm_end, night_trade, night_start, night_end"""
@@ -383,9 +375,6 @@ class CtaTemplate(ABC):
         filepath = get_file_path("期货品种交易时间.xlsx")
 
         if filepath.exists():
-
-            if self.get_engine_type() == EngineType.BACKTESTING:
-                self.vt_symbol = self.cta_engine.vt_symbol
 
             for count, word in enumerate(self.vt_symbol):
                 if word.isdigit():
@@ -397,11 +386,78 @@ class CtaTemplate(ABC):
             df = df.set_index("symbol")
             
             self.trade_time = df.loc[product].to_dict()
+            if self.trade_time["night_trade"] == True:
+                night_time = f'夜盘【 {self.trade_time["night_start"]} ~ {self.trade_time["night_end"]} 】'
+            else:
+                night_time = "无夜盘。"
 
-            return self.trade_time
+            self.write_log(f'品种交易时间：日盘【 {self.trade_time["am_start"]} ~ {self.trade_time["pm_end"]} 】，{night_time}')
 
         else:
             self.write_log("找不到该品种交易时间")
+
+
+    def record_trade_data(self, trade: TradeData):
+        """实时记录成交记录，在 on_trade 调用"""
+        self.trade_data_list.append(trade.__dict__)
+
+    def clean_trade_data(self):
+        """清洗成交记录"""
+        if self.trade_data_list:
+            trade_df = pd.DataFrame(self.trade_data_list)
+            trade_df = trade_df.set_index("datetime")
+            # trade_df包括字段："gateway_name", "symbol", "exchange", "orderid", "tradeid", "direction", "offset", "price", "volume", "vt_symbol", "vt_orderid", "vt_tradeid"
+            trade_df = trade_df.rename(columns={"price": "trade_price", "volume": "trade_volume"})
+            trade_df["exchange"] = trade_df.exchange.apply(lambda x : x.value)
+            trade_df["direction"] = trade_df.direction.apply(lambda x : x.value)
+            trade_df["offset"] = trade_df.offset.apply(lambda x : x.value)
+
+            return trade_df
+        else:
+            return None
+
+    def save_trade_data(self):
+        """启动定时器线程保存成交记录至CSV，在 on_init 调用"""
+        def run_save():
+            trade_df = self.clean_trade_data()
+            if trade_df:
+
+                # 判断.vntrader文件夹下是否存在Trade_Record文件夹，不存在则创建文件夹
+                if not os.path.exists(get_file_path(f"成交记录信息/{datetime.now().date()}")):
+                    os.makedirs(get_file_path(f"成交记录信息/{datetime.now().date()}"))             # os.makedirs()创建多级目录
+
+                filepath = get_file_path(f'成交记录信息/{datetime.now().date()}/{self.symbol}-{self.strategy_name}.csv')
+                trade_df.to_csv(filepath)
+
+        if self.inited and self.get_engine_type() == EngineType.LIVE:
+            """实盘中每天下午三点半执行保存成交记录的任务"""
+            if datetime.now().time() > datetime.now().time().replace(hour=15, minute=30, microsecond=0):
+                save_thread = Timer(interval=(datetime.now().replace(hour=15, minute=30, second=0, microsecond=0) + timedelta(days=1) - datetime.now()).seconds, function=run_save)
+                save_thread.start()
+                self.write_log(f"定时器已启动，即将于明日 {datetime.now().replace(hour=15, minute=30, second=0, microsecond=0) + timedelta(days=1)} 保存成交记录至CSV")
+
+            else:
+                save_thread = Timer(interval=(datetime.now().replace(hour=15, minute=30, second=0, microsecond=0) - datetime.now()).seconds, function=run_save)
+                save_thread.start()
+                self.write_log(f"定时器已启动，即将于今日 {datetime.now().replace(hour=15, minute=30, second=0, microsecond=0)} 保存成交记录至CSV")
+
+    def save_trade_data_to_json(self, trade: TradeData):
+        """实时记录成交信息至JSON文件，在 on_trade 调用"""
+        if self.inited and self.get_engine_type() == EngineType.LIVE:
+        
+            # 判断.vntrader文件夹下是否存在Trade_Record文件夹，不存在则创建文件夹
+            if not os.path.exists(get_file_path(f"成交记录信息/{datetime.now().date()}")):
+                os.makedirs(get_file_path(f"成交记录信息/{datetime.now().date()}"))             # os.makedirs()创建多级目录
+
+            trade_deepcopy = deepcopy(trade)
+            trade_ = trade_deepcopy.__dict__
+            trade_["exchange"] = trade_deepcopy.exchange.value
+            trade_["direction"] = trade_deepcopy.direction.value
+            trade_["offset"] = trade_deepcopy.offset.value
+            trade_["datetime"] = f'{trade_deepcopy.datetime.replace(tzinfo=None)}'
+            temp_dict = {f'{trade_["datetime"]} {self.symbol} {self.strategy_name}':trade_}
+            self.trade_data_dict.update(temp_dict)
+            save_json(f'成交记录信息/{datetime.now().date()}/{self.symbol}-{self.strategy_name}.json', self.trade_data_dict)
 
 
 class CtaSignal(ABC):
