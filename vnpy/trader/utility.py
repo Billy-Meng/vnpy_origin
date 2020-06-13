@@ -169,30 +169,40 @@ class BarGenerator:
     2. generating x minute bar/x hour bar data from 1 minute data
 
     Notice:
-    1. for x minute bar, x must be able to divide 60: 2, 3, 5, 6, 10, 15, 20, 30
+    1. for x minute bar, x must be able to divide 60: 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60
     2. for x hour bar, x can be any number
+
+    增强版K线合成器。可合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60秒钟K线。
     """
 
     def __init__(
         self,
-        on_bar: Callable,
-        window: int = 0,
+        on_second_bar: Callable = None,
+        second_window: int = 60,
+        on_bar: Callable = None,
+        window: int = 1,
         on_window_bar: Callable = None,
         interval: Interval = Interval.MINUTE
     ):
         """Constructor"""
         self.bar: BarData = None
+        self.second_window: int = second_window
+        self.second_bar_range = [i for i in range(0, 60, self.second_window)]
+        
+        self.second_bar: BarData = None
+        self.on_second_bar: Callable = on_second_bar
+        self.last_tick: TickData = None
+
+        self.second_window_bar: BarData = None
         self.on_bar: Callable = on_bar
 
         self.interval: Interval = interval
+        self.window_bar: BarData = None        
         self.interval_count: int = 0
-
-        self.window: int = window
-        self.window_bar: BarData = None
-        self.on_window_bar: Callable = on_window_bar
-
-        self.last_tick: TickData = None
+        
         self.last_bar: BarData = None
+        self.window: int = window
+        self.on_window_bar: Callable = on_window_bar
 
     def update_tick(self, tick: TickData) -> None:
         """
@@ -220,9 +230,7 @@ class BarGenerator:
         # 从每分钟的01秒开始，到下一分钟的00秒，合成一分钟bar，bar的时间戳为合成结束时间。Bug:会丢失交易所休市时最后一分钟bar数据。
         # elif tick.datetime.second >= 1 and self.last_tick.datetime.second < 1:
 
-            self.bar.datetime = self.bar.datetime.replace(
-                second=0, microsecond=0
-            )
+            self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)
             self.on_bar(self.bar)
 
             new_minute = True
@@ -252,124 +260,6 @@ class BarGenerator:
             self.bar.volume += max(volume_change, 0)
 
         self.last_tick = tick
-
-    def update_x_minute_bar(self, bar: BarData) -> None:
-        """
-        Update 1 minute bar into generator
-        """
-        # If not inited, creaate window bar object
-        if not self.window_bar:
-            # Generate timestamp for bar data
-            if self.interval == Interval.MINUTE:
-                dt = bar.datetime.replace(second=0, microsecond=0)
-            elif self.interval == Interval.HOUR:
-                dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
-
-            self.window_bar = BarData(
-                symbol=bar.symbol,
-                exchange=bar.exchange,
-                datetime=dt,
-                gateway_name=bar.gateway_name,
-                open_price=bar.open_price,
-                high_price=bar.high_price,
-                low_price=bar.low_price
-            )
-
-        # Otherwise, update high/low price into window bar
-        else:
-            self.window_bar.high_price = max(
-                self.window_bar.high_price, bar.high_price)
-            self.window_bar.low_price = min(
-                self.window_bar.low_price, bar.low_price)
-
-        # Update close price/volume into window bar
-        self.window_bar.close_price = bar.close_price
-        self.window_bar.volume += int(bar.volume)
-        self.window_bar.open_interest = bar.open_interest
-
-        # Check if window bar completed
-        finished = False
-
-        if self.interval == Interval.MINUTE:
-            # x-minute bar
-
-            # ****************************************************************************************************
-            # 官方版本合成方式。整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟整点K线
-            if not (bar.datetime.minute + 1) % self.window:
-                finished = True
-            
-            # ****************************************************************************************************
-            # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
-            # if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
-            #     self.interval_count += 1
-
-            #     if not self.interval_count % self.window:
-            #         finished = True
-            #         self.interval_count = 0
-            # ****************************************************************************************************
-            
-        # 计数切分法进行N小时K线合成，可以合成任意小时K线
-        elif self.interval == Interval.HOUR:
-            if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
-                # 1-hour bar
-                if self.window == 1:
-                    finished = True
-                # x-hour bar
-                else:
-                    self.interval_count += 1
-
-                    if not self.interval_count % self.window:
-                        finished = True
-                        self.interval_count = 0
-
-        if finished:
-            self.on_window_bar(self.window_bar)
-            self.window_bar = None
-
-        # Cache last bar object
-        self.last_bar = bar
-
-    def generate(self) -> None:
-        """
-        Generate the bar data and call callback immediately.
-        """
-        bar = self.bar
-
-        if self.bar:
-            bar.datetime = bar.datetime.replace(second=0, microsecond=0)
-            self.on_bar(bar)
-
-        self.bar = None
-        return bar
-
-class NewBarGenerator:
-    """ 增强版K线合成器。可合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60秒钟K线。 """
-
-    def __init__(
-        self,
-        on_second_bar: Callable = None,
-        second_window: int = 30,
-        on_bar: Callable = None,
-        minute_window: int = 1,
-        on_window_bar: Callable = None
-    ):
-        
-        self.second_window: int = second_window
-        self.second_bar_range = [i for i in range(0, 60, self.second_window)]
-        
-        self.second_bar: BarData = None
-        self.on_second_bar: Callable = on_second_bar
-        self.last_tick: TickData = None
-
-        self.second_window_bar: BarData = None
-        self.on_bar: Callable = on_bar
-
-        self.minute_window_bar: BarData = None        
-        self.interval_count: int = 0
-        
-        self.last_bar: BarData = None
-        self.minute_window: int = minute_window
-        self.on_window_bar: Callable = on_window_bar
 
     def update_second_bar(self, tick: TickData):
         """
@@ -428,59 +318,71 @@ class NewBarGenerator:
 
     def update_1_minute_bar(self, second_bar: BarData) -> None:
         """
-        策略初始化时载入行情数据，将X秒钟的second_bar，合成1分钟bar,并回调on_bar。
+        将Tick合成或数据接口加载的X秒钟second_bar，合成1分钟bar,并回调on_bar。
         """
-        # If not inited, creaate second window bar object
-        if not self.second_window_bar:
-            # Generate timestamp for bar data
-            dt = second_bar.datetime.replace(second=0, microsecond=0)
-
-            self.second_window_bar = BarData(
-                symbol=second_bar.symbol,
-                exchange=second_bar.exchange,
-                interval=Interval.MINUTE,
-                datetime=dt,
-                gateway_name=second_bar.gateway_name,
-                open_price=second_bar.open_price,
-                high_price=second_bar.high_price,
-                low_price=second_bar.low_price
-            )
-
-        # Otherwise, update high/low price into window bar
-        else:
-            self.second_window_bar.high_price = max(
-                self.second_window_bar.high_price, second_bar.high_price)
-            self.second_window_bar.low_price = min(
-                self.second_window_bar.low_price, second_bar.low_price)
-
-        # Update close price/volume into window bar
-        self.second_window_bar.close_price = second_bar.close_price
-        self.second_window_bar.volume += int(second_bar.volume)
-        self.second_window_bar.open_interest = second_bar.open_interest
-
-        new_minute = False
-
-        # 传入的second_bar已经走完一分钟，则启动 on_bar
-        if (second_bar.datetime + datetime.timedelta(seconds=self.second_window)).second == 0:
+        if self.second_window == 60:
             new_minute = True
+            self.second_window_bar = second_bar
+
+        else:
+            # If not inited, creaate second window bar object
+            if not self.second_window_bar:
+                # Generate timestamp for bar data
+                dt = second_bar.datetime.replace(second=0, microsecond=0)
+
+                self.second_window_bar = BarData(
+                    symbol=second_bar.symbol,
+                    exchange=second_bar.exchange,
+                    interval=Interval.MINUTE,
+                    datetime=dt,
+                    gateway_name=second_bar.gateway_name,
+                    open_price=second_bar.open_price,
+                    high_price=second_bar.high_price,
+                    low_price=second_bar.low_price
+                )
+
+            # Otherwise, update high/low price into window bar
+            else:
+                self.second_window_bar.high_price = max(
+                    self.second_window_bar.high_price, second_bar.high_price)
+                self.second_window_bar.low_price = min(
+                    self.second_window_bar.low_price, second_bar.low_price)
+
+            # Update close price/volume into window bar
+            self.second_window_bar.close_price = second_bar.close_price
+            self.second_window_bar.volume += int(second_bar.volume)
+            self.second_window_bar.open_interest = second_bar.open_interest
+
+            new_minute = False
+
+            # 传入的second_bar已经走完一分钟，则启动 on_bar
+            if (second_bar.datetime + datetime.timedelta(seconds=self.second_window)).second == 0:
+                new_minute = True
 
         if new_minute:
             self.on_bar(self.second_window_bar)
             self.second_window_bar = None
 
-    def update_x_minute_bar(self, bar: BarData) -> None:
+    def update_bar(self, bar: BarData) -> None:
         """
         Update 1 minute bar into generator
         """
         # If not inited, creaate window bar object
-        if not self.minute_window_bar:
+        if not self.window_bar:
             # Generate timestamp for bar data
-            dt = bar.datetime.replace(second=0, microsecond=0)
+            if self.interval == Interval.MINUTE:
+                dt = bar.datetime.replace(second=0, microsecond=0)
 
-            self.minute_window_bar = BarData(
+            elif self.interval == Interval.HOUR:
+                dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
+
+            elif self.interval == Interval.DAILY:
+                dt = bar.datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            self.window_bar = BarData(
                 symbol=bar.symbol,
                 exchange=bar.exchange,
-                interval=f"{self.minute_window}m",
+                interval=self.interval,
                 datetime=dt,
                 gateway_name=bar.gateway_name,
                 open_price=bar.open_price,
@@ -490,46 +392,83 @@ class NewBarGenerator:
 
         # Otherwise, update high/low price into window bar
         else:
-            self.minute_window_bar.high_price = max(self.minute_window_bar.high_price, bar.high_price)
-            self.minute_window_bar.low_price  = min(self.minute_window_bar.low_price, bar.low_price)
+            self.window_bar.high_price = max(
+                self.window_bar.high_price, bar.high_price)
+            self.window_bar.low_price = min(
+                self.window_bar.low_price, bar.low_price)
 
         # Update close price/volume into window bar
-        self.minute_window_bar.close_price = bar.close_price
-        self.minute_window_bar.volume += int(bar.volume)
-        self.minute_window_bar.open_interest = bar.open_interest
+        self.window_bar.close_price = bar.close_price
+        self.window_bar.volume += int(bar.volume)
+        self.window_bar.open_interest = bar.open_interest
 
-        # Check if minute window bar completed
+
+        # Check if window bar completed
         finished = False
 
-        if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
-            if self.minute_window == 1:
-                finished = True
+        # X分钟K线合成
+        if self.interval == Interval.MINUTE:
+            # *****************************************************************************************************
+            # 官方版本合成方式。整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
+            if not (bar.datetime.minute + 1) % self.window:
+                finished = True            
+            # *****************************************************************************************************
+            # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
+            # if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+            #     if self.window == 1:
+            #             finished = True
+                
+            #     else:
+            #         self.interval_count += 1
+            #         if not self.interval_count % self.window:
+            #             finished = True
+            #             self.interval_count = 0
+            # *****************************************************************************************************
             
-            else:
-                self.interval_count += 1
-                if not self.interval_count % self.minute_window:
+        # X小时K线合成，计数切分法进行N小时K线合成，可以合成任意小时K线
+        elif self.interval == Interval.HOUR:
+            if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
+                # 1-hour bar
+                if self.window == 1:
                     finished = True
-                    self.interval_count = 0
+                # x-hour bar
+                else:
+                    self.interval_count += 1
+
+                    if not self.interval_count % self.window:
+                        finished = True
+                        self.interval_count = 0
+
+        # 日K线合成
+        elif self.interval == Interval.DAILY:
+            # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
+            if self.last_bar and bar.datetime.date() != ArrayManager().TrueDate(bar):
+                finished = True
+
+            # 针对每天开盘和收盘为同一天的日K线合成
+            # if self.last_bar and bar.datetime.day != self.last_bar.datetime.day:
+            #     finished = True
 
         if finished:
-            self.on_window_bar(self.minute_window_bar)
-            self.minute_window_bar = None
+            self.on_window_bar(self.window_bar)
+            self.window_bar = None
 
         # Cache last bar object
         self.last_bar = bar
 
     def generate(self) -> None:
         """
-        Generate the second_bar data and call callback immediately.
+        Generate the bar data and call callback immediately.
         """
-        second_bar = self.second_bar
+        bar = self.bar
 
-        if self.second_bar:
-            second_bar.datetime = second_bar.datetime.replace(microsecond=0)
-            self.on_second_bar(second_bar)
+        if self.bar:
+            bar.datetime = bar.datetime.replace(second=0, microsecond=0)
+            self.on_bar(bar)
 
-        self.second_bar = None
-        return second_bar
+        self.bar = None
+        return bar
+
 
 class ArrayManager(object):
     """
@@ -550,36 +489,6 @@ class ArrayManager(object):
         self.close_array: np.ndarray = np.zeros(size)
         self.volume_array: np.ndarray = np.zeros(size)
         self.open_interest_array: np.ndarray = np.zeros(size)
-
-        # 初始化每日OHLC价格数组，用于后续记录日K线数据
-        self.open_price_day = np.zeros(size)
-        self.high_price_day = np.zeros(size)
-        self.low_price_day = np.zeros(size)
-        self.close_price_day = np.zeros(size)
-        self.last_tick = None
-        self.last_bar = None
-        self.new_day = False
-
-    def tick_update_daily_ohlc(self, tick: TickData):
-        """Tick级别更新每日开高低收价格序列"""
-        if self.last_tick and self.last_tick.datetime.date() != self.TrueDate(tick):
-            self.new_day = True     # 新一天的 Tick
-
-            self.open_price_day[:-1] = self.open_price_day[1:]
-            self.high_price_day[:-1] = self.high_price_day[1:]
-            self.low_price_day[:-1] = self.low_price_day[1:]
-            self.close_price_day[:-1] = self.close_price_day[1:]
-
-            self.open_price_day[-1] = tick.last_price
-            self.high_price_day[-1] = tick.last_price
-            self.low_price_day[-1] = tick.last_price
-            self.close_price_day[-1] = tick.last_price
-
-        else:
-            self.new_day = False
-
-        # 缓存上一个 Tick
-        self.last_tick = tick
 
     def update_bar(self, bar: BarData) -> None:
         """
@@ -602,26 +511,6 @@ class ArrayManager(object):
         self.close_array[-1] = bar.close_price
         self.volume_array[-1] = bar.volume
         self.open_interest_array[-1] = bar.open_interest
-
-        """Bar级别更新每日开高低收价格序列"""
-        if self.last_bar and self.last_bar.datetime.date() != self.TrueDate(bar):
-            self.new_day = True     # 新一天的 Bar
-
-            self.open_price_day[:-1] = self.open_price_day[1:]
-            self.high_price_day[:-1] = self.high_price_day[1:]
-            self.low_price_day[:-1] = self.low_price_day[1:]
-            self.close_price_day[:-1] = self.close_price_day[1:]
-
-            self.open_price_day[-1] = bar.open_price
-            self.high_price_day[-1] = bar.high_price
-            self.low_price_day[-1] = bar.low_price
-            self.close_price_day[-1] = bar.close_price
-
-        else:
-            self.new_day = False
-
-        # 缓存上一根 Bar
-        self.last_bar = bar
 
     @property
     def open(self) -> np.ndarray:
@@ -1920,64 +1809,6 @@ class ArrayManager(object):
         data.datetime = data.datetime + day_offset
         return data.datetime.date()
 
-
-    # ======================================================================================================================================================================================================== #
-    # ======================================================================================================================================================================================================== #
-    # 日线级别指标
-    @property
-    def OpenD(self) -> np.ndarray:
-        """每日开盘价价格序列"""
-        return self.open_price_day
-
-    @property
-    def HighD(self) -> np.ndarray:
-        """每日最高价价格序列"""
-        return self.high_price_day
-
-    @property
-    def LowD(self) -> np.ndarray:
-        """每日最低价价格序列"""
-        return self.low_price_day
-
-    @property
-    def CloseD(self) -> np.ndarray:
-        """每日收盘价价格序列"""
-        return self.close_price_day
-
-    def sma_day(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """日线简单移动平均线"""
-        result = talib.SMA(self.CloseD, n)
-        if array:
-            return result
-        return result[-1]
-
-    def ema_day(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """日线指数移动平均线"""
-        result = talib.EMA(self.CloseD, n)
-        if array:
-            return result
-        return result[-1]
-
-    def atr_day(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """日线平均真实波幅"""
-        result = talib.ATR(self.HighD, self.LowD, self.CloseD, n)
-        if array:
-            return result
-        return result[-1]
-
-    def rsi_day(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
-        """日线相对强弱指标"""
-        result = talib.RSI(self.CloseD, n)
-        if array:
-            return result
-        return result[-1]
-
-    def macd_day(self, fast_period: int, slow_period: int, signal_period: int, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
-        """日线MACD指标"""
-        macd, signal, hist = talib.MACD(self.CloseD, fast_period, slow_period, signal_period)
-        if array:
-            return macd, signal, hist
-        return macd[-1], signal[-1], hist[-1]
 
 
 def virtual(func: Callable) -> Callable:
