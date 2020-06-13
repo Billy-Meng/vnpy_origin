@@ -61,7 +61,7 @@ class TqdataClient(DataSourceApi):
 
         return f"{exchange.value}.{symbol}"
 
-    def query_history(self, req: HistoryRequest, tq_interval: int) -> Optional[List[BarData]]:
+    def query_history(self, req: HistoryRequest, frequency: int) -> Optional[List[BarData]]:
         """
         Query history bar data from TqSdk.
         """
@@ -78,21 +78,26 @@ class TqdataClient(DataSourceApi):
         if tq_symbol not in self.symbols:
             return None
 
-        # 若未从上层load_bar传入tq_interval，则返回空值
-        if not tq_interval:
+        # 若未从上层load_bar传入frequency，则返回空值
+        if not frequency:
             return None
 
         # For querying night trading period data
         end += timedelta(minutes=1)
 
         # 获取最新的数据，无法指定日期
-        df = self.api.get_kline_serial(tq_symbol, tq_interval, 10000).sort_values(by=["datetime"])
+        df = self.api.get_kline_serial(tq_symbol, frequency, 10000).sort_values(by=["datetime"])
 
         # 转换为东八区时间
         df["datetime"] = pd.to_datetime(df["datetime"] + TIME_UTC8)
 
 
         data: List[BarData] = []
+
+        if frequency == 60:
+            frequency = "1m"
+        else:
+            frequency = f"{frequency}s"
 
         if df is not None:
             for ix, row in df.iterrows():
@@ -101,7 +106,7 @@ class TqdataClient(DataSourceApi):
                 bar = BarData(
                     symbol=symbol,
                     exchange=exchange,
-                    interval=interval,
+                    interval=frequency,
                     datetime=dt,
                     open_price=row["open"],
                     high_price=row["high"],

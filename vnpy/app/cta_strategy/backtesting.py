@@ -793,8 +793,10 @@ class BacktestingEngine:
         self.cross_stop_order()
 
         try:
-            if self.strategy.bg_second:
+            if self.strategy.x_second < 60:
                 self.strategy.on_second_bar(bar)
+            elif self.strategy.x_second == 60:
+                self.strategy.on_bar(bar)
         except AttributeError:
             self.strategy.on_bar(bar)
 

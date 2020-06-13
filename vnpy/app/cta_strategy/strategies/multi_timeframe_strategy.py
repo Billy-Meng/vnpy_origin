@@ -76,8 +76,8 @@ class MultiTimeframeStrategy(CtaTemplate):
         """
         Callback of new bar data update.
         """
-        self.bg5.update_x_minute_bar(bar)
-        self.bg15.update_x_minute_bar(bar)
+        self.bg5.update_bar(bar)
+        self.bg15.update_bar(bar)
 
     def on_5min_bar(self, bar: BarData):
         """"""

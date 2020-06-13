@@ -580,11 +580,11 @@ class CtaEngine(BaseEngine):
                 bars = self.query_bar_from_rq(symbol, exchange, interval, frequency, start, end)
 
         if not bars:
-            if SETTINGS["datasource.api"] == "jjdata":
+            if frequency == "60s" or frequency == 60:
                 bars = database_manager.load_bar_data(
                     symbol=symbol,
                     exchange=exchange,
-                    interval=frequency,
+                    interval="1m",
                     start=start,
                     end=end,
                 )
@@ -613,12 +613,12 @@ class CtaEngine(BaseEngine):
         end = datetime.now(get_localzone())
         start = end - timedelta(days=days)
 
-        interval = None
-        frequency = "tick"
-
         if not use_database:
-            if SETTINGS["datasource.api"] == "jjdata":
-                ticks = self.query_bar_from_rq(symbol, exchange, interval, frequency, start, end)
+            # 从掘金加载Tick数据
+            interval = None
+            frequency = "tick"            
+            req = HistoryRequest(symbol=symbol, exchange=exchange, interval=interval, start=start, end=end)
+            ticks = jjdata_client.query_history(req, frequency)
 
         if not ticks:
             ticks = database_manager.load_tick_data(

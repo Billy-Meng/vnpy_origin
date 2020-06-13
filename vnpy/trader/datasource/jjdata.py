@@ -195,7 +195,8 @@ class JjdataClient(DataSourceApi):
         else:
             data: List[BarData] = []
             
-            interval = frequency
+            if frequency == "60s":
+                frequency = "1m"
 
             if df is not None:
                 for ix, row in df.iterrows():
@@ -204,7 +205,7 @@ class JjdataClient(DataSourceApi):
                     bar = BarData(
                         symbol=symbol,
                         exchange=exchange,
-                        interval=interval,
+                        interval=frequency,
                         datetime=dt,
                         open_price=row["open"],
                         high_price=row["high"],
