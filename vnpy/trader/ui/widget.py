@@ -484,9 +484,16 @@ class AccountMonitor(BaseMonitor):
 
     headers = {
         "accountid": {"display": "账号", "cell": BaseCell, "update": False},
-        "balance": {"display": "余额", "cell": BaseCell, "update": True},
-        "frozen": {"display": "冻结", "cell": BaseCell, "update": True},
-        "available": {"display": "可用", "cell": BaseCell, "update": True},
+        "pre_balance": {"display": "昨日总资金", "cell": BaseCell, "update": True},
+        "balance": {"display": "今日总资金", "cell": BaseCell, "update": True},
+        "frozen": {"display": "冻结资金", "cell": BaseCell, "update": True},
+        "available": {"display": "可用资金", "cell": BaseCell, "update": True},
+        "commission": {"display": "手续费", "cell": BaseCell, "update": True},
+        "margin": {"display": "占用保证金", "cell": BaseCell, "update": True},
+        "percent": {"display": "资金使用率", "cell": BaseCell, "update": True},
+        "close_profit": {"display": "平仓盈亏", "cell": BaseCell, "update": True},
+        "position_profit": {"display": "持仓盈亏", "cell": BaseCell, "update": True},
+        "datetime": {"display": "时间", "cell": BaseCell, "update": True},
         "gateway_name": {"display": "接口", "cell": BaseCell, "update": False},
     }
 
@@ -962,6 +969,15 @@ class ContractManager(QtWidgets.QWidget):
         "size": "合约乘数",
         "pricetick": "价格跳动",
         "min_volume": "最小委托量",
+        "gateway_name": "交易接口",
+        "margin_ratio": "保证金率",
+        "open_commission_ratio": "开仓手续费率",
+        "open_commission": "开仓手续费",
+        "close_commission_ratio": "平仓手续费率",
+        "close_commission": "平仓手续费",
+        "close_commission_today_ratio": "平今手续费率",
+        "close_commission_today": "平今手续费",
+        "max_order_volume": "限价单最大单次委托量",
         "gateway_name": "交易接口",
     }
 

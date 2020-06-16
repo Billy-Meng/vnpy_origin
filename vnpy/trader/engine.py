@@ -230,6 +230,14 @@ class MainEngine:
             gateway.close()
 
 
+    #--------------------------------------------------------------------------------------------------
+    def save_commission_margin_ratio(self):
+        """保存接口合约手续费率、保证金率数据"""
+        for gateway in self.gateways.values():
+            gateway.save_commission()
+            gateway.save_margin_ratio()
+
+
 class BaseEngine(ABC):
     """
     Abstract class for implementing an function engine.

@@ -311,8 +311,11 @@ class CtaTemplate(ABC):
                 self.symbol = self.contract_data.symbol                  # 合约代码
                 self.pricetick = self.contract_data.pricetick            # 最小变动价位
                 self.size = self.contract_data.size                      # 合约乘数
-                self.margin_rate = self.contract_data.margin_rate        # 保证金比率
-                self.write_log(f"合约信息查询成功：Symbol【 {self.symbol} 】，Pricetick【 {self.pricetick} 】，Size【 {self.size} 】，Margin_Rate【 {self.margin_rate} 】")
+                self.margin_ratio = self.contract_data.margin_ratio      # 保证金比率
+                self.commission = self.contract_data.open_commission + self.contract_data.close_commission                          # 手续费
+                self.commission_ratio = self.contract_data.open_commission_ratio + self.contract_data.close_commission_ratio        # 手续费率
+                self.write_log((f"合约信息查询成功：Symbol【 {self.symbol} 】，Pricetick【 {self.pricetick} 】，Size【 {self.size} 】，" +
+                                f"保证金率【 {self.margin_ratio} 】，手续费【 {self.commission} 】，手续费率【 {self.commission_ratio} 】"))
 
         else:
             self.gateway_name = self.cta_engine.gateway_name      # 接口名称，回测的gateway_name为"BACKTESTING"

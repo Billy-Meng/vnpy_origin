@@ -76,7 +76,7 @@ class DbBarData(Document):
         db_bar = DbBarData()
 
         db_bar.symbol = bar.symbol
-        db_bar.exchange = bar.exchange.value
+        db_bar.exchange = bar.exchange.value if isinstance(bar.exchange, Enum) else bar.exchange
         db_bar.datetime = dt
         db_bar.interval = bar.interval.value if isinstance(bar.interval, Enum) else bar.interval
         db_bar.volume = bar.volume
@@ -177,7 +177,7 @@ class DbTickData(Document):
         db_tick = DbTickData()
 
         db_tick.symbol = tick.symbol
-        db_tick.exchange = tick.exchange.value
+        db_tick.exchange = tick.exchange.value if isinstance(tick.exchange, Enum) else tick.exchange
         db_tick.datetime = dt
         db_tick.name = tick.name
         db_tick.volume = tick.volume
@@ -281,7 +281,7 @@ class MongoManager(BaseDatabaseManager):
     ) -> Sequence[BarData]:
         s = DbBarData.objects(
             symbol=symbol,
-            exchange=exchange.value,
+            exchange=exchange.value if isinstance(exchange, Enum) else exchange,
             interval=interval.value if isinstance(interval, Enum) else interval,
             datetime__gte=start,
             datetime__lte=end,
@@ -294,7 +294,7 @@ class MongoManager(BaseDatabaseManager):
     ) -> Sequence[TickData]:
         s = DbTickData.objects(
             symbol=symbol,
-            exchange=exchange.value,
+            exchange=exchange.value if isinstance(exchange, Enum) else exchange,
             datetime__gte=start,
             datetime__lte=end,
         )
@@ -328,7 +328,9 @@ class MongoManager(BaseDatabaseManager):
             updates.pop("set__vt_symbol")
             (
                 DbTickData.objects(
-                    symbol=d.symbol, exchange=d.exchange.value, datetime=d.datetime
+                    symbol=d.symbol,
+                    exchange=d.exchange.value if isinstance(d.exchange, Enum) else d.exchange,
+                    datetime=d.datetime
                 ).update_one(upsert=True, **updates)
             )
 
@@ -338,7 +340,7 @@ class MongoManager(BaseDatabaseManager):
         s = (
             DbBarData.objects(
                 symbol=symbol,
-                exchange=exchange.value,
+                exchange=exchange.value if isinstance(exchange, Enum) else exchange,
                 interval=interval.value if isinstance(interval, Enum) else interval
             )
             .order_by("-datetime")
@@ -354,7 +356,7 @@ class MongoManager(BaseDatabaseManager):
         s = (
             DbBarData.objects(
                 symbol=symbol,
-                exchange=exchange.value,
+                exchange=exchange.value if isinstance(exchange, Enum) else exchange,
                 interval=interval.value if isinstance(interval, Enum) else interval
             )
             .order_by("+datetime")
@@ -368,7 +370,10 @@ class MongoManager(BaseDatabaseManager):
         self, symbol: str, exchange: "Exchange"
     ) -> Optional["TickData"]:
         s = (
-            DbTickData.objects(symbol=symbol, exchange=exchange.value)
+            DbTickData.objects(
+                symbol=symbol,
+                exchange=exchange.value if isinstance(exchange, Enum) else exchange
+            )
             .order_by("-datetime")
             .first()
         )
@@ -411,7 +416,7 @@ class MongoManager(BaseDatabaseManager):
         """
         count = DbBarData.objects(
             symbol=symbol,
-            exchange=exchange.value,
+            exchange=exchange.value if isinstance(exchange, Enum) else exchange,
             interval=interval.value if isinstance(interval, Enum) else interval
         ).delete()
 
