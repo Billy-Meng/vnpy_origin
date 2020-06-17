@@ -41,7 +41,7 @@ class BollChannelStrategy(CtaTemplate):
         """"""
         super().__init__(cta_engine, strategy_name, vt_symbol, setting)
 
-        self.bg = BarGenerator(self.on_bar, 15, self.on_15min_bar)
+        self.bg = BarGenerator(on_bar=self.on_bar, window=15, on_window_bar=self.on_15min_bar)
         self.am = ArrayManager()
 
     def on_init(self):
@@ -84,7 +84,7 @@ class BollChannelStrategy(CtaTemplate):
         if not am.inited:
             return
 
-        self.boll_up, self.boll_down = am.boll(self.boll_window, self.boll_dev)
+        self.boll_up, _, self.boll_down = am.boll(self.boll_window, self.boll_dev)
         self.cci_value = am.cci(self.cci_window)
         self.atr_value = am.atr(self.atr_window)
 

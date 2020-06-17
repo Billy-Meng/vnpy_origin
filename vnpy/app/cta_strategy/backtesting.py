@@ -1,10 +1,11 @@
 # -*- coding:utf-8 -*-
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from typing import Callable
+from typing import Callable, Union
 from itertools import product
 from functools import lru_cache
 from time import time
+from pathlib import Path
 import multiprocessing
 import random
 import traceback
@@ -12,14 +13,15 @@ import traceback
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pandas import DataFrame
+from pandas import DataFrame, merge
 from deap import creator, base, tools, algorithms
 
 from vnpy.trader.constant import (Direction, Offset, Exchange,
-                                  Interval, Status)
+                                  Interval, Status, RateType)
 from vnpy.trader.database import database_manager
 from vnpy.trader.object import OrderData, TradeData, BarData, TickData
-from vnpy.trader.utility import round_to
+from vnpy.trader.utility import round_to, BarGenerator
+from vnpy.chart.my_pyecharts import MyPyecharts
 
 from .base import (
     BacktestingMode,
@@ -114,6 +116,7 @@ class BacktestingEngine:
         self.exchange = None
         self.start = None
         self.end = None
+        self.rate_type = RateType.FIXED
         self.rate = 0
         self.slippage = 0
         self.size = 1
@@ -178,6 +181,7 @@ class BacktestingEngine:
         vt_symbol: str,
         interval: Interval,
         start: datetime,
+        rate_type: RateType,
         rate: float,
         slippage: float,
         size: float,
@@ -191,6 +195,7 @@ class BacktestingEngine:
         self.mode = mode
         self.vt_symbol = vt_symbol
         self.interval = Interval(interval)
+        self.rate_type = RateType(rate_type)
         self.rate = rate
         self.slippage = slippage
         self.size = size
@@ -334,6 +339,7 @@ class BacktestingEngine:
                 pre_close,
                 start_pos,
                 self.size,
+                self.rate_type,
                 self.rate,
                 self.slippage,
                 self.inverse
@@ -400,6 +406,10 @@ class BacktestingEngine:
             total_profit = 0
             total_loss = 0
             profit_loss_ratio = 0
+            trade_profit = 0
+            trade_commission = 0
+            trade_slippage = 0
+            final_profit = 0
 
         else:
             # Calculate balance related time series data
@@ -458,17 +468,22 @@ class BacktestingEngine:
 
             return_drawdown_ratio = -total_return / max_ddpercent
 
-            
             trade_result = self.calculate_trade_result()
-            total_trade = len(trade_result)
-            max_profit = float(trade_result["trade_pro"].max())
-            max_loss = float(trade_result["trade_pro"].min())
-            profit_times = len(trade_result[trade_result["trade_pro"] >= 0])
-            loss_times = len(trade_result[trade_result["trade_pro"] < 0])
-            rate_of_win = profit_times / (profit_times + loss_times) * 100
-            total_profit = float(trade_result[trade_result["trade_pro"] >= 0].sum())
-            total_loss = float(trade_result[trade_result["trade_pro"] < 0].sum())
-            profit_loss_ratio = (total_profit/profit_times) / abs(total_loss / loss_times)
+            if trade_result is not None:
+                total_trade = len(trade_result)                                                              # 总交易笔数
+                max_profit = float(trade_result["final_profit"].max())                                       # 单笔最大盈利
+                max_loss = float(trade_result["final_profit"].min())                                         # 单笔最大亏损
+                profit_times = len(trade_result[trade_result["final_profit"] >= 0])                          # 交易盈利笔数
+                loss_times = len(trade_result[trade_result["final_profit"] < 0])                             # 交易亏损笔数
+                rate_of_win = profit_times / (profit_times + loss_times) * 100                               # 胜率
+                total_profit = float(trade_result[trade_result["final_profit"] >= 0].final_profit.sum())     # 盈利总金额
+                total_loss = float(trade_result[trade_result["final_profit"] < 0].final_profit.sum())        # 亏损总金额
+                profit_loss_ratio = (total_profit/profit_times) / abs(total_loss / loss_times)               # 盈亏比
+                trade_profit = trade_result["cumsum_profit"].values[-1]                                      # 交易总盈利
+                trade_commission = trade_result["cumsum_commission"].values[-1]                              # 交易手续费
+                trade_slippage = trade_result["cumsum_slippage"].values[-1]                                  # 交易滑点费
+                final_profit = trade_result["cumsum_final"].values[-1]                                       # 交易净盈利
+                final_balance = trade_result["final_balance"].values[-1]                                     # 剩余总资金
 
         # Output
         if output:
@@ -476,45 +491,50 @@ class BacktestingEngine:
             self.output(f"首个交易日：\t{start_date}")
             self.output(f"最后交易日：\t{end_date}")
 
-            self.output(f"总交易日：\t{total_days}")
+            self.output(f"总交易日：  \t{total_days}")
             self.output(f"盈利交易日：\t{profit_days}")
             self.output(f"亏损交易日：\t{loss_days}")
 
-            self.output(f"起始资金：\t{self.capital:,.2f}")
-            self.output(f"结束资金：\t{end_balance:,.2f}")
+            self.output(f"起始资金：  \t{self.capital:,.2f}")
+            self.output(f"结束资金：  \t{end_balance:,.2f}")
 
-            self.output(f"总收益率：\t{total_return:,.2f}%")
-            self.output(f"年化收益：\t{annual_return:,.2f}%")
-            self.output(f"最大回撤: \t{max_drawdown:,.2f}")
-            self.output(f"百分比最大回撤: {max_ddpercent:,.2f}%")
-            self.output(f"最长回撤天数: \t{max_drawdown_duration}")
+            self.output(f"总收益率：  \t{total_return:,.2f}%")
+            self.output(f"年化收益：  \t{annual_return:,.2f}%")
+            self.output(f"最大回撤:   \t{max_drawdown:,.2f}")
+            self.output(f"百分比最大回撤: \t{max_ddpercent:,.2f}%")
+            self.output(f"最长回撤天数:   \t{max_drawdown_duration}")
 
-            self.output(f"总盈亏：\t{total_net_pnl:,.2f}")
-            self.output(f"总手续费：\t{total_commission:,.2f}")
-            self.output(f"总滑点：\t{total_slippage:,.2f}")
-            self.output(f"总成交金额：\t{total_turnover:,.2f}")
-            self.output(f"总成交次数：\t{total_trade_count}")
+            self.output(f"总盈亏：    \t{total_net_pnl:,.2f}")
+            self.output(f"总手续费：  \t{total_commission:,.2f}")
+            self.output(f"总滑点：    \t{total_slippage:,.2f}")
+            self.output(f"总成交金额： \t{total_turnover:,.2f}")
+            self.output(f"总成交次数： \t{total_trade_count}")
 
-            self.output(f"日均盈亏：\t{daily_net_pnl:,.2f}")
-            self.output(f"日均手续费：\t{daily_commission:,.2f}")
-            self.output(f"日均滑点：\t{daily_slippage:,.2f}")
+            self.output(f"日均盈亏：   \t{daily_net_pnl:,.2f}")
+            self.output(f"日均手续费： \t{daily_commission:,.2f}")
+            self.output(f"日均滑点：   \t{daily_slippage:,.2f}")
             self.output(f"日均成交金额：\t{daily_turnover:,.2f}")
             self.output(f"日均成交笔数：\t{daily_trade_count}")
 
-            self.output(f"日均收益率：\t{daily_return:,.2f}%")
-            self.output(f"收益标准差：\t{return_std:,.2f}%")
-            self.output(f"Sharpe Ratio：\t{sharpe_ratio:,.2f}")
-            self.output(f"收益回撤比：\t{return_drawdown_ratio:,.2f}")
+            self.output(f"日均收益率：  \t{daily_return:,.2f}%")
+            self.output(f"收益标准差：  \t{return_std:,.2f}%")
+            self.output(f"夏普比率：    \t{sharpe_ratio:,.2f}")
+            self.output(f"收益回撤比：  \t{return_drawdown_ratio:,.2f}")
 
-            self.output(f"总交易笔数：\t{total_trade}")
+            self.output(f"总交易笔数：  \t{total_trade}")
             self.output(f"单笔最大盈利：\t{max_profit:,.2f}")
             self.output(f"单笔最大亏损：\t{max_loss:,.2f}")
             self.output(f"交易盈利笔数：\t{profit_times}")
             self.output(f"交易亏损笔数：\t{loss_times}")
-            self.output(f"胜率：\t{rate_of_win:,.2f}%")                # 胜率 = 盈利的所有次数 / 总交易场次 x 100%
-            self.output(f"盈利总金额：\t{total_profit:,.2f}")
-            self.output(f"亏损总金额：\t{total_loss:,.2f}")
-            self.output(f"盈亏比：\t{profit_loss_ratio:,.2f}")         # 盈亏比 = 盈利的平均金额 / 亏损的平均金额
+            self.output(f"胜率：       \t{rate_of_win:,.2f}%")                # 胜率 = 盈利的所有次数 / 总交易场次 x 100%
+            self.output(f"盈利总金额： \t{total_profit:,.2f}")
+            self.output(f"亏损总金额： \t{total_loss:,.2f}")
+            self.output(f"盈亏比：     \t{profit_loss_ratio:,.2f}")           # 盈亏比 = 盈利的平均金额 / 亏损的平均金额
+            self.output(f"交易总盈利： \t{trade_profit:,.2f}")
+            self.output(f"交易手续费： \t{trade_commission:,.2f}")
+            self.output(f"交易滑点费： \t{trade_slippage:,.2f}")
+            self.output(f"交易净盈利： \t{final_profit:,.2f}")
+            self.output(f"剩余总资金： \t{final_balance:,.2f}")
 
         statistics = {
             "start_date": start_date,
@@ -552,6 +572,11 @@ class BacktestingEngine:
             "total_profit": total_profit,
             "total_loss": total_loss,
             "profit_loss_ratio": profit_loss_ratio,
+            "trade_profit": trade_profit,
+            "trade_commission": trade_commission,
+            "trade_slippage": trade_slippage,
+            "final_profit": final_profit,
+            "final_balance": final_balance
         }
 
         # Filter potential error infinite value
@@ -621,6 +646,7 @@ class BacktestingEngine:
                 self.vt_symbol,
                 self.interval,
                 self.start,
+                self.rate_type,
                 self.rate,
                 self.slippage,
                 self.size,
@@ -681,6 +707,7 @@ class BacktestingEngine:
         global ga_vt_symbol
         global ga_interval
         global ga_start
+        global ga_rate_type
         global ga_rate
         global ga_slippage
         global ga_size
@@ -696,6 +723,7 @@ class BacktestingEngine:
         ga_vt_symbol = self.vt_symbol
         ga_interval = self.interval
         ga_start = self.start
+        ga_rate_type = self.rate_type
         ga_rate = self.rate
         ga_slippage = self.slippage
         ga_size = self.size
@@ -1165,74 +1193,221 @@ class BacktestingEngine:
 
 
     # 新增回测统计指标
-    def get_trade_df(self):
+    def get_trade_df(self, trades = None):
         """提取成交记录，并生成 DataFrame"""
-        trades = self.get_all_trades()
-        trade_list = [trade.__dict__ for trade in trades]
-        trade_df = DataFrame(trade_list)
-        trade_df = trade_df.set_index("datetime")
-        # trade_df包括字段："gateway_name", "symbol", "exchange", "orderid", "tradeid", "direction", "offset", "price", "volume", "vt_symbol", "vt_orderid", "vt_tradeid"
-        trade_df = trade_df.rename(columns={"price": "trade_price", "volume": "trade_volume"})
-        trade_df["exchange"] = trade_df.exchange.apply(lambda x : x.value)
-        trade_df["direction"] = trade_df.direction.apply(lambda x : x.value)
-        trade_df["offset"] = trade_df.offset.apply(lambda x : x.value)
-        
-        return trade_df
+        if trades is None:
+            trades = self.get_all_trades()
+            
+        if trades:
+            trade_list = [trade.__dict__ for trade in trades]
+            trade_df = DataFrame(trade_list)
+            trade_df = trade_df.set_index("datetime")
+            # trade_df包括字段："datetime", "gateway_name", "symbol", "exchange", "orderid", "tradeid", "direction", "offset", "price", "volume", "vt_symbol", "vt_orderid", "vt_tradeid"
+            trade_df = trade_df.rename(columns={"price": "trade_price", "volume": "trade_volume"})
+            trade_df["exchange"] = trade_df.exchange.apply(lambda x : x.value)
+            trade_df["direction"] = trade_df.direction.apply(lambda x : x.value)
+            trade_df["offset"] = trade_df.offset.apply(lambda x : x.value)
+            
+            return trade_df
 
-    def calculate_trade_result(self):
+    def calculate_trade_result(self, trade_df = None):
         """计算每笔交易盈亏"""
-        trade_result = DataFrame()
+        trade_result_df = DataFrame()
         volume_count = 0
         trade_count = 1
         trade_number_list = []
         trade_profit_list = []
-        trade_df = self.get_trade_df()
+        trade_commission_list = []
+        trade_slippage_list = []
 
-        for ix, row in trade_df.iterrows():
-            trade_number_list.append(trade_count)
+        if trade_df is None:
+            trade_df = self.get_trade_df()
+            trade_df.reset_index(inplace=True)
 
-            if row.direction == "多":
-                trade_profit_list.append(self.size * row.trade_price * row.trade_volume * (-1 - self.rate) - self.size * self.slippage)
-            else:
-                trade_profit_list.append(self.size * row.trade_price * row.trade_volume * ( 1 - self.rate) - self.size * self.slippage)
+        if trade_df is not None:
+            for ix, row in trade_df.iterrows():
+                trade_number_list.append(trade_count)
 
-            if row.offset == "开":
-                volume_count += row.trade_volume
-            else:
-                volume_count -= row.trade_volume
-
-            if volume_count == 0:
-                trade_count += 1
-
-        trade_df["trade_num"] = trade_number_list
-
-        # 处理最后为开仓的情况
-        offset_list_reverse = trade_df.offset.to_list()[::-1]
-        if offset_list_reverse[0] == "开":
-            for count, offset in enumerate(offset_list_reverse):
-                if offset == "平":
-                    break
-        else:
-            count = 0
-
-        if count == 0:
-            trade_df["trade_pro"] = trade_profit_list
-        else:
-            last_close_price = self.daily_df.close_price.to_list()[-1]          # 获取回测期最后收盘价
-            modify_list = []
-
-            for ix, row in trade_df.iloc[-count:].iterrows():
-                if row.direction == "多":
-                    modify_list.append(self.size * (last_close_price * (1 - self.rate) - row.trade_price * ( 1 + self.rate)) * row.trade_volume - 2 * self.size * self.slippage)
+                # 固定手续费模式
+                if self.rate_type == RateType.FIXED:
+                    if row.direction == "多":
+                        trade_profit_list.append(self.size * row.trade_price * row.trade_volume * -1)
+                        trade_commission_list.append(row.trade_volume * self.rate)
+                        trade_slippage_list.append(self.size * self.slippage)
+                    else:
+                        trade_profit_list.append(self.size * row.trade_price * row.trade_volume *  1)
+                        trade_commission_list.append(row.trade_volume * self.rate)
+                        trade_slippage_list.append(self.size * self.slippage)
+                
+                # 浮动手续费模式
                 else:
-                    modify_list.append(self.size * (row.trade_price * (1 - self.rate) - last_close_price * ( 1 + self.rate)) * row.trade_volume - 2 * self.size * self.slippage)
+                    if row.direction == "多":
+                        trade_profit_list.append(self.size * row.trade_price * row.trade_volume * -1)
+                        trade_commission_list.append(self.size * row.trade_price * row.trade_volume * self.rate)
+                        trade_slippage_list.append(self.size * self.slippage)
+                    else:
+                        trade_profit_list.append(self.size * row.trade_price * row.trade_volume *  1)
+                        trade_commission_list.append(self.size * row.trade_price * row.trade_volume * self.rate)
+                        trade_slippage_list.append(self.size * self.slippage)
 
-            trade_profit_list[-count:] = modify_list
-            trade_df["trade_pro"] = trade_profit_list
+                if row.offset == "开":
+                    volume_count += row.trade_volume
+                else:
+                    volume_count -= row.trade_volume
 
-        trade_result = trade_df[["trade_pro", "trade_num"]].groupby("trade_num").sum()
+                if volume_count == 0:
+                    trade_count += 1
 
-        return trade_result
+            trade_df["trade_number"] = trade_number_list
+
+            # 处理最后为开仓的情况
+            offset_list_reverse = trade_df.offset.to_list()[::-1]
+            if offset_list_reverse[0] == "开":
+                for count, offset in enumerate(offset_list_reverse):
+                    if offset == "平":
+                        break
+            else:
+                count = 0
+
+            if count == 0:
+                trade_df["trade_profit"] = trade_profit_list
+                trade_df["trade_commission"] = trade_commission_list
+                trade_df["trade_slippage"] = trade_slippage_list
+                trade_df["final_profit"] = trade_df["trade_profit"] - trade_df["trade_commission"] - trade_df["trade_slippage"]
+            else:
+                last_close_price = self.daily_df.close_price.to_list()[-1]          # 获取回测期最后收盘价
+                modify_profit_list = []
+                modify_commission_list = []
+                modify_slippage_list = []
+
+                for ix, row in trade_df.iloc[-count:].iterrows():
+                    # 固定手续费模式
+                    if self.rate_type == RateType.FIXED:
+                        if row.direction == "多":
+                            modify_profit_list.append(self.size * (last_close_price - row.trade_price)  * row.trade_volume)
+                            modify_commission_list.append(2 * row.trade_volume * self.rate)
+                            modify_slippage_list.append(2 * self.size * self.slippage)
+                        else:
+                            modify_profit_list.append(self.size * (row.trade_price - last_close_price)  * row.trade_volume)
+                            modify_commission_list.append(2 * row.trade_volume * self.rate)
+                            modify_slippage_list.append(2 * self.size * self.slippage)
+
+                    # 浮动手续费模式
+                    else:
+                        if row.direction == "多":
+                            modify_profit_list.append(self.size * (last_close_price - row.trade_price)  * row.trade_volume)
+                            modify_commission_list.append(self.size * (last_close_price + row.trade_price) * row.trade_volume * self.rate)
+                            modify_slippage_list.append(2 * self.size * self.slippage)
+                        else:
+                            modify_profit_list.append(self.size * (row.trade_price - last_close_price)  * row.trade_volume)
+                            modify_commission_list.append(self.size * (last_close_price + row.trade_price) * row.trade_volume * self.rate)
+                            modify_slippage_list.append(2 * self.size * self.slippage)
+
+                trade_profit_list[-count:] = modify_profit_list
+                trade_commission_list[-count:] = modify_commission_list
+                trade_slippage_list[-count:] = modify_slippage_list
+
+                trade_df["trade_profit"] = trade_profit_list
+                trade_df["trade_commission"] = trade_commission_list
+                trade_df["trade_slippage"] = trade_slippage_list
+                trade_df["final_profit"] = trade_df["trade_profit"] - trade_df["trade_commission"] - trade_df["trade_slippage"]
+
+            trade_result_df = trade_df[["trade_number", "trade_profit", "trade_commission", "trade_slippage", "final_profit"]].groupby("trade_number").sum()
+            trade_result_df["cumsum_profit"] = trade_result_df["trade_profit"].cumsum()
+            trade_result_df["cumsum_commission"] = trade_result_df["trade_commission"].cumsum()
+            trade_result_df["cumsum_slippage"] = trade_result_df["trade_slippage"].cumsum()
+            trade_result_df["cumsum_final"] = trade_result_df["final_profit"].cumsum()
+            trade_result_df["final_balance"] = trade_result_df["cumsum_final"] + self.capital
+            trade_result_df["start_time"] = trade_df[["trade_number", "datetime"]].groupby("trade_number").first()
+            trade_result_df["end_time"] = trade_df[["trade_number", "datetime"]].groupby("trade_number").last()
+
+            return trade_result_df
+
+    def get_bar_data(self, bar_data_list = None, window = 1, interval = Interval.MINUTE, df = True) -> Union[DataFrame, list]:
+        """通过1分钟Bar，生成指定周期的Bar数据，返回DataFrame或列表"""
+        bg = BarGenerator(window=window, interval=interval)
+
+        if bar_data_list is None:
+            if self.history_data:
+                for bar in self.history_data:
+                    bg.generate_bar(bar)
+
+                if df:
+                    return bg.get_bar_data_df()
+                else:
+                    return bg.bar_data_list
+
+        else:
+            for bar in bar_data_list:
+                bg.generate_bar(bar)
+
+            if df:
+                return bg.get_bar_data_df()
+            else:
+                return bg.bar_data_list
+
+    # 单图模式，绘制蜡烛图和资金曲线，叠加主图技术指标
+    def show_kline_balance(self):
+        if self.history_data:
+            bar_data = [bar.__dict__ for bar in self.history_data]
+            bar_data_df = DataFrame(bar_data)
+            bar_data_df = bar_data_df.set_index("datetime")
+            bar_data_df = bar_data_df[["symbol", "open_price", "high_price", "low_price", "close_price", "volume", "open_interest"]]
+
+            trade_df = self.get_trade_df()
+
+            trade_result_df = self.calculate_trade_result()
+            trade_result_df.set_index("end_time", inplace=True)
+
+            trade_data_df = merge(trade_df, trade_result_df.final_balance, how="left", left_index=True, right_index=True)
+            
+            kline_chart = MyPyecharts(bar_data=bar_data_df, trade_data=trade_data_df, grid=False, grid_quantity=0)
+            kline_chart.kline()
+            kline_chart.overlap_trade()
+            kline_chart.overlap_balance()
+            kline_chart.overlap_sma([5, 10, 20, 60])
+            kline_chart.overlap_boll(timeperiod=14, nbdevup=2, nbdevdn=2, matype=0)
+            kline_chart.grid_graph()
+
+            # 生成文件路径
+            home_path = Path.home()
+            temp_name = "Desktop"
+            temp_path = home_path.joinpath(temp_name)
+            filename  = f"{self.symbol} # {self.strategy_class.__name__} # {self.start.date()} ~ {self.end.date()} # {self.strategy.get_parameters()} # kline_balance.html"
+            filepath  = temp_path.joinpath(filename)
+
+            kline_chart.render(filepath)
+
+    # 层叠多图模式，绘制蜡烛图，叠加主、副图技术指标
+    def show_grid_chart(self):
+        if self.history_data:
+            bar_data = [bar.__dict__ for bar in self.history_data]
+            bar_data_df = DataFrame(bar_data)
+            bar_data_df = bar_data_df.set_index("datetime")
+            bar_data_df = bar_data_df[["symbol", "open_price", "high_price", "low_price", "close_price", "volume", "open_interest"]]
+
+            trade_df = self.get_trade_df()
+
+            trade_result_df = self.calculate_trade_result()
+            trade_result_df.set_index("end_time", inplace=True)
+
+            trade_data_df = merge(trade_df, trade_result_df.final_balance, how="left", left_index=True, right_index=True)
+            
+            grid_chart = MyPyecharts(bar_data=bar_data_df, trade_data=trade_data_df, grid=True, grid_quantity=1)
+            grid_chart.kline()
+            grid_chart.overlap_trade()
+            grid_chart.overlap_sma([5, 10, 20, 60])
+            grid_chart.overlap_boll(timeperiod=14, nbdevup=2, nbdevdn=2, matype=0)
+            grid_chart.grid_graph(grid_graph_1 = grid_chart.grid_macd(fastperiod=12, slowperiod=26, signalperiod=9, grid_index=1))
+
+            # 生成文件路径
+            home_path = Path.home()
+            temp_name = "Desktop"
+            temp_path = home_path.joinpath(temp_name)
+            filename  = f"{self.symbol} # {self.strategy_class.__name__} # {self.start.date()} ~ {self.end.date()} # {self.strategy.get_parameters()} # grid_chart.html"
+            filepath  = temp_path.joinpath(filename)
+
+            grid_chart.render(filepath)
 
 
 class DailyResult:
@@ -1268,6 +1443,7 @@ class DailyResult:
         pre_close: float,
         start_pos: float,
         size: int,
+        rate_type: RateType,
         rate: float,
         slippage: float,
         inverse: bool
@@ -1305,18 +1481,21 @@ class DailyResult:
             # For normal contract
             if not inverse:
                 turnover = trade.volume * size * trade.price
-                self.trading_pnl += pos_change * \
-                    (self.close_price - trade.price) * size
+                self.trading_pnl += pos_change * (self.close_price - trade.price) * size
+                if rate_type == RateType.FIXED:
+                    self.commission += trade.volume * rate
                 self.slippage += trade.volume * size * slippage
             # For crypto currency inverse contract
             else:
                 turnover = trade.volume * size / trade.price
-                self.trading_pnl += pos_change * \
-                    (1 / trade.price - 1 / self.close_price) * size
+                self.trading_pnl += pos_change * (1 / trade.price - 1 / self.close_price) * size
+                if rate_type == RateType.FIXED:
+                    self.commission += trade.volume * rate
                 self.slippage += trade.volume * size * slippage / (trade.price ** 2)
 
             self.turnover += turnover
-            self.commission += turnover * rate
+            if rate_type == RateType.FLOAT:
+                self.commission += turnover * rate
 
         # Net pnl takes account of commission and slippage cost
         self.total_pnl = self.trading_pnl + self.holding_pnl
@@ -1330,6 +1509,7 @@ def optimize(
     vt_symbol: str,
     interval: Interval,
     start: datetime,
+    rate_type: RateType,
     rate: float,
     slippage: float,
     size: float,
@@ -1348,6 +1528,7 @@ def optimize(
         vt_symbol=vt_symbol,
         interval=interval,
         start=start,
+        rate_type=rate_type,
         rate=rate,
         slippage=slippage,
         size=size,
@@ -1380,6 +1561,7 @@ def _ga_optimize(parameter_values: tuple):
         ga_vt_symbol,
         ga_interval,
         ga_start,
+        ga_rate_type,
         ga_rate,
         ga_slippage,
         ga_size,
@@ -1433,6 +1615,7 @@ ga_setting = None
 ga_vt_symbol = None
 ga_interval = None
 ga_start = None
+ga_rate_type = None
 ga_rate = None
 ga_slippage = None
 ga_size = None

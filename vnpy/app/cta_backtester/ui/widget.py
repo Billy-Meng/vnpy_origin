@@ -5,7 +5,7 @@ from tzlocal import get_localzone
 import numpy as np
 import pyqtgraph as pg
 
-from vnpy.trader.constant import Interval, Direction, Offset
+from vnpy.trader.constant import Interval, Direction, Offset, RateType
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.ui import QtCore, QtWidgets, QtGui
 from vnpy.trader.ui.widget import BaseMonitor, BaseCell, DirectionCell, EnumCell
@@ -88,6 +88,10 @@ class BacktesterManager(QtWidgets.QWidget):
             QtCore.QDate.currentDate()
         )
 
+        self.rate_type_combo = QtWidgets.QComboBox()
+        for rate_type in RateType:
+            self.rate_type_combo.addItem(rate_type.value)
+
         self.rate_line = QtWidgets.QLineEdit("0.000025")
         self.slippage_line = QtWidgets.QLineEdit("0.2")
         self.size_line = QtWidgets.QLineEdit("300")
@@ -152,7 +156,8 @@ class BacktesterManager(QtWidgets.QWidget):
         form.addRow("K线周期", self.interval_combo)
         form.addRow("开始日期", self.start_date_edit)
         form.addRow("结束日期", self.end_date_edit)
-        form.addRow("手续费率", self.rate_line)
+        form.addRow("手续费模式", self.rate_type_combo)
+        form.addRow("手续费/率", self.rate_line)
         form.addRow("交易滑点", self.slippage_line)
         form.addRow("合约乘数", self.size_line)
         form.addRow("价格跳动", self.pricetick_line)
@@ -239,6 +244,11 @@ class BacktesterManager(QtWidgets.QWidget):
             self.interval_combo.findText(setting["interval"])
         )
 
+        self.start_date_edit.setDate(datetime.strptime(setting["start_dt"], "%Y-%m-%d"))
+
+        self.rate_type_combo.setCurrentIndex(
+            self.rate_type_combo.findText(setting["rate_type"])
+        )
         self.rate_line.setText(str(setting["rate"]))
         self.slippage_line.setText(str(setting["slippage"]))
         self.size_line.setText(str(setting["size"]))
@@ -300,6 +310,7 @@ class BacktesterManager(QtWidgets.QWidget):
         interval = self.interval_combo.currentText()
         start = self.start_date_edit.date().toPyDate()
         end = self.end_date_edit.date().toPyDate()
+        rate_type = self.rate_type_combo.currentText()
         rate = float(self.rate_line.text())
         slippage = float(self.slippage_line.text())
         size = float(self.size_line.text())
@@ -316,6 +327,8 @@ class BacktesterManager(QtWidgets.QWidget):
             "class_name": class_name,
             "vt_symbol": vt_symbol,
             "interval": interval,
+            "start_dt": start.strftime("%Y-%m-%d"),
+            "rate_type": rate_type,
             "rate": rate,
             "slippage": slippage,
             "size": size,
@@ -341,6 +354,7 @@ class BacktesterManager(QtWidgets.QWidget):
             interval,
             start,
             end,
+            rate_type,
             rate,
             slippage,
             size,
@@ -371,6 +385,7 @@ class BacktesterManager(QtWidgets.QWidget):
         interval = self.interval_combo.currentText()
         start = self.start_date_edit.date().toPyDate()
         end = self.end_date_edit.date().toPyDate()
+        rate_type = self.rate_type_combo.currentText()
         rate = float(self.rate_line.text())
         slippage = float(self.slippage_line.text())
         size = float(self.size_line.text())
@@ -397,6 +412,7 @@ class BacktesterManager(QtWidgets.QWidget):
             interval,
             start,
             end,
+            rate_type,
             rate,
             slippage,
             size,
@@ -413,7 +429,7 @@ class BacktesterManager(QtWidgets.QWidget):
         """"""
         vt_symbol = self.symbol_line.text()
         interval = self.interval_combo.currentText()
-        start_date = self.start_date_edit.date()
+        start_date = datetime.strptime(self.start_date_edit, "%Y-%m-%d")
         end_date = self.end_date_edit.date()
 
         start = datetime(
@@ -549,6 +565,11 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "total_profit": "盈利总金额",
         "total_loss": "亏损总金额",
         "profit_loss_ratio": "盈亏比",
+        "trade_profit": "交易总盈利",
+        "trade_commission": "交易手续费",
+        "trade_slippage": "交易滑点费",
+        "final_profit": "交易净盈利",
+        "final_balance": "剩余总资金"
     }
 
     def __init__(self):
@@ -611,6 +632,11 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         data["total_profit"] = f"{data['total_profit']:,.2f}"
         data["total_loss"] = f"{data['total_loss']:,.2f}"
         data["profit_loss_ratio"] = f"{data['profit_loss_ratio']:,.2f}"
+        data["trade_profit"] = f"{data['trade_profit']:,.2f}"
+        data["trade_commission"] = f"{data['trade_commission']:,.2f}"
+        data["trade_slippage"] = f"{data['trade_slippage']:,.2f}"
+        data["final_profit"] = f"{data['final_profit']:,.2f}"
+        data["final_balance"] = f"{data['final_balance']:,.2f}"
 
         for key, cell in self.cells.items():
             value = data.get(key, "")

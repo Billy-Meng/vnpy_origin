@@ -135,6 +135,9 @@ class Exchange(Enum):
     # Special Function
     LOCAL = "LOCAL"         # For local generated data
 
+    # 香港交易所
+    HKEX = "HKEX"
+
 
 class Currency(Enum):
     """
@@ -155,3 +158,11 @@ class Interval(Enum):
     HOUR = "1h"
     DAILY = "d"
     WEEKLY = "w"
+
+
+class RateType(Enum):
+    """
+    手续费模式
+    """
+    FLOAT = "浮动手续费"
+    FIXED = "固定手续费"

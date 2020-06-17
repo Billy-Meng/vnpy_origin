@@ -13,6 +13,7 @@ from decimal import Decimal
 from math import floor, ceil
 
 import numpy as np
+import pandas as pd
 import talib
 
 from .object import BarData, TickData
@@ -203,6 +204,8 @@ class BarGenerator:
         self.last_bar: BarData = None
         self.window: int = window
         self.on_window_bar: Callable = on_window_bar
+
+        self.bar_data_list = []      # 生成指定周期的Bar缓存列表
 
     def update_tick(self, tick: TickData) -> None:
         """
@@ -456,6 +459,107 @@ class BarGenerator:
         # Cache last bar object
         self.last_bar = bar
 
+    def generate_bar(self, bar: BarData) -> None:
+        """
+        通过一分钟的Bar，生成各级别周期Bar，并缓存在列表中
+        """
+        # If not inited, creaate window bar object
+        if not self.window_bar:
+            # Generate timestamp for bar data
+            if self.interval == Interval.MINUTE:
+                dt = bar.datetime.replace(second=0, microsecond=0)
+
+            elif self.interval == Interval.HOUR:
+                dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
+
+            elif self.interval == Interval.DAILY:
+                dt = bar.datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            self.window_bar = BarData(
+                symbol=bar.symbol,
+                exchange=bar.exchange,
+                interval=self.interval,
+                datetime=dt,
+                gateway_name=bar.gateway_name,
+                open_price=bar.open_price,
+                high_price=bar.high_price,
+                low_price=bar.low_price
+            )
+
+        # Otherwise, update high/low price into window bar
+        else:
+            self.window_bar.high_price = max(
+                self.window_bar.high_price, bar.high_price)
+            self.window_bar.low_price = min(
+                self.window_bar.low_price, bar.low_price)
+
+        # Update close price/volume into window bar
+        self.window_bar.close_price = bar.close_price
+        self.window_bar.volume += int(bar.volume)
+        self.window_bar.open_interest = bar.open_interest
+
+
+        # Check if window bar completed
+        finished = False
+
+        # X分钟K线合成
+        if self.interval == Interval.MINUTE:
+            # *****************************************************************************************************
+            # 官方版本合成方式。整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
+            if not (bar.datetime.minute + 1) % self.window:
+                finished = True            
+            # *****************************************************************************************************
+            # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
+            # if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+            #     if self.window == 1:
+            #             finished = True
+                
+            #     else:
+            #         self.interval_count += 1
+            #         if not self.interval_count % self.window:
+            #             finished = True
+            #             self.interval_count = 0
+            # *****************************************************************************************************
+            
+        # X小时K线合成，计数切分法进行N小时K线合成，可以合成任意小时K线
+        elif self.interval == Interval.HOUR:
+            if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
+                # 1-hour bar
+                if self.window == 1:
+                    finished = True
+                # x-hour bar
+                else:
+                    self.interval_count += 1
+
+                    if not self.interval_count % self.window:
+                        finished = True
+                        self.interval_count = 0
+
+        # 日K线合成
+        elif self.interval == Interval.DAILY:
+            # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
+            if self.last_bar and bar.datetime.date() != ArrayManager().TrueDate(bar):
+                finished = True
+
+            # 针对每天开盘和收盘为同一天的日K线合成
+            # if self.last_bar and bar.datetime.day != self.last_bar.datetime.day:
+            #     finished = True
+
+        if finished:
+            self.bar_data_list.append(self.window_bar)
+            self.window_bar = None
+
+        # Cache last bar object
+        self.last_bar = bar
+
+    def get_bar_data_df(self):
+        bar_data = [bar.__dict__ for bar in self.bar_data_list]
+        bar_data_df = pd.DataFrame(bar_data)
+        bar_data_df = bar_data_df.set_index("datetime")
+        bar_data_df = bar_data_df[["symbol", "open_price", "high_price", "low_price", "close_price", "volume", "open_interest"]]
+
+        return bar_data_df
+
     def generate(self) -> None:
         """
         Generate the bar data and call callback immediately.
@@ -616,7 +720,7 @@ class ArrayManager(object):
         """
         Parabolic SAR.  抛物线指标：抛物线转向也称停损点转向，是利用抛物线方式，随时调整停损点位置以观察买卖点。由于停损点（又称转向点SAR）以弧形的方式移动，故称之为抛物线转向指标。
         """
-        result = talib.SAR(self.hith, self.low, acceleration=n, maximum=maximum)
+        result = talib.SAR(self.high, self.low, acceleration=acceleration, maximum=maximum)
         if array:
             return result
         return result[-1]
