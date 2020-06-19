@@ -21,7 +21,7 @@ from vnpy.trader.constant import (Direction, Offset, Exchange,
 from vnpy.trader.database import database_manager
 from vnpy.trader.object import OrderData, TradeData, BarData, TickData
 from vnpy.trader.utility import round_to, BarGenerator
-from vnpy.chart.my_pyecharts import MyPyecharts
+from vnpy.chart.my_pyecharts import MyPyecharts, Tab, Line, Bar, Grid, EffectScatter, opts, JsCode, Page
 
 from .base import (
     BacktestingMode,
@@ -1347,7 +1347,7 @@ class BacktestingEngine:
                 return bg.bar_data_list
 
     # 单图模式，绘制蜡烛图和资金曲线，叠加主图技术指标
-    def show_kline_balance(self):
+    def draw_kline_chart(self):
         if self.history_data:
             bar_data = [bar.__dict__ for bar in self.history_data]
             bar_data_df = DataFrame(bar_data)
@@ -1357,29 +1357,22 @@ class BacktestingEngine:
             trade_df = self.get_trade_df()
 
             trade_result_df = self.calculate_trade_result()
-            trade_result_df.set_index("end_time", inplace=True)
+            trade_result_df.set_index("start_time", inplace=True)
 
             trade_data_df = merge(trade_df, trade_result_df.final_balance, how="left", left_index=True, right_index=True)
             
-            kline_chart = MyPyecharts(bar_data=bar_data_df, trade_data=trade_data_df, grid=False, grid_quantity=0)
+            kline_chart = MyPyecharts(bar_data=bar_data_df, trade_data=trade_data_df, grid=False, grid_quantity=0, chart_id=20)
             kline_chart.kline()
             kline_chart.overlap_trade()
-            kline_chart.overlap_balance()
+            kline_chart.overlap_balance(capital=self.capital)
             kline_chart.overlap_sma([5, 10, 20, 60])
             kline_chart.overlap_boll(timeperiod=14, nbdevup=2, nbdevdn=2, matype=0)
-            kline_chart.grid_graph()
+            chart = kline_chart.grid_graph()
 
-            # 生成文件路径
-            home_path = Path.home()
-            temp_name = "Desktop"
-            temp_path = home_path.joinpath(temp_name)
-            filename  = f"{self.symbol} # {self.strategy_class.__name__} # {self.start.date()} ~ {self.end.date()} # {self.strategy.get_parameters()} # kline_balance.html"
-            filepath  = temp_path.joinpath(filename)
-
-            kline_chart.render(filepath)
+            return chart
 
     # 层叠多图模式，绘制蜡烛图，叠加主、副图技术指标
-    def show_grid_chart(self):
+    def draw_grid_chart(self):
         if self.history_data:
             bar_data = [bar.__dict__ for bar in self.history_data]
             bar_data_df = DataFrame(bar_data)
@@ -1393,21 +1386,286 @@ class BacktestingEngine:
 
             trade_data_df = merge(trade_df, trade_result_df.final_balance, how="left", left_index=True, right_index=True)
             
-            grid_chart = MyPyecharts(bar_data=bar_data_df, trade_data=trade_data_df, grid=True, grid_quantity=1)
+            grid_chart = MyPyecharts(bar_data=bar_data_df, trade_data=trade_data_df, grid=True, grid_quantity=1, chart_id=30)
             grid_chart.kline()
             grid_chart.overlap_trade()
             grid_chart.overlap_sma([5, 10, 20, 60])
             grid_chart.overlap_boll(timeperiod=14, nbdevup=2, nbdevdn=2, matype=0)
-            grid_chart.grid_graph(grid_graph_1 = grid_chart.grid_macd(fastperiod=12, slowperiod=26, signalperiod=9, grid_index=1))
+            chart = grid_chart.grid_graph(grid_graph_1 = grid_chart.grid_macd(fastperiod=12, slowperiod=26, signalperiod=9, grid_index=1))
 
-            # 生成文件路径
-            home_path = Path.home()
-            temp_name = "Desktop"
-            temp_path = home_path.joinpath(temp_name)
-            filename  = f"{self.symbol} # {self.strategy_class.__name__} # {self.start.date()} ~ {self.end.date()} # {self.strategy.get_parameters()} # grid_chart.html"
-            filepath  = temp_path.joinpath(filename)
+            return chart
 
-            grid_chart.render(filepath)
+    # 收益曲线，每日净盈亏，资金回测曲线
+    def daily_grid_chart(self, daily_df=None):
+        if daily_df is None:
+            daily_df = self.daily_df
+
+        if daily_df is not None:
+            balance_line = (
+                Line()
+                .add_xaxis(xaxis_data = list(daily_df.index))
+                .add_yaxis(
+                    series_name = "总收益",
+                    y_axis = daily_df.balance.apply(lambda x: round(x, 2)).values.tolist(),
+                    label_opts = opts.LabelOpts(is_show=False),
+                    is_symbol_show = False,
+                    linestyle_opts = opts.LineStyleOpts(width=3, opacity=1, type_="solid", color="#8A0000"),
+                ) 
+                .set_global_opts(
+                    title_opts=opts.TitleOpts(title="总体收益曲线", pos_top="0%"),
+
+                    # 多图组合
+                    datazoom_opts=[
+                        opts.DataZoomOpts(
+                            is_show=False,
+                            type_="inside",
+                            xaxis_index=[0, 0],
+                            range_start=0,
+                            range_end=100,
+                        ),
+                        opts.DataZoomOpts(
+                            is_show=False,
+                            type_="inside",
+                            xaxis_index=[0, 1],
+                            range_start=0,
+                            range_end=100,
+                        ),
+                        opts.DataZoomOpts(
+                            is_show=True,
+                            type_="slider",
+                            xaxis_index=[0, 2],
+                            pos_top="96%",
+                            range_start=0,
+                            range_end=100,
+                        ),
+                    ],
+                        
+                    xaxis_opts = opts.AxisOpts(
+                        is_scale=True,
+                        type_="category",
+                        boundary_gap=False,
+                        axisline_opts=opts.AxisLineOpts(is_on_zero=False),
+                        splitline_opts=opts.SplitLineOpts(is_show=False),
+                        split_number=20,
+                        min_="dataMin",
+                        max_="dataMax",
+                    ),
+
+                    yaxis_opts = opts.AxisOpts(
+                        is_scale = True,
+                        splitarea_opts = opts.SplitAreaOpts(is_show = True, areastyle_opts = opts.AreaStyleOpts(opacity=0.8)),
+                    ),
+                    
+                    brush_opts = opts.BrushOpts(
+                        tool_box = ["rect", "polygon", "keep","lineX","lineY", "clear"],
+                        x_axis_index = "all",
+                        brush_link = "all",
+                        out_of_brush = {"colorAlpha": 0.1},
+                        brush_type = "lineX",
+                    ),
+                    
+                    tooltip_opts = opts.TooltipOpts(
+                        is_show = True,
+                        trigger = "axis",
+                        trigger_on = "mousemove",
+                        axis_pointer_type = "cross",
+                        background_color = "rgba(245, 245, 245, 0.8)",
+                        border_width = 1,
+                        border_color = "#ccc",
+                        textstyle_opts = opts.TextStyleOpts(color = "#000", font_size = 12, font_family = "Arial", font_weight = "lighter", ),
+                    ),
+
+                    toolbox_opts = opts.ToolboxOpts(orient = "horizontal", pos_left = "right", ),
+                    
+                    legend_opts = opts.LegendOpts(is_show = True, type_ = "scroll", selected_mode = "multiple", 
+                                                pos_left = "40%", pos_top = "0%", legend_icon = "roundRect",),
+
+                    # 多图的 axis 连在一块
+                    axispointer_opts = opts.AxisPointerOpts(
+                        is_show = True,
+                        link=[{"xAxisIndex": "all"}],
+                        label=opts.LabelOpts(background_color="#777"),
+                    ),
+                )
+            )
+
+            net_pnl_bar = (
+                Bar()
+                .add_xaxis(xaxis_data = list(daily_df.index))
+                .add_yaxis(
+                    series_name = "净盈亏",
+                    y_axis = daily_df.net_pnl.apply(lambda x: round(x, 2)).values.tolist(),
+                    label_opts = opts.LabelOpts(is_show=False),
+                    itemstyle_opts = opts.ItemStyleOpts(
+                        color=JsCode(
+                            """
+                            function(params) {
+                                var colorList;
+                                if (params.data >= 0) {
+                                    colorList = '#ef232a';
+                                } else {
+                                    colorList = '#14b143';
+                                }
+                                return colorList;
+                            }
+                            """
+                        ),
+                        opacity=1,
+                    ),
+                )
+                .set_global_opts(
+                    title_opts=opts.TitleOpts(title="每日净盈亏分布", pos_top="34.5%"),
+                    legend_opts = opts.LegendOpts(pos_left = "45%", pos_top = "0%"),
+                    xaxis_opts=opts.AxisOpts(
+                        type_="category",
+                        axislabel_opts=opts.LabelOpts(is_show=False),
+                    ),
+                    yaxis_opts=opts.AxisOpts(
+                        axisline_opts=opts.AxisLineOpts(is_on_zero=False),
+                        axistick_opts=opts.AxisTickOpts(is_show=False),
+                        splitline_opts=opts.SplitLineOpts(is_show=False),
+                        axislabel_opts=opts.LabelOpts(is_show=True),
+                    ),
+                )
+            )
+
+            drawdown_line = (
+                Line()
+                .add_xaxis(xaxis_data = list(daily_df.index))
+                .add_yaxis(
+                    series_name = "回撤资金",
+                    y_axis = daily_df.drawdown.apply(lambda x: round(x, 2)).values.tolist(),
+                    label_opts = opts.LabelOpts(is_show=False),
+                    is_symbol_show = False,
+                    linestyle_opts = opts.LineStyleOpts(width=2, opacity=1, type_="solid", color="#8A0000"),
+                    areastyle_opts=opts.AreaStyleOpts(opacity=0.5, color="#8A0000"),        # 区域填充样式配置项
+                ) 
+                .set_global_opts(
+                    title_opts=opts.TitleOpts(title="资金回撤曲线", pos_top="66%"),
+                    legend_opts = opts.LegendOpts(pos_left = "50%", pos_top = "0%"),
+                    xaxis_opts=opts.AxisOpts(
+                        type_="category",
+                        axislabel_opts=opts.LabelOpts(is_show=False),
+                    ),
+                    yaxis_opts=opts.AxisOpts(
+                        axisline_opts=opts.AxisLineOpts(is_on_zero=False),
+                        axistick_opts=opts.AxisTickOpts(is_show=False),
+                        splitline_opts=opts.SplitLineOpts(is_show=False),
+                        axislabel_opts=opts.LabelOpts(is_show=True),
+                    ),
+                )
+            )
+
+            grid_chart = (
+                Grid(init_opts=opts.InitOpts(width="1900px", height="900px", chart_id="1"))
+                .add(balance_line, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="5%", height="27%"))
+                .add(net_pnl_bar, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="38%", height="27%"))
+                .add(drawdown_line, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="69%", height="27%"))
+            )
+
+            return grid_chart
+
+    # 每笔交易盈亏分布，每日交易盈亏分布
+    def trade_grid_chart(self, trade_df=None, daily_df=None):
+        if trade_df is None or daily_df is None:
+            trade_df = self.calculate_trade_result()
+            daily_df = self.daily_df
+
+        if trade_df is not None and daily_df is not None:
+            trade_scatter = (
+                EffectScatter()
+                .add_xaxis(xaxis_data = trade_df.end_time.values.tolist())
+                .add_yaxis(
+                    series_name = "每笔盈亏",
+                    y_axis = trade_df.final_profit.apply(lambda x: round(x, 2)).values.tolist(),
+                    symbol_size = 12,
+                    label_opts = opts.LabelOpts(is_show=False),
+                ) 
+                .set_global_opts(
+                    title_opts=opts.TitleOpts(title="每笔交易盈亏分布", pos_top="1%"),
+                    datazoom_opts=[
+                        opts.DataZoomOpts(
+                            is_show=False,
+                            type_="inside",
+                            xaxis_index=[0, 0],
+                            range_start=0,
+                            range_end=100,
+                        ),
+                        opts.DataZoomOpts(
+                            is_show=False,
+                            type_="inside",
+                            xaxis_index=[0, 1],
+                            range_start=0,
+                            range_end=100,
+                        ),
+                    ],
+                    
+                    brush_opts = opts.BrushOpts(
+                        tool_box = ["rect", "polygon", "keep","lineX","lineY", "clear"],
+                        x_axis_index = "all",
+                        brush_link = "all",
+                        out_of_brush = {"colorAlpha": 0.1},
+                        brush_type = "lineX",
+                    ),
+                    
+                    tooltip_opts = opts.TooltipOpts(
+                        is_show = True,
+                        trigger = "axis",
+                        axis_pointer_type = "cross",
+                        background_color = "rgba(245, 245, 245, 0.8)",
+                        border_width = 1,
+                        border_color = "#ccc",
+                        textstyle_opts = opts.TextStyleOpts(color = "#000", font_size = 12, font_family = "Arial", font_weight = "lighter", ),
+                    ),
+
+                    toolbox_opts = opts.ToolboxOpts(orient = "horizontal", pos_left = "right", ),
+                    
+                    legend_opts = opts.LegendOpts(is_show = True, type_ = "scroll", selected_mode = "multiple", 
+                                                pos_left = "40%", pos_top = "0%", legend_icon = "roundRect",),
+                )
+            )
+
+            daily_scatter = (
+                EffectScatter()
+                .add_xaxis(xaxis_data = list(daily_df.index))
+                .add_yaxis(
+                    series_name = "每日盈亏",
+                    y_axis = daily_df.net_pnl.apply(lambda x: round(x, 2)).values.tolist(),
+                    symbol_size = 12,
+                    label_opts = opts.LabelOpts(is_show=False),
+                ) 
+                .set_global_opts(
+                    title_opts=opts.TitleOpts(title="每日交易盈亏分布", pos_top="49%"),
+                    legend_opts = opts.LegendOpts(is_show = True, type_ = "scroll", selected_mode = "multiple", 
+                                                  pos_left = "50%", pos_top = "0%", legend_icon = "roundRect",),
+                )
+            )
+
+            grid_chart = (
+                Grid(init_opts=opts.InitOpts(width="1900px", height="900px", chart_id="10"))
+                .add(trade_scatter, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="5%", height="40%"))
+                .add(daily_scatter, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="55%", height="40%"))
+            )
+
+            return grid_chart
+
+    def save_tab_chart(self):
+        page_title = f"{self.symbol}#{self.strategy_class.__name__}"
+        tab_chart = Tab(page_title=page_title)
+        tab_chart.add(self.daily_grid_chart(), "日收益分析图")
+        tab_chart.add(self.trade_grid_chart(), "交易盈亏分布图")
+        tab_chart.add(self.draw_kline_chart(), "K线 + 资金曲线 + 成交记录")
+        tab_chart.add(self.draw_grid_chart(), "K线 + 技术指标 + 成交记录")
+
+        # 生成文件保存路径
+        home_path = Path.home()
+        temp_name = "Desktop"
+        temp_path = home_path.joinpath(temp_name)
+        filename  = f"{self.symbol} # {self.strategy_class.__name__} # {self.start.date()} ~ {self.end.date()} # {self.strategy.get_parameters()} # tab_chart.html".replace(":","：")
+        filepath  = temp_path.joinpath(filename)
+
+        tab_chart.render(filepath)
+
 
 
 class DailyResult:

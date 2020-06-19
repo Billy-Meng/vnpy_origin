@@ -3,21 +3,23 @@ import numpy as np
 import pandas as pd
 import talib as ta
 
+from pyecharts.commons.utils import JsCode
 from pyecharts import options as opts
 from pyecharts.globals import ThemeType, SymbolType
-from pyecharts.commons.utils import JsCode
-from pyecharts.charts import Bar, Kline, Line, Grid, EffectScatter
+from pyecharts.charts import Bar, Kline, Line, Grid, EffectScatter, Tab, Scatter, Page
 
 class MyPyecharts():
 
     kline_chart = None
     grid_chart = None
     
-    def __init__(self, bar_data, trade_data, grid=True, grid_quantity=0):
+    def __init__(self, bar_data, trade_data, daily_df=None, grid=True, grid_quantity=0, chart_id=20):
         self.bar_data = bar_data
         self.trade_data = trade_data
+        self.daily_df = daily_df
         self.grid = grid
         self.grid_quantity = grid_quantity
+        self.chart_id = chart_id
 
     def kline(self):
         """"""
@@ -27,7 +29,7 @@ class MyPyecharts():
             series_name=f"{self.bar_data.symbol[0]}",
             yaxis_index = 0,
             y_axis=self.bar_data[["open_price", "close_price", "low_price", "high_price"]].values.tolist(),
-            itemstyle_opts=opts.ItemStyleOpts(color="#ec0000", color0="#00da3c", border_color="#8A0000", border_color0="#008F28"),
+            itemstyle_opts=opts.ItemStyleOpts(color="#ec0000", color0="#00da3c", border_color="#8A0000", border_color0="#008F28", opacity=0.8),
         )
 
         if self.grid == True and self.grid_quantity == 1:
@@ -85,10 +87,10 @@ class MyPyecharts():
                     textstyle_opts = opts.TextStyleOpts(color = "#000", font_size = 12, font_family = "Arial", font_weight = "lighter", ),
                 ),
 
-                toolbox_opts = opts.ToolboxOpts(orient = "horizontal", pos_left = "right", ),
+                toolbox_opts = opts.ToolboxOpts(orient = "horizontal", pos_left = "right", pos_top = "0%"),
                 
                 legend_opts = opts.LegendOpts(is_show = True, type_ = "scroll", selected_mode = "multiple", 
-                                            pos_left = "right", pos_top = "5%", legend_icon = "roundRect",),
+                                            pos_left = "left", pos_top = "0%", legend_icon = "roundRect",),
 
                 # 添加主标题和副标题
                 # title_opts = opts.TitleOpts(title = "主标题", subtitle = "  副标题"),  
@@ -163,10 +165,10 @@ class MyPyecharts():
                     textstyle_opts = opts.TextStyleOpts(color = "#000", font_size = 12, font_family = "Arial", font_weight = "lighter", ),
                 ),
 
-                toolbox_opts = opts.ToolboxOpts(orient = "horizontal", pos_left = "right", ),
+                toolbox_opts = opts.ToolboxOpts(orient = "horizontal", pos_left = "right", pos_top = "0%"),
                 
                 legend_opts = opts.LegendOpts(is_show = True, type_ = "scroll", selected_mode = "multiple", 
-                                            pos_left = "right", pos_top = "5%", legend_icon = "roundRect",),
+                                            pos_left = "left", pos_top = "0%", legend_icon = "roundRect",),
 
                 # 添加主标题和副标题
                 # title_opts = opts.TitleOpts(title = "主标题", subtitle = "  副标题"),  
@@ -223,10 +225,10 @@ class MyPyecharts():
                     textstyle_opts = opts.TextStyleOpts(color = "#000", font_size = 12, font_family = "Arial", font_weight = "lighter", ),
                 ),
 
-                toolbox_opts = opts.ToolboxOpts(orient = "horizontal", pos_left = "right", ),
+                toolbox_opts = opts.ToolboxOpts(orient = "horizontal", pos_left = "right", pos_top = "0%"),
                 
                 legend_opts = opts.LegendOpts(is_show = True, type_ = "scroll", selected_mode = "multiple", 
-                                            pos_left = "right", pos_top = "5%", legend_icon = "roundRect",),
+                                            pos_left = "left", pos_top = "0%", legend_icon = "roundRect",),
 
                 # 添加主标题和副标题
                 # title_opts = opts.TitleOpts(title = "主标题", subtitle = "  副标题"),  
@@ -313,16 +315,16 @@ class MyPyecharts():
         self.kline_chart.overlap(trade_short)
         self.kline_chart.overlap(trade_cover)
 
-    def overlap_balance(self):
+    def overlap_balance(self, capital=100000):
         # 在K线图绘制收益曲线(注：kline的datazoom_opts为单图形模式)
 
         if self.grid == True:
             print("grid应为False！")
             return 
 
-        bar_data = pd.merge(self.bar_data, self.trade_data.final_balance, how="left", left_index=True, right_index=True)
+        bar_data = pd.merge(self.bar_data, self.trade_data.final_balance, how="outer", left_index=True, right_index=True)
         bar_data["final_balance"].fillna(method="ffill", inplace=True)
-        bar_data["final_balance"].fillna(method="bfill", inplace=True)
+        bar_data["final_balance"].fillna(value=capital, inplace=True)
 
         self.kline_chart.extend_axis(yaxis = opts.AxisOpts(position="right"))
 
@@ -331,12 +333,11 @@ class MyPyecharts():
             .add_xaxis(xaxis_data = list(bar_data.index))
             .add_yaxis(
                 series_name = "Balance",
-                y_axis = bar_data.final_balance.values.tolist(),
+                y_axis = bar_data.final_balance.apply(lambda x: round(x, 2)).values.tolist(),
                 yaxis_index = 1,
                 label_opts = opts.LabelOpts(is_show=False),
                 is_symbol_show = False,
-                tooltip_opts = opts.TooltipOpts(is_show=False),
-                linestyle_opts = opts.LineStyleOpts(width=2, opacity=0.5, type_="solid", color="#8A0000"),
+                linestyle_opts = opts.LineStyleOpts(width=3, opacity=0.5, type_="solid", color="#8A0000"),
             ) 
         )
 
@@ -528,7 +529,7 @@ class MyPyecharts():
 
     def grid_graph(self, grid_graph_1 = None, grid_graph_2 = None):
         # 创建组合图表画布对象
-        self.grid_chart = Grid(init_opts=opts.InitOpts(width="1900px", height="900px"))
+        self.grid_chart = Grid(init_opts=opts.InitOpts(width="1900px", height="900px", chart_id=self.chart_id))
 
         if self.grid_quantity == 0:
             self.grid_chart.add(
@@ -536,6 +537,7 @@ class MyPyecharts():
                 grid_opts = opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="10%", height="85%"),
                 is_control_axis_index = True
             )
+            return self.grid_chart
 
         elif self.grid_quantity == 1:
             self.grid_chart.add(
@@ -548,6 +550,7 @@ class MyPyecharts():
                 grid_index = 1,
                 grid_opts = opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="75%", height="20%"),
             )
+            return self.grid_chart
 
         elif self.grid_quantity == 2:
             self.grid_chart.add(
@@ -565,12 +568,9 @@ class MyPyecharts():
                 grid_index = 2,
                 grid_opts = opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="77.5%", height="17.5%"),
             )
+            return self.grid_chart
 
 
     def render(self, html_name="render.html"):
         return self.grid_chart.render(html_name)
-
-
-
-
 
