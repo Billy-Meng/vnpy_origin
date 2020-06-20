@@ -13,10 +13,9 @@ class MyPyecharts():
     kline_chart = None
     grid_chart = None
     
-    def __init__(self, bar_data, trade_data, daily_df=None, grid=True, grid_quantity=0, chart_id=20):
+    def __init__(self, bar_data, trade_data, grid=True, grid_quantity=0, chart_id=20):
         self.bar_data = bar_data
         self.trade_data = trade_data
-        self.daily_df = daily_df
         self.grid = grid
         self.grid_quantity = grid_quantity
         self.chart_id = chart_id
@@ -322,9 +321,9 @@ class MyPyecharts():
             print("grid应为False！")
             return 
 
-        bar_data = pd.merge(self.bar_data, self.trade_data.final_balance, how="outer", left_index=True, right_index=True)
-        bar_data["final_balance"].fillna(method="ffill", inplace=True)
-        bar_data["final_balance"].fillna(value=capital, inplace=True)
+        bar_data = pd.merge(self.bar_data, self.trade_data.balance, how="outer", left_index=True, right_index=True)
+        bar_data["balance"].fillna(method="ffill", inplace=True)
+        bar_data["balance"].fillna(value=capital, inplace=True)
 
         self.kline_chart.extend_axis(yaxis = opts.AxisOpts(position="right"))
 
@@ -333,7 +332,7 @@ class MyPyecharts():
             .add_xaxis(xaxis_data = list(bar_data.index))
             .add_yaxis(
                 series_name = "Balance",
-                y_axis = bar_data.final_balance.apply(lambda x: round(x, 2)).values.tolist(),
+                y_axis = bar_data.balance.apply(lambda x: round(x, 2)).values.tolist(),
                 yaxis_index = 1,
                 label_opts = opts.LabelOpts(is_show=False),
                 is_symbol_show = False,

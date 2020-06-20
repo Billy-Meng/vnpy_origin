@@ -538,38 +538,40 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "annual_return": "年化收益",
         "max_drawdown": "最大回撤",
         "max_ddpercent": "百分比最大回撤",
-
-        "total_net_pnl": "总盈亏",
-        "total_commission": "总手续费",
-        "total_slippage": "总滑点",
-        "total_turnover": "总成交额",
-        "total_trade_count": "总成交笔数",
-
-        "daily_net_pnl": "日均盈亏",
-        "daily_commission": "日均手续费",
-        "daily_slippage": "日均滑点",
-        "daily_turnover": "日均成交额",
-        "daily_trade_count": "日均成交笔数",
+        "max_drawdown_duration": "最长回撤天数",
 
         "daily_return": "日均收益率",
         "return_std": "收益标准差",
         "sharpe_ratio": "夏普比率",
         "return_drawdown_ratio": "收益回撤比",
 
+        "total_net_pnl": "总盈亏",
+        "total_commission": "总手续费",
+        "total_slippage": "总滑点费",
         "total_trade": "总交易笔数",
+
+        "daily_net_pnl": "日均盈亏",
+        "daily_commission": "日均手续费",
+        "daily_slippage": "日均滑点费",
+        "daily_trade_count": "日均交易笔数",
+
         "max_profit": "单笔最大盈利",
         "max_loss": "单笔最大亏损",
         "profit_times": "交易盈利笔数",
         "loss_times": "交易亏损笔数",
         "rate_of_win": "胜率",
-        "total_profit": "盈利总金额",
-        "total_loss": "亏损总金额",
         "profit_loss_ratio": "盈亏比",
-        "trade_profit": "交易总盈利",
-        "trade_commission": "交易手续费",
-        "trade_slippage": "交易滑点费",
-        "final_profit": "交易净盈利",
-        "final_balance": "剩余总资金"
+
+        "trade_mean": "平均每笔盈利",
+        "trade_duration": "平均持仓小时",
+
+        "total_profit": "盈利总金额",
+        "profit_mean": "盈利交易均值",
+        "profit_duration": "盈利持仓小时",
+
+        "total_loss": "亏损总金额",
+        "loss_mean": "亏损交易均值",
+        "loss_duration": "亏损持仓小时"
     }
 
     def __init__(self):
@@ -606,37 +608,45 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         """"""
         data["capital"] = f"{data['capital']:,.2f}"
         data["end_balance"] = f"{data['end_balance']:,.2f}"
+
         data["total_return"] = f"{data['total_return']:,.2f}%"
         data["annual_return"] = f"{data['annual_return']:,.2f}%"
         data["max_drawdown"] = f"{data['max_drawdown']:,.2f}"
         data["max_ddpercent"] = f"{data['max_ddpercent']:,.2f}%"
-        data["total_net_pnl"] = f"{data['total_net_pnl']:,.2f}"
-        data["total_commission"] = f"{data['total_commission']:,.2f}"
-        data["total_slippage"] = f"{data['total_slippage']:,.2f}"
-        data["total_turnover"] = f"{data['total_turnover']:,.2f}"
-        data["daily_net_pnl"] = f"{data['daily_net_pnl']:,.2f}"
-        data["daily_commission"] = f"{data['daily_commission']:,.2f}"
-        data["daily_slippage"] = f"{data['daily_slippage']:,.2f}"
-        data["daily_turnover"] = f"{data['daily_turnover']:,.2f}"
+        data["max_drawdown_duration"] = f"{data['max_drawdown_duration']}"
+
         data["daily_return"] = f"{data['daily_return']:,.2f}%"
         data["return_std"] = f"{data['return_std']:,.2f}%"
         data["sharpe_ratio"] = f"{data['sharpe_ratio']:,.2f}"
         data["return_drawdown_ratio"] = f"{data['return_drawdown_ratio']:,.2f}"
 
+        data["total_net_pnl"] = f"{data['total_net_pnl']:,.2f}"
+        data["total_commission"] = f"{data['total_commission']:,.2f}"
+        data["total_slippage"] = f"{data['total_slippage']:,.2f}"
         data["total_trade"] = f"{data['total_trade']}"
+
+        data["daily_net_pnl"] = f"{data['daily_net_pnl']:,.2f}"
+        data["daily_commission"] = f"{data['daily_commission']:,.2f}"
+        data["daily_slippage"] = f"{data['daily_slippage']:,.2f}"
+        data["daily_trade_count"] = f"{data['daily_trade_count']}"
+
         data["max_profit"] = f"{data['max_profit']:,.2f}"
         data["max_loss"] = f"{data['max_loss']:,.2f}"
         data["profit_times"] = f"{data['profit_times']}"
         data["loss_times"] = f"{data['loss_times']}"
         data["rate_of_win"] = f"{data['rate_of_win']:,.2f}%"
-        data["total_profit"] = f"{data['total_profit']:,.2f}"
-        data["total_loss"] = f"{data['total_loss']:,.2f}"
         data["profit_loss_ratio"] = f"{data['profit_loss_ratio']:,.2f}"
-        data["trade_profit"] = f"{data['trade_profit']:,.2f}"
-        data["trade_commission"] = f"{data['trade_commission']:,.2f}"
-        data["trade_slippage"] = f"{data['trade_slippage']:,.2f}"
-        data["final_profit"] = f"{data['final_profit']:,.2f}"
-        data["final_balance"] = f"{data['final_balance']:,.2f}"
+        
+        data["trade_mean"] = f"{data['trade_mean']:,.2f}"
+        data["trade_duration"] = f"{data['trade_duration']:,.2f}"
+
+        data["total_profit"] = f"{data['total_profit']:,.2f}"
+        data["profit_mean"] = f"{data['profit_mean']:,.2f}"
+        data["profit_duration"] = f"{data['profit_duration']:,.2f}"
+
+        data["total_loss"] = f"{data['total_loss']:,.2f}"
+        data["loss_mean"] = f"{data['loss_mean']:,.2f}"
+        data["loss_duration"] = f"{data['loss_duration']:,.2f}"
 
         for key, cell in self.cells.items():
             value = data.get(key, "")
