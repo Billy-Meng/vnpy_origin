@@ -20,7 +20,7 @@ from vnpy.trader.constant import (Direction, Offset, Exchange,
                                   Interval, Status, RateType)
 from vnpy.trader.database import database_manager
 from vnpy.trader.object import OrderData, TradeData, BarData, TickData
-from vnpy.trader.utility import round_to, BarGenerator
+from vnpy.trader.utility import round_to, BarGenerator, tradedays
 from vnpy.chart.my_pyecharts import MyPyecharts, Tab, Line, Bar, Grid, EffectScatter, opts, JsCode
 
 from .base import (
@@ -1204,8 +1204,8 @@ class BacktestingEngine:
 
             profit_loss_ratio = (total_profit/profit_times) / abs(total_loss / loss_times)             # 盈亏比 = 盈利的平均金额 / 亏损的平均金额
 
-            trade_pnl = trade_df.net_pnl.sum()                                                         # 交易总盈亏
-            trade_mean = trade_pnl / total_trade                                                       # 平均每笔盈亏
+            total_net_pnl = trade_df.net_pnl.sum()                                                     # 交易总盈亏
+            trade_mean = total_net_pnl / total_trade                                                   # 平均每笔盈亏
             trade_duration = trade_df.duration.mean().total_seconds()/3600                             # 平均持仓小时
 
             total_commission = trade_df["trade_commission"].sum()                                      # 交易手续费
@@ -1220,6 +1220,8 @@ class BacktestingEngine:
 
             start_date = daily_df.index[0]
             end_date = daily_df.index[-1]
+
+            total_trade_days = tradedays(start_date, end_date)
 
             total_days = len(daily_df)
             profit_days = len(daily_df[daily_df["net_pnl"] > 0])
@@ -1236,15 +1238,13 @@ class BacktestingEngine:
             else:
                 max_drawdown_duration = 0
 
-            total_net_pnl = daily_df["net_pnl"].sum()
-
-            daily_net_pnl = total_net_pnl / total_days
-            daily_commission = total_commission / total_days
-            daily_slippage = total_slippage / total_days
-            daily_trade_count = total_trade / total_days
+            daily_net_pnl = total_net_pnl / total_trade_days
+            daily_commission = total_commission / total_trade_days
+            daily_slippage = total_slippage / total_trade_days
+            daily_trade_count = total_trade / total_trade_days
 
             total_return = (end_balance / capital - 1) * 100
-            annual_return = total_return / total_days * 240
+            annual_return = total_return / total_trade_days * 244       # 中国平均一年市场交易日在244天左右
             daily_return = daily_df["return"].mean() * 100
             return_std = daily_df["return"].std() * 100
 
@@ -1258,8 +1258,10 @@ class BacktestingEngine:
         # Output
         if output:
             self.output("-" * 30)
+
             self.output(f"首个交易日：\t{start_date}")
             self.output(f"最后交易日：\t{end_date}")
+            self.output(f"市场交易日：\t{total_trade_days}")
 
             self.output(f"总交易日：  \t{total_days}")
             self.output(f"盈利交易日：\t{profit_days}")
@@ -1307,9 +1309,12 @@ class BacktestingEngine:
             self.output(f"亏损交易均值：\t{loss_mean:,.2f}")
             self.output(f"亏损持仓小时：\t{loss_duration:,.2f}")
 
+            self.output("-" * 30)
+
         statistics = {
             "start_date": start_date,
             "end_date": end_date,
+            "total_trade_days": total_trade_days,
             "total_days": total_days,
             "profit_days": profit_days,
             "loss_days": loss_days,
@@ -1370,7 +1375,7 @@ class BacktestingEngine:
             home_path = Path.home()
             temp_name = "Desktop"
             temp_path = home_path.joinpath(temp_name)
-            filename  = f"投资组合分析图表 # tab_chart.html"
+            filename  = f"投资组合分析图表[{start_date}~{end_date}].html"
             filepath  = temp_path.joinpath(filename)
 
             tab_chart.render(filepath)
@@ -1680,18 +1685,18 @@ class BacktestingEngine:
         return grid_chart
 
     def save_tab_chart(self):
-        page_title = f"{self.symbol}#{self.strategy_class.__name__}"
+        page_title = f"{self.symbol} {self.strategy_class.__name__}"
         tab_chart = Tab(page_title=page_title)
         tab_chart.add(self.daily_grid_chart(), "日收益分析图")
         tab_chart.add(self.trade_grid_chart(), "交易盈亏分布图")
-        tab_chart.add(self.draw_kline_chart(), "K线 + 资金曲线 + 成交记录")
-        tab_chart.add(self.draw_grid_chart(), "K线 + 技术指标 + 成交记录")
+        tab_chart.add(self.draw_kline_chart(), "K线 + 成交记录 + 资金曲线")
+        tab_chart.add(self.draw_grid_chart(), "K线 + 成交记录 + 技术指标")
 
         # 生成文件保存路径
         home_path = Path.home()
         temp_name = "Desktop"
         temp_path = home_path.joinpath(temp_name)
-        filename  = f"{self.symbol} # {self.strategy_class.__name__} # {self.start.date()} ~ {self.end.date()} # {self.strategy.get_parameters()} # tab_chart.html".replace(":","：")
+        filename  = f"{self.symbol} {self.strategy_class.__name__} [{self.start.date()}~{self.end.date()}] [{self.strategy.get_parameters()}].html".replace(":","=").replace("'","").replace("{","").replace("}","")
         filepath  = temp_path.joinpath(filename)
 
         tab_chart.render(filepath)

@@ -526,6 +526,7 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
     KEY_NAME_MAP = {
         "start_date": "首个交易日",
         "end_date": "最后交易日",
+        "total_trade_days": "市场交易日",
 
         "total_days": "总交易日",
         "profit_days": "盈利交易日",
@@ -613,7 +614,6 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         data["annual_return"] = f"{data['annual_return']:,.2f}%"
         data["max_drawdown"] = f"{data['max_drawdown']:,.2f}"
         data["max_ddpercent"] = f"{data['max_ddpercent']:,.2f}%"
-        data["max_drawdown_duration"] = f"{data['max_drawdown_duration']}"
 
         data["daily_return"] = f"{data['daily_return']:,.2f}%"
         data["return_std"] = f"{data['return_std']:,.2f}%"
@@ -623,17 +623,14 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         data["total_net_pnl"] = f"{data['total_net_pnl']:,.2f}"
         data["total_commission"] = f"{data['total_commission']:,.2f}"
         data["total_slippage"] = f"{data['total_slippage']:,.2f}"
-        data["total_trade"] = f"{data['total_trade']}"
 
         data["daily_net_pnl"] = f"{data['daily_net_pnl']:,.2f}"
         data["daily_commission"] = f"{data['daily_commission']:,.2f}"
         data["daily_slippage"] = f"{data['daily_slippage']:,.2f}"
-        data["daily_trade_count"] = f"{data['daily_trade_count']}"
+        data["daily_trade_count"] = f"{data['daily_trade_count']:,.2f}"
 
         data["max_profit"] = f"{data['max_profit']:,.2f}"
         data["max_loss"] = f"{data['max_loss']:,.2f}"
-        data["profit_times"] = f"{data['profit_times']}"
-        data["loss_times"] = f"{data['loss_times']}"
         data["rate_of_win"] = f"{data['rate_of_win']:,.2f}%"
         data["profit_loss_ratio"] = f"{data['profit_loss_ratio']:,.2f}"
         

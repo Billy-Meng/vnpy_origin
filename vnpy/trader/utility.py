@@ -6,7 +6,7 @@ General utility functions.
 import json
 import logging
 import sys
-import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Dict, Tuple, Union
 from decimal import Decimal
@@ -15,6 +15,7 @@ from math import floor, ceil
 import numpy as np
 import pandas as pd
 import talib
+from chinese_calendar import is_workday, is_holiday
 
 from .object import BarData, TickData
 from .constant import Exchange, Interval
@@ -163,6 +164,69 @@ def get_digits(value: float) -> int:
         return len(buf)
 
 
+def run_time(func):
+    '''计算函数运行耗时装饰器'''
+    def wrapper(*args, **kwargs):
+        start_time = datetime.now()
+        result = func(*args, **kwargs)
+        end_time = datetime.now()
+        print (f"{func.__name__} 运行耗时： {(end_time - start_time).total_seconds()}秒")
+        return result
+    return wrapper
+
+def workdays(start, end):
+    '''
+    计算两个日期间的工作日
+    格式为 datetime.date() 或 "%Y-%m-%d"
+    '''
+     # 字符串格式日期的处理
+    if type(start) == str:
+        start = datetime.strptime(start,'%Y-%m-%d').date()
+    if type(end) == str:
+        end = datetime.strptime(end,'%Y-%m-%d').date()
+
+    # 开始日期大，颠倒开始日期和结束日期
+    if start > end:
+        start,end = end,start
+
+    counts = 0
+    while True:
+        if start > end:
+            break
+        if is_workday(start):
+            counts += 1
+        start += timedelta(days=1)
+
+    return counts
+
+def tradedays(start, end):
+    '''
+    计算两个日期间的中国市场交易日
+    格式为 datetime.date() 或 "%Y-%m-%d"
+    '''
+    # 字符串格式日期的处理
+    if type(start) == str:
+        start = datetime.strptime(start,'%Y-%m-%d').date()
+    if type(end) == str:
+        end = datetime.strptime(end,'%Y-%m-%d').date()
+
+    # 开始日期大，颠倒开始日期和结束日期
+    if start > end:
+        start,end = end,start
+        
+    counts = 0
+    while True:
+        if start > end:
+            break
+        if is_holiday(start) or start.weekday()==5 or start.weekday()==6:
+            start += timedelta(days=1)
+            continue
+        counts += 1
+        start += timedelta(days=1)
+
+    return counts
+
+
 class BarGenerator:
     """
     For:
@@ -287,7 +351,7 @@ class BarGenerator:
             new_second_bar = True
 
         elif (tick.datetime.second in self.second_bar_range) and (tick.datetime.second != self.last_tick.datetime.second):
-            bar_second = (tick.datetime - datetime.timedelta(seconds=self.second_window)).second
+            bar_second = (tick.datetime - timedelta(seconds=self.second_window)).second
             self.second_bar.datetime = self.second_bar.datetime.replace(second=bar_second, microsecond=0)
             self.on_second_bar(self.second_bar)
             new_second_bar = True
@@ -359,7 +423,7 @@ class BarGenerator:
             new_minute = False
 
             # 传入的second_bar已经走完一分钟，则启动 on_bar
-            if (second_bar.datetime + datetime.timedelta(seconds=self.second_window)).second == 0:
+            if (second_bar.datetime + timedelta(seconds=self.second_window)).second == 0:
                 new_minute = True
 
         if new_minute:
@@ -1896,20 +1960,20 @@ class ArrayManager(object):
 
     def TrueDate(self, data: Union[TickData, BarData]):
         """"""
-        day_offset = datetime.timedelta(days=0)
+        day_offset = timedelta(days=0)
         if data.datetime.hour >= 18:
             if data.datetime.isoweekday() == 5:         # 周五晚上
-                day_offset = datetime.timedelta(days=3)
+                day_offset = timedelta(days=3)
             elif data.datetime.isoweekday() == 6:       # 周六晚上
-                day_offset = datetime.timedelta(days=2)
+                day_offset = timedelta(days=2)
             elif data.datetime.isoweekday() == 7:       # 周日晚上
-                day_offset = datetime.timedelta(days=1)
+                day_offset = timedelta(days=1)
 
         else:
             if data.datetime.isoweekday() == 6:         # 周六
-                day_offset = datetime.timedelta(days=2)
+                day_offset = timedelta(days=2)
             elif data.datetime.isoweekday() == 7:       # 周日
-                day_offset = datetime.timedelta(days=1)
+                day_offset = timedelta(days=1)
         data.datetime = data.datetime + day_offset
         return data.datetime.date()
 
@@ -1922,17 +1986,6 @@ def virtual(func: Callable) -> Callable:
     that can be (re)implemented by subclasses.
     """
     return func
-
-
-def run_time(func):
-    '''计算函数运行耗时装饰器'''
-    def wrapper(*args, **kwargs):
-        start_time = datetime.datetime.now()
-        result = func(*args, **kwargs)
-        end_time = datetime.datetime.now()
-        print (f"{func.__name__} 运行耗时： {(end_time - start_time).total_seconds()}秒")
-        return result
-    return wrapper
 
 
 file_handlers: Dict[str, logging.FileHandler] = {}
