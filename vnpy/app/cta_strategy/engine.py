@@ -1,11 +1,10 @@
-""""""
-
+# -*- coding:utf-8 -*-
 import importlib
 import os
 import traceback
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Union
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
@@ -38,8 +37,14 @@ from vnpy.trader.constant import (
 )
 from vnpy.trader.utility import load_json, save_json, extract_vt_symbol, round_to
 from vnpy.trader.database import database_manager
-from vnpy.trader.rqdata import rqdata_client
 from vnpy.trader.converter import OffsetConverter
+
+from vnpy.trader.datasource import datasource_client
+from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.tqdata import tqdata_client
+from vnpy.trader.datasource.jjdata import jjdata_client
+from vnpy.trader.setting import SETTINGS
 
 from .base import (
     APP_NAME,
@@ -126,12 +131,15 @@ class CtaEngine(BaseEngine):
         """
         Init RQData client.
         """
-        result = rqdata_client.init()
+        result = datasource_client.init()
+        data_source_api = SETTINGS["datasource.api"]
         if result:
-            self.write_log("RQData数据接口初始化成功")
+            self.write_log(f"{data_source_api}数据接口初始化成功")
+        else:
+            self.write_log(f"{data_source_api}数据接口初始化不成功")
 
     def query_bar_from_rq(
-        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
+        self, symbol: str, exchange: Exchange, interval: Interval, frequency: Union[int, str], start: datetime, end: datetime
     ):
         """
         Query bar data from RQData.
@@ -143,7 +151,18 @@ class CtaEngine(BaseEngine):
             start=start,
             end=end
         )
-        data = rqdata_client.query_history(req)
+        if SETTINGS["datasource.api"] == "jqdata":
+            data = jqdata_client.query_history(req)
+            
+        elif SETTINGS["datasource.api"] == "rqdata":
+            data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "tqdata":
+            data = tqdata_client.query_history(req, frequency)
+
+        elif SETTINGS["datasource.api"] == "jjdata":
+            data = jjdata_client.query_history(req, frequency)
+
         return data
 
     def process_tick_event(self, event: Event):
@@ -528,14 +547,18 @@ class CtaEngine(BaseEngine):
         vt_symbol: str,
         days: int,
         interval: Interval,
+        frequency: int,
         callback: Callable[[BarData], None],
         use_database: bool
     ):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
         end = datetime.now(get_localzone())
-        start = end - timedelta(days)
+        start = end - timedelta(days=days)
         bars = []
+
+        if SETTINGS["datasource.api"] == "jjdata":
+            frequency = f"{frequency}s"
 
         # Pass gateway and RQData if use_database set to True
         if not use_database:
@@ -554,16 +577,26 @@ class CtaEngine(BaseEngine):
 
             # Try to query bars from RQData, if not found, load from database.
             else:
-                bars = self.query_bar_from_rq(symbol, exchange, interval, start, end)
+                bars = self.query_bar_from_rq(symbol, exchange, interval, frequency, start, end)
 
         if not bars:
-            bars = database_manager.load_bar_data(
-                symbol=symbol,
-                exchange=exchange,
-                interval=interval,
-                start=start,
-                end=end,
-            )
+            if frequency == "60s" or frequency == 60:
+                bars = database_manager.load_bar_data(
+                    symbol=symbol,
+                    exchange=exchange,
+                    interval="1m",
+                    start=start,
+                    end=end,
+                )
+
+            else:
+                bars = database_manager.load_bar_data(
+                    symbol=symbol,
+                    exchange=exchange,
+                    interval=interval,
+                    start=start,
+                    end=end,
+                )
 
         for bar in bars:
             callback(bar)
@@ -572,19 +605,28 @@ class CtaEngine(BaseEngine):
         self,
         vt_symbol: str,
         days: int,
-        callback: Callable[[TickData], None]
+        callback: Callable[[TickData], None],
+        use_database: bool
     ):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
-        end = datetime.now()
-        start = end - timedelta(days)
+        end = datetime.now(get_localzone())
+        start = end - timedelta(days=days)
 
-        ticks = database_manager.load_tick_data(
-            symbol=symbol,
-            exchange=exchange,
-            start=start,
-            end=end,
-        )
+        if not use_database:
+            # 从掘金加载Tick数据
+            interval = None
+            frequency = "tick"            
+            req = HistoryRequest(symbol=symbol, exchange=exchange, interval=interval, start=start, end=end)
+            ticks = jjdata_client.query_history(req, frequency)
+
+        if not ticks:
+            ticks = database_manager.load_tick_data(
+                symbol=symbol,
+                exchange=exchange,
+                start=start,
+                end=end,
+            )
 
         for tick in ticks:
             callback(tick)
@@ -927,3 +969,32 @@ class CtaEngine(BaseEngine):
             subject = "CTA策略引擎"
 
         self.main_engine.send_email(subject, msg)
+
+
+    def get_position_detail(self, vt_symbol: str) -> "PositionHolding":    
+        """
+        查询long_pos,short_pos(持仓)，long_pnl,short_pnl(盈亏)，active_orders(未成交字典)
+        返回PositionHolding类数据
+        """
+        try:
+            return self.offset_converter.get_position_holding(vt_symbol)
+        except:
+            self.write_log(f"当前获取持仓信息为：{self.offset_converter.get_position_holding(vt_symbol)},等待获取持仓信息")
+            position_detail = OrderedDict()
+            position_detail.active_orders = {}
+
+            position_detail.long_pos = 0
+            position_detail.long_pnl = 0
+            position_detail.long_price = 0
+            position_detail.long_yd = 0
+            position_detail.long_td = 0
+            position_detail.long_pos_frozen = 0
+
+            position_detail.short_pos = 0
+            position_detail.short_pnl = 0
+            position_detail.short_price = 0
+            position_detail.short_yd = 0
+            position_detail.short_td = 0
+            position_detail.short_pos_frozen = 0
+
+            return position_detail

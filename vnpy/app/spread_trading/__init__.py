@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 from pathlib import Path
 
 from vnpy.trader.app import BaseApp

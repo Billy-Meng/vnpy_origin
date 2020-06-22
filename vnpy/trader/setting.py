@@ -1,8 +1,9 @@
+# -*- coding:utf-8 -*-
 """
 Global setting of VN Trader.
 """
 
-from logging import CRITICAL
+from logging import INFO    # 控制日志输出的级别，日志输出从频繁到精简可以分成DEBUG、INFO、WARNING、ERROR、CRITICAL五个级别，分别对应10、20、30、40、50的整数值。
 from typing import Dict, Any
 from tzlocal import get_localzone
 
@@ -13,7 +14,7 @@ SETTINGS: Dict[str, Any] = {
     "font.size": 12,
 
     "log.active": True,
-    "log.level": CRITICAL,
+    "log.level": INFO,
     "log.console": True,
     "log.file": True,
 
@@ -24,8 +25,12 @@ SETTINGS: Dict[str, Any] = {
     "email.sender": "",
     "email.receiver": "",
 
+    "datasource.api": "",    
+    "jqdata.username": "",
+    "jqdata.password": "",
     "rqdata.username": "",
     "rqdata.password": "",
+    "jjdata.token": "",
 
     "database.timezone": get_localzone().zone,
     "database.driver": "sqlite",                # see database.Driver

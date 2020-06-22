@@ -1,3 +1,5 @@
+chinesecalendar
+tzlocal
 six==1.13.0
 wheel
 PyQt5

@@ -29,7 +29,7 @@ class DoubleMaStrategy(CtaTemplate):
         """"""
         super().__init__(cta_engine, strategy_name, vt_symbol, setting)
 
-        self.bg = BarGenerator(self.on_bar)
+        self.bg = BarGenerator(on_bar=self.on_bar)
         self.am = ArrayManager()
 
     def on_init(self):

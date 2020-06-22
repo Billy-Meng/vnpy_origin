@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 from typing import TYPE_CHECKING, Set
 
 from vnpy.trader.object import TickData, OrderData, TradeData

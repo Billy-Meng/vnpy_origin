@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 import os
 import importlib
 import traceback
@@ -11,7 +12,8 @@ from vnpy.trader.engine import BaseEngine, MainEngine
 from vnpy.trader.constant import Interval
 from vnpy.trader.utility import extract_vt_symbol
 from vnpy.trader.object import HistoryRequest
-from vnpy.trader.rqdata import rqdata_client
+from vnpy.trader.datasource import datasource_client
+from vnpy.trader.setting import SETTINGS
 from vnpy.trader.database import database_manager
 from vnpy.app.cta_strategy import CtaTemplate
 from vnpy.app.cta_strategy.backtesting import BacktestingEngine, OptimizationSetting
@@ -60,9 +62,12 @@ class BacktesterEngine(BaseEngine):
         """
         Init RQData client.
         """
-        result = rqdata_client.init()
+        result = datasource_client.init()
+        data_source_api = SETTINGS["datasource.api"]
         if result:
-            self.write_log("RQData数据接口初始化成功")
+            self.write_log(f"{data_source_api}数据接口初始化成功")
+        else:
+            self.write_log(f"{data_source_api}数据接口初始化不成功")
 
     def write_log(self, msg: str):
         """"""
@@ -132,6 +137,7 @@ class BacktesterEngine(BaseEngine):
         interval: str,
         start: datetime,
         end: datetime,
+        rate_type: str,
         rate: float,
         slippage: float,
         size: int,
@@ -152,6 +158,7 @@ class BacktesterEngine(BaseEngine):
             interval=interval,
             start=start,
             end=end,
+            rate_type=rate_type,
             rate=rate,
             slippage=slippage,
             size=size,
@@ -185,6 +192,7 @@ class BacktesterEngine(BaseEngine):
         interval: str,
         start: datetime,
         end: datetime,
+        rate_type: str,
         rate: float,
         slippage: float,
         size: int,
@@ -206,6 +214,7 @@ class BacktesterEngine(BaseEngine):
                 interval,
                 start,
                 end,
+                rate_type,
                 rate,
                 slippage,
                 size,
@@ -243,6 +252,7 @@ class BacktesterEngine(BaseEngine):
         interval: str,
         start: datetime,
         end: datetime,
+        rate_type: str,
         rate: float,
         slippage: float,
         size: int,
@@ -268,6 +278,7 @@ class BacktesterEngine(BaseEngine):
             interval=interval,
             start=start,
             end=end,
+            rate_type=rate_type,
             rate=rate,
             slippage=slippage,
             size=size,
@@ -308,6 +319,7 @@ class BacktesterEngine(BaseEngine):
         interval: str,
         start: datetime,
         end: datetime,
+        rate_type: str,
         rate: float,
         slippage: float,
         size: int,
@@ -330,6 +342,7 @@ class BacktesterEngine(BaseEngine):
                 interval,
                 start,
                 end,
+                rate_type,
                 rate,
                 slippage,
                 size,
@@ -379,13 +392,17 @@ class BacktesterEngine(BaseEngine):
                 data = self.main_engine.query_history(
                     req, contract.gateway_name
                 )
-            # Otherwise use RQData to query data
+            # Otherwise use RQData/JQData to query data
             else:
-                data = rqdata_client.query_history(req)
+                try:
+                    data = datasource_client.query_history(req)
+                except Exception as ex:
+                    self.write_log(f"{symbol}.{exchange.value}合约下载失败：{ex.args}")
 
             if data:
+                self.write_log(f"{vt_symbol}-{interval}历史数据开始保存")
                 database_manager.save_bar_data(data)
-                self.write_log(f"{vt_symbol}-{interval}历史数据下载完成")
+                self.write_log(f"{vt_symbol}-{interval}历史数据获取完成")
             else:
                 self.write_log(f"数据下载失败，无法获取{vt_symbol}的历史数据")
         except Exception:

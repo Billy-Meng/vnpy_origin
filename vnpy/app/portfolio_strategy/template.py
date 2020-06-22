@@ -1,4 +1,4 @@
-""""""
+# -*- coding:utf-8 -*-
 from abc import ABC
 from copy import copy
 from typing import Dict, Set, List, TYPE_CHECKING
@@ -126,9 +126,23 @@ class StrategyTemplate(ABC):
         pass
 
     @virtual
+    def on_bar(self, bars: Dict[str, BarData]) -> None:
+        """
+        Callback of new bar data update.
+        """
+        pass
+
+    @virtual
     def on_bars(self, bars: Dict[str, BarData]) -> None:
         """
         Callback of new bar data update.
+        """
+        pass
+
+    @virtual
+    def on_second_bars(self, second_bar: BarData):
+        """
+        Callback of new second bar data update.
         """
         pass
 
@@ -228,11 +242,11 @@ class StrategyTemplate(ABC):
         """
         self.strategy_engine.write_log(msg, self)
 
-    def load_bars(self, days: int, interval: Interval = Interval.MINUTE) -> None:
+    def load_bars(self, days: int, interval: Interval = Interval.MINUTE, tq_interval: int = 60) -> None:
         """
         Load historical bar data for initializing strategy.
         """
-        self.strategy_engine.load_bars(self, days, interval)
+        self.strategy_engine.load_bars(self, days, interval, tq_interval)
 
     def put_event(self) -> None:
         """

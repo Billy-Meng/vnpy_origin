@@ -5,7 +5,7 @@ from tzlocal import get_localzone
 import numpy as np
 import pyqtgraph as pg
 
-from vnpy.trader.constant import Interval, Direction, Offset
+from vnpy.trader.constant import Interval, Direction, Offset, RateType
 from vnpy.trader.engine import MainEngine
 from vnpy.trader.ui import QtCore, QtWidgets, QtGui
 from vnpy.trader.ui.widget import BaseMonitor, BaseCell, DirectionCell, EnumCell
@@ -68,7 +68,7 @@ class BacktesterManager(QtWidgets.QWidget):
         # Setting Part
         self.class_combo = QtWidgets.QComboBox()
 
-        self.symbol_line = QtWidgets.QLineEdit("IF88.CFFEX")
+        self.symbol_line = QtWidgets.QLineEdit("IF9999.CFFEX")
 
         self.interval_combo = QtWidgets.QComboBox()
         for inteval in Interval:
@@ -87,6 +87,10 @@ class BacktesterManager(QtWidgets.QWidget):
         self.end_date_edit = QtWidgets.QDateEdit(
             QtCore.QDate.currentDate()
         )
+
+        self.rate_type_combo = QtWidgets.QComboBox()
+        for rate_type in RateType:
+            self.rate_type_combo.addItem(rate_type.value)
 
         self.rate_line = QtWidgets.QLineEdit("0.000025")
         self.slippage_line = QtWidgets.QLineEdit("0.2")
@@ -152,7 +156,8 @@ class BacktesterManager(QtWidgets.QWidget):
         form.addRow("K线周期", self.interval_combo)
         form.addRow("开始日期", self.start_date_edit)
         form.addRow("结束日期", self.end_date_edit)
-        form.addRow("手续费率", self.rate_line)
+        form.addRow("手续费模式", self.rate_type_combo)
+        form.addRow("手续费/率", self.rate_line)
         form.addRow("交易滑点", self.slippage_line)
         form.addRow("合约乘数", self.size_line)
         form.addRow("价格跳动", self.pricetick_line)
@@ -239,6 +244,11 @@ class BacktesterManager(QtWidgets.QWidget):
             self.interval_combo.findText(setting["interval"])
         )
 
+        self.start_date_edit.setDate(datetime.strptime(setting["start_dt"], "%Y-%m-%d"))
+
+        self.rate_type_combo.setCurrentIndex(
+            self.rate_type_combo.findText(setting["rate_type"])
+        )
         self.rate_line.setText(str(setting["rate"]))
         self.slippage_line.setText(str(setting["slippage"]))
         self.size_line.setText(str(setting["size"]))
@@ -300,6 +310,7 @@ class BacktesterManager(QtWidgets.QWidget):
         interval = self.interval_combo.currentText()
         start = self.start_date_edit.date().toPyDate()
         end = self.end_date_edit.date().toPyDate()
+        rate_type = self.rate_type_combo.currentText()
         rate = float(self.rate_line.text())
         slippage = float(self.slippage_line.text())
         size = float(self.size_line.text())
@@ -316,6 +327,8 @@ class BacktesterManager(QtWidgets.QWidget):
             "class_name": class_name,
             "vt_symbol": vt_symbol,
             "interval": interval,
+            "start_dt": start.strftime("%Y-%m-%d"),
+            "rate_type": rate_type,
             "rate": rate,
             "slippage": slippage,
             "size": size,
@@ -341,6 +354,7 @@ class BacktesterManager(QtWidgets.QWidget):
             interval,
             start,
             end,
+            rate_type,
             rate,
             slippage,
             size,
@@ -371,6 +385,7 @@ class BacktesterManager(QtWidgets.QWidget):
         interval = self.interval_combo.currentText()
         start = self.start_date_edit.date().toPyDate()
         end = self.end_date_edit.date().toPyDate()
+        rate_type = self.rate_type_combo.currentText()
         rate = float(self.rate_line.text())
         slippage = float(self.slippage_line.text())
         size = float(self.size_line.text())
@@ -397,6 +412,7 @@ class BacktesterManager(QtWidgets.QWidget):
             interval,
             start,
             end,
+            rate_type,
             rate,
             slippage,
             size,
@@ -413,7 +429,7 @@ class BacktesterManager(QtWidgets.QWidget):
         """"""
         vt_symbol = self.symbol_line.text()
         interval = self.interval_combo.currentText()
-        start_date = self.start_date_edit.date()
+        start_date = datetime.strptime(self.start_date_edit, "%Y-%m-%d")
         end_date = self.end_date_edit.date()
 
         start = datetime(
@@ -519,26 +535,58 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "end_balance": "结束资金",
 
         "total_return": "总收益率",
-        "annual_return": "年化收益",
-        "max_drawdown": "最大回撤",
-        "max_ddpercent": "百分比最大回撤",
-
-        "total_net_pnl": "总盈亏",
-        "total_commission": "总手续费",
-        "total_slippage": "总滑点",
-        "total_turnover": "总成交额",
-        "total_trade_count": "总成交笔数",
-
-        "daily_net_pnl": "日均盈亏",
-        "daily_commission": "日均手续费",
-        "daily_slippage": "日均滑点",
-        "daily_turnover": "日均成交额",
-        "daily_trade_count": "日均成交笔数",
+        "annual_return": "年化收益率",
+        "cagr": "年复合增长率",
+        "annual_volatility": "年化波动率",
+        "max_drawdown": "最大回撤金额",
+        "max_ddpercent": "%最大回撤",
+        "average_drawdown": "%平均回撤",
+        "lw_drawdown": "%线性加权回撤",
+        "average_square_drawdown": "%均方回撤",
+        "max_drawdown_duration": "最长回撤天数",
+        "max_drawdown_range": "最长回撤区间",
 
         "daily_return": "日均收益率",
         "return_std": "收益标准差",
+        "return_drawdown_ratio": "收益回撤比",
         "sharpe_ratio": "夏普比率",
-        "return_drawdown_ratio": "收益回撤比"
+        "omega_ratio": "Omega比率",
+        "calmar_ratio": "Calmar比率",
+        "downside_risk": "下限风险",
+        "sortino_ratio": "索提诺比率",
+        "R_squared": "R平方",
+        "tail_ratio": "尾部比率",
+
+        "total_net_pnl": "总盈亏",
+        "total_commission": "总手续费",
+        "total_slippage": "总滑点费",
+        "total_trade_count": "总成交数量",
+        "total_trade": "总交易笔数",
+
+        "daily_net_pnl": "日均盈亏",
+        "daily_commission": "日均手续费",
+        "daily_slippage": "日均滑点费",
+        "daily_trade_count": "日均交易笔数",
+
+        "max_profit": "单笔最大盈利",
+        "max_loss": "单笔最大亏损",
+        "profit_times": "交易盈利笔数",
+        "loss_times": "交易亏损笔数",
+        "rate_of_win": "胜率",
+        "profit_loss_ratio": "盈亏比",
+
+        "trade_mean": "平均每笔盈利",
+        "average_commission": "平均每笔手续费",
+        "average_slippage": "平均每笔滑点费",
+        "trade_duration": "平均持仓小时",
+
+        "total_profit": "盈利总金额",
+        "profit_mean": "盈利交易均值",
+        "profit_duration": "盈利持仓小时",
+
+        "total_loss": "亏损总金额",
+        "loss_mean": "亏损交易均值",
+        "loss_duration": "亏损持仓小时"
     }
 
     def __init__(self):
@@ -575,22 +623,54 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         """"""
         data["capital"] = f"{data['capital']:,.2f}"
         data["end_balance"] = f"{data['end_balance']:,.2f}"
+
         data["total_return"] = f"{data['total_return']:,.2f}%"
         data["annual_return"] = f"{data['annual_return']:,.2f}%"
+        data["cagr"] = f"{data['cagr']:,.2f}%"
+        data["annual_volatility"] = f"{data['annual_volatility']:,.2f}%"
         data["max_drawdown"] = f"{data['max_drawdown']:,.2f}"
         data["max_ddpercent"] = f"{data['max_ddpercent']:,.2f}%"
+        data["average_drawdown"] = f"{data['average_drawdown']:,.2f}%"
+        data["lw_drawdown"] = f"{data['lw_drawdown']:,.2f}%"
+        data["average_square_drawdown"] = f"{data['average_square_drawdown']:,.2f}%"
+
+        data["daily_return"] = f"{data['daily_return']:,.2f}%"
+        data["return_std"] = f"{data['return_std']:,.2f}%"
+        data["return_drawdown_ratio"] = f"{data['return_drawdown_ratio']:,.2f}"
+        data["sharpe_ratio"] = f"{data['sharpe_ratio']:,.2f}"
+        data["omega_ratio"] = f"{data['omega_ratio']:,.2f}"
+        data["calmar_ratio"] = f"{data['calmar_ratio']:,.2f}"
+        data["downside_risk"] = f"{data['downside_risk']:,.2f}"
+        data["sortino_ratio"] = f"{data['sortino_ratio']:,.2f}"
+        data["R_squared"] = f"{data['R_squared']:,.2f}"
+        data["tail_ratio"] = f"{data['tail_ratio']:,.2f}"
+
         data["total_net_pnl"] = f"{data['total_net_pnl']:,.2f}"
         data["total_commission"] = f"{data['total_commission']:,.2f}"
         data["total_slippage"] = f"{data['total_slippage']:,.2f}"
-        data["total_turnover"] = f"{data['total_turnover']:,.2f}"
+
         data["daily_net_pnl"] = f"{data['daily_net_pnl']:,.2f}"
         data["daily_commission"] = f"{data['daily_commission']:,.2f}"
         data["daily_slippage"] = f"{data['daily_slippage']:,.2f}"
-        data["daily_turnover"] = f"{data['daily_turnover']:,.2f}"
-        data["daily_return"] = f"{data['daily_return']:,.2f}%"
-        data["return_std"] = f"{data['return_std']:,.2f}%"
-        data["sharpe_ratio"] = f"{data['sharpe_ratio']:,.2f}"
-        data["return_drawdown_ratio"] = f"{data['return_drawdown_ratio']:,.2f}"
+        data["daily_trade_count"] = f"{data['daily_trade_count']:,.2f}"
+
+        data["max_profit"] = f"{data['max_profit']:,.2f}"
+        data["max_loss"] = f"{data['max_loss']:,.2f}"
+        data["rate_of_win"] = f"{data['rate_of_win']:,.2f}%"
+        data["profit_loss_ratio"] = f"{data['profit_loss_ratio']:,.2f}"
+        
+        data["trade_mean"] = f"{data['trade_mean']:,.2f}"
+        data["average_commission"] = f"{data['average_commission']:,.2f}"
+        data["average_slippage"] = f"{data['average_slippage']:,.2f}"
+        data["trade_duration"] = f"{data['trade_duration']:,.2f}"
+
+        data["total_profit"] = f"{data['total_profit']:,.2f}"
+        data["profit_mean"] = f"{data['profit_mean']:,.2f}"
+        data["profit_duration"] = f"{data['profit_duration']:,.2f}"
+
+        data["total_loss"] = f"{data['total_loss']:,.2f}"
+        data["loss_mean"] = f"{data['loss_mean']:,.2f}"
+        data["loss_duration"] = f"{data['loss_duration']:,.2f}"
 
         for key, cell in self.cells.items():
             value = data.get(key, "")

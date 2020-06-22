@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 from datetime import timedelta
 from typing import List, Optional
 from pytz import timezone
@@ -192,6 +193,5 @@ class RqdataClient:
                 data.append(bar)
 
         return data
-
 
 rqdata_client = RqdataClient()

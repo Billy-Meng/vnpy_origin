@@ -5,6 +5,7 @@ import sys
 import pytz
 from datetime import datetime
 from time import sleep
+import shelve
 
 from vnpy.api.ctp import (
     MdApi,
@@ -62,7 +63,7 @@ from vnpy.trader.object import (
     CancelRequest,
     SubscribeRequest,
 )
-from vnpy.trader.utility import get_folder_path
+from vnpy.trader.utility import get_folder_path, load_json
 from vnpy.trader.event import EVENT_TIMER
 
 
@@ -206,6 +207,10 @@ class CtpGateway(BaseGateway):
 
     def close(self):
         """"""
+        #关闭ctp api前保存手续费、保证金率数据到硬盘
+        self.save_commission()
+        self.save_margin_ratio()
+
         self.td_api.close()
         self.md_api.close()
 
@@ -232,8 +237,25 @@ class CtpGateway(BaseGateway):
     def init_query(self):
         """"""
         self.count = 0
-        self.query_functions = [self.query_account, self.query_position]
+        self.query_functions = [self.query_account, self.query_position, self.query_commission, self.query_margin_ratio]
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
+
+    #-------------------------------------------------------------------------------------------------
+    def query_commission(self):
+        """查询手续费数据"""
+        self.td_api.query_commission()
+
+    def save_commission(self):
+        """保存手续费数据"""
+        self.td_api.save_commission()
+
+    def query_margin_ratio(self):
+        """查询保证金率数据"""
+        self.td_api.query_margin_ratio()
+
+    def save_margin_ratio(self):
+        """保存保证金率数据"""
+        self.td_api.save_margin_ratio()
 
 
 class CtpMdApi(MdApi):
@@ -309,7 +331,7 @@ class CtpMdApi(MdApi):
 
         timestamp = f"{self.current_date} {data['UpdateTime']}.{int(data['UpdateMillisec']/100)}"
         dt = datetime.strptime(timestamp, "%Y%m%d %H:%M:%S.%f")
-        dt = dt.replace(tzinfo=CHINA_TZ)
+        dt = CHINA_TZ.localize(dt.replace(tzinfo=None))
 
         tick = TickData(
             symbol=symbol,
@@ -441,6 +463,23 @@ class CtpTdApi(TdApi):
         self.trade_data = []
         self.positions = {}
         self.sysid_orderid_map = {}
+
+        self.account_date = None    #账户日期
+
+        self.commission_file_name = 'vt_commission_data'
+        self.commission_file_path = get_folder_path(self.commission_file_name)        
+        self.commission_req = {}          #手续费查询字典   
+        self.commission_data = {}         #手续费字典
+        self.margin_ratio_file_name = 'vt_margin_ratio_data'
+        self.margin_ratio_file_path = get_folder_path(self.margin_ratio_file_name)        
+        self.margin_ratio_req = {}        #保证金率查询字典   
+        self.margin_ratio_data = {}       #保证金率字典
+        self.commission_vt_symbol = [ vt_symbol for vt_symbol in load_json("vt_symbol.json").keys() ]
+        self.margin_ratio_vt_symbol = [ vt_symbol for vt_symbol in load_json("vt_symbol.json").keys() ]
+
+        #读取硬盘存储手续费数据，保证金率数据
+        self.load_commission()            # 赋值给 self.commission_data字典
+        self.load_margin_ratio()          # 赋值给 self.margin_ratio_data字典
 
     def onFrontConnected(self):
         """"""
@@ -592,13 +631,49 @@ class CtpTdApi(TdApi):
 
         account = AccountData(
             accountid=data["AccountID"],
-            balance=data["Balance"],
-            frozen=data["FrozenMargin"] + data["FrozenCash"] + data["FrozenCommission"],
-            gateway_name=self.gateway_name
+            balance=round(data["Balance"],3),
+            pre_balance = round(data['PreBalance'],3),                #上个交易日总资金
+            available = round(data["Available"],3),                   #可用资金
+            commission = round(data['Commission'],3),                 #手续费
+            margin = round(data['CurrMargin'] ,3),                    #账户保证金
+            close_profit = round(data['CloseProfit'],3),              #平仓盈亏
+            position_profit = round(data['PositionProfit'],3),        #持仓盈亏
+            frozen=round(data["FrozenMargin"] + data["FrozenCash"] + data["FrozenCommission"], 3),        #冻结资金
+            date = str(datetime.now().date()),
+            time = str(datetime.now().time()),
+            gateway_name=self.gateway_name,
         )
-        account.available = data["Available"]
+        try:
+            account.percent = round(account.margin / account.balance,3) * 100      #资金使用率
+        except ZeroDivisionError:
+            account.percent = 0
 
         self.gateway.on_account(account)
+
+        # recording = True
+
+        # #周六周日不写入数据
+        # if datetime.today().weekday() == 5 or datetime.today().weekday() == 6:
+        #     recording = False
+
+        # if recording:
+        #     #通过CTP接口查询账户资金
+        #     account_info = account.__dict__
+        #     ctp_account_path = "C:\\Users\\Billy\\Desktop\\VNPY\\Account\\CTP_account_info\\account_info"+".csv"
+
+        #     if not os.path.exists(ctp_account_path): # 如果文件不存在，需要写header
+        #         with open(ctp_account_path, 'w', newline="") as f1:      # newline=""不自动换行
+        #             w1 = csv.DictWriter(f1, account_info.keys())
+        #             w1.writeheader()
+        #             w1.writerow(account_info)
+
+        #     else: # 文件存在，不需要写header
+        #         if self.account_date and self.account_date != account.datetime.date():        # 一天写入一次账户信息
+        #             with open(ctp_account_path, 'a', newline="") as f1:                             # a二进制追加形式写入
+        #                     w1 = csv.DictWriter(f1, account_info.keys())
+        #                     w1.writerow(account_info)
+
+        #         self.account_date = account.datetime.date()
 
     def onRspQryInstrument(self, data: dict, error: dict, reqid: int, last: bool):
         """
@@ -612,9 +687,36 @@ class CtpTdApi(TdApi):
                 name=data["InstrumentName"],
                 product=product,
                 size=data["VolumeMultiple"],
-                pricetick=data["PriceTick"],
+                pricetick=data["PriceTick"],                         # 合约最小价格变动
+                max_order_volume=data["MaxLimitOrderVolume"],        # 限价单次最大委托量
                 gateway_name=self.gateway_name
             )
+
+            #手续费数据合并到contract
+            for symbol in self.commission_data.keys():
+                if symbol == contract.symbol:
+                    contract.open_commission_ratio=self.commission_data[symbol]['OpenRatioByMoney']                  #开仓手续费率
+                    contract.open_commission=self.commission_data[symbol]['OpenRatioByVolume']                       #开仓手续费
+                    contract.close_commission_ratio=self.commission_data[symbol]['CloseRatioByMoney']                #平仓手续费率
+                    contract.close_commission=self.commission_data[symbol]['CloseRatioByVolume']                     #平仓手续费
+                    contract.close_commission_today_ratio=self.commission_data[symbol]['CloseTodayRatioByMoney']     #平今手续费率
+                    contract.close_commission_today=self.commission_data[symbol]['CloseTodayRatioByVolume']          #平今手续费                
+                elif self.remain_alpha(symbol) == self.remain_alpha(contract.symbol):
+                    contract.open_commission_ratio=self.commission_data[symbol]['OpenRatioByMoney']                  #开仓手续费率
+                    contract.open_commission=self.commission_data[symbol]['OpenRatioByVolume']                       #开仓手续费
+                    contract.close_commission_ratio=self.commission_data[symbol]['CloseRatioByMoney']                #平仓手续费率
+                    contract.close_commission=self.commission_data[symbol]['CloseRatioByVolume']                     #平仓手续费
+                    contract.close_commission_today_ratio=self.commission_data[symbol]['CloseTodayRatioByMoney']     #平今手续费率
+                    contract.close_commission_today=self.commission_data[symbol]['CloseTodayRatioByVolume']          #平今手续费
+
+            #保证金数据合并到contract
+            for symbol in self.margin_ratio_data.keys():
+                if symbol == contract.symbol:
+                    contract.margin_ratio = max(self.margin_ratio_data[symbol]['LongMarginRatioByMoney'],
+                                                self.margin_ratio_data[symbol]['ShortMarginRatioByMoney'])           #合约保证金比率
+                elif self.remain_alpha(symbol) == self.remain_alpha(contract.symbol):
+                    contract.margin_ratio = max(self.margin_ratio_data[symbol]['LongMarginRatioByMoney'],
+                                                self.margin_ratio_data[symbol]['ShortMarginRatioByMoney'])           #合约保证金比率
 
             # For option only
             if contract.product == Product.OPTION:
@@ -664,7 +766,7 @@ class CtpTdApi(TdApi):
 
         timestamp = f"{data['InsertDate']} {data['InsertTime']}"
         dt = datetime.strptime(timestamp, "%Y%m%d %H:%M:%S")
-        dt = dt.replace(tzinfo=CHINA_TZ)
+        dt = CHINA_TZ.localize(dt.replace(tzinfo=None))
 
         order = OrderData(
             symbol=symbol,
@@ -698,7 +800,7 @@ class CtpTdApi(TdApi):
 
         timestamp = f"{data['TradeDate']} {data['TradeTime']}"
         dt = datetime.strptime(timestamp, "%Y%m%d %H:%M:%S")
-        dt = dt.replace(tzinfo=CHINA_TZ)
+        dt = CHINA_TZ.localize(dt.replace(tzinfo=None))
 
         trade = TradeData(
             symbol=symbol,
@@ -910,7 +1012,90 @@ class CtpTdApi(TdApi):
         if self.connect_status:
             self.exit()
 
+    #-------------------------------------------------------------------------------------------------------------------
+    # 引用自VNPY社区上弦之月分享，链接：https://www.vnpy.com/forum/topic/647-vnpyhuo-qu-shou-xu-fei-lu-he-bing-dao-contract
+    #-------------------------------------------------------------------------------------------------
+    def remain_alpha(self, symbol:str) -> str:
+        """
+        返回合约的字母字符串大写
+        """
+        symbol_mark = "".join(list(filter(str.isalpha, symbol)))
+        return symbol_mark.upper()
+    #-------------------------------------------------------------------------------------------------
+    def onRspQryInstrumentCommissionRate(self, data: dict, error: dict, reqid: int, last: bool):
+        """查询合约手续费率"""
+        symbol = data.get('InstrumentID',None)
+        if symbol:
+            self.commission_data[symbol] = data
+    #-------------------------------------------------------------------------------------------------
+    def onRspQryInstrumentMarginRate(self, data: dict, error: dict, reqid: int, last: bool):
+        """查询保证金率"""
+        symbol = data.get('InstrumentID',None)
+        if symbol:
+            self.margin_ratio_data[symbol] = data
+    #-------------------------------------------------------------------------------------------------
+    def load_commission(self):
+        """从硬盘读取手续费数据"""
+        f = shelve.open(f"{self.commission_file_path}\\vt_commission_data")
+        if 'data' in f:
+            d = f['data']
+            for key, value in list(d.items()):
+                self.commission_data[key] = value
+        f.close()
+    #-------------------------------------------------------------------------------------------------
+    def save_commission(self):
+        """保存手续费数据到硬盘"""
+        f = shelve.open(f"{self.commission_file_path}\\vt_commission_data")
+        f['data'] = self.commission_data
+        f.close()         
+    #-------------------------------------------------------------------------------------------------
+    def load_margin_ratio(self):
+        """从硬盘读取保证金率数据"""
+        f = shelve.open(f"{self.margin_ratio_file_path}\\vt_margin_ratio_data")
+        if 'data' in f:
+            d = f['data']
+            for key, value in list(d.items()):
+                self.margin_ratio_data[key] = value
+        f.close()
+    #-------------------------------------------------------------------------------------------------
+    def save_margin_ratio(self):
+        """保存保证金率数据到硬盘"""
+        f = shelve.open(f"{self.margin_ratio_file_path}\\vt_margin_ratio_data")
+        f['data'] = self.margin_ratio_data
+        f.close() 
+    #-------------------------------------------------------------------------------------------------
+    #commission_vt_symbol，margin_ratio_vt_symbol都是全市场合约列表，需要自己维护
+    #-------------------------------------------------------------------------------------------------
+    def query_commission(self):
+        """查询手续费率"""
+        commission_vt_symbol = self.commission_vt_symbol
+        if len(commission_vt_symbol) > 0:
+            symbol = commission_vt_symbol[0].split('.')[0]
+            #手续费率查询字典
+            self.commission_req['BrokerID'] = self.brokerid
+            self.commission_req['InvestorID'] = self.userid
+            self.commission_req['InstrumentID'] = symbol
+            self.reqid += 1 
+            #请求查询手续费率
+            self.reqQryInstrumentCommissionRate(self.commission_req, self.reqid)  
+            commission_vt_symbol.pop(0)
+    def query_margin_ratio(self):
+        """查询保证金率"""
+        margin_ratio_vt_symbol = self.margin_ratio_vt_symbol
+        if len(margin_ratio_vt_symbol) > 0:
+            symbol = margin_ratio_vt_symbol[0].split('.')[0]
+            #保证金率查询字典
+            self.margin_ratio_req['BrokerID'] = self.brokerid
+            self.margin_ratio_req['InvestorID'] = self.userid
+            self.margin_ratio_req['InstrumentID'] = symbol
+            self.margin_ratio_req['HedgeFlag'] = THOST_FTDC_HF_Speculation
+            self.reqid += 1 
+            #请求查询保证金率
+            self.reqQryInstrumentMarginRate(self.margin_ratio_req, self.reqid)  
+            margin_ratio_vt_symbol.pop(0)
 
+
+#----------------------------------------------------------------------------------------------------
 def adjust_price(price: float) -> float:
     """"""
     if price == MAX_FLOAT:
