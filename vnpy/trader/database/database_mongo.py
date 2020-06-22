@@ -302,11 +302,15 @@ class MongoManager(BaseDatabaseManager):
         return data
 
     @staticmethod
-    def to_update_param(d):
-        return {
+    def to_update_param(d) -> dict:
+        dt = d.datetime.astimezone(DB_TZ)
+        d.datetime = dt.replace(tzinfo=None)
+
+        param = {
             "set__" + k: v.value if isinstance(v, Enum) else v
             for k, v in d.__dict__.items()
         }
+        return param
 
     def save_bar_data(self, datas: Sequence[BarData]):
         for d in datas:

@@ -25,3 +25,4 @@ deap
 pyzmq
 wmi
 QScintilla
+plotly

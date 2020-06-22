@@ -34,9 +34,7 @@ class KingKeltnerStrategy(CtaTemplate):
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""
-        super(KingKeltnerStrategy, self).__init__(
-            cta_engine, strategy_name, vt_symbol, setting
-        )
+        super().__init__(cta_engine, strategy_name, vt_symbol, setting)
 
         self.bg = BarGenerator(on_bar=self.on_bar, window=5, on_window_bar=self.on_5min_bar)
         self.am = ArrayManager()

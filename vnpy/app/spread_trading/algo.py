@@ -33,9 +33,6 @@ class SpreadTakerAlgo(SpreadAlgoTemplate):
             payup, interval, lock
         )
 
-        self.cancel_interval: int = 2
-        self.timer_count: int = 0
-
     def on_tick(self, tick: TickData):
         """"""
         # Return if tick not inited
