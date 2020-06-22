@@ -13,6 +13,8 @@ import traceback
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import empyrical
+import talib
 from pandas import DataFrame, merge
 from deap import creator, base, tools, algorithms
 
@@ -20,7 +22,7 @@ from vnpy.trader.constant import (Direction, Offset, Exchange,
                                   Interval, Status, RateType)
 from vnpy.trader.database import database_manager
 from vnpy.trader.object import OrderData, TradeData, BarData, TickData
-from vnpy.trader.utility import round_to, BarGenerator, tradedays
+from vnpy.trader.utility import round_to, BarGenerator
 from vnpy.chart.my_pyecharts import MyPyecharts, Tab, Line, Bar, Grid, EffectScatter, opts, JsCode
 
 from .base import (
@@ -156,6 +158,8 @@ class BacktestingEngine:
         self.bar_data_df = None
         self.trade_data_df = None
         self.trade_result_df = None
+        self.trade_daily_df = None
+        self.statistics = None
 
     def clear_data(self):
         """
@@ -184,6 +188,8 @@ class BacktestingEngine:
         self.bar_data_df = None
         self.trade_data_df = None
         self.trade_result_df = None
+        self.trade_daily_df = None
+        self.statistics = None
 
     def set_parameters(
         self,
@@ -1020,8 +1026,6 @@ class BacktestingEngine:
         trade_df.reset_index(inplace=True)
 
         if trade_df is not None:
-            trade_df = trade_df.sort_index()
-
             for ix, row in trade_df.iterrows():
                 trade_number_list.append(trade_count)
 
@@ -1071,8 +1075,9 @@ class BacktestingEngine:
                 trade_df["trade_commission"] = trade_commission_list
                 trade_df["trade_slippage"] = trade_slippage_list
                 trade_df["net_pnl"] = trade_df["trade_profit"] - trade_df["trade_commission"] - trade_df["trade_slippage"]
+
             else:
-                last_close_price = self.daily_df.close_price.to_list()[-1]          # 获取回测期最后收盘价
+                last_close_price = self.history_data[-1].close_price          # 获取回测期最后收盘价
                 modify_profit_list = []
                 modify_commission_list = []
                 modify_slippage_list = []
@@ -1113,29 +1118,35 @@ class BacktestingEngine:
             trade_result_df["balance"] = trade_result_df["net_pnl"].cumsum() + self.capital
             trade_result_df["start_time"] = trade_df[["trade_number", "datetime"]].groupby("trade_number").first()
             trade_result_df["end_time"] = trade_df[["trade_number", "datetime"]].groupby("trade_number").last()
+            
+            # 处理最后为开仓的情况，将交易结束时间调整为加载的Bar历史数据最新时间
+            if count != 0:
+                trade_result_df["end_time"].iloc[-1] = self.history_data[-1].datetime                                   # 将最后交易时间调整为加载历史数据Bar的最新时间
+            
             trade_result_df["duration"] = trade_result_df["end_time"] - trade_result_df["start_time"]
             trade_result_df["trade_date"] = trade_result_df["end_time"].apply(lambda x: x.date())
 
             self.trade_result_df =  trade_result_df
 
-    def calculate_statistics(self, trade_df: DataFrame = None, capital = None, chart = False, output=True):
+    def calculate_statistics(self, trade_df: DataFrame = None, daily_df: DataFrame = None, capital = None, chart = False, output=True):
         """"""
         self.output("开始计算策略统计指标")
 
         # 内部调用DataFrame和capital
-        if trade_df is None:
+        if trade_df is None and daily_df is None:
             trade_df = self.trade_result_df
             daily_df = self.daily_df
             capital  = self.capital
-
-        # 外部传入DataFrame和capital
         else:
-            trade_df.sort_values("end_time", ascending=True, inplace=True)
+            # 外部传入时，必须传入trade_df，daily_df，capital
+            if capital is None:
+                return
+
+            # 根据传入的capital重新计算 trade_df 的 balance，以便提取结束资金end_balance
             trade_df["balance"] = trade_df["net_pnl"].cumsum() + capital
-            daily_df = trade_df[["trade_date", "net_pnl"]].groupby("trade_date").sum()
 
         # Check for init DataFrame
-        if trade_df is None:
+        if trade_df is None or daily_df is None:
             # 没有成交记录则设置所有统计指标为0
             start_date = ""
             end_date = ""
@@ -1148,18 +1159,32 @@ class BacktestingEngine:
 
             total_return = 0
             annual_return = 0
+            cagr = 0
+            annual_volatility = 0
             max_drawdown = 0
             max_ddpercent = 0
+            average_drawdown = 0
+            lw_drawdown = 0
+            average_square_drawdown = 0
             max_drawdown_duration = 0
+            max_drawdown_range = 0
 
             daily_return = 0
             return_std = 0
-            sharpe_ratio = 0
             return_drawdown_ratio = 0
+            sharpe_ratio = 0
+            omega_ratio = 0
+            calmar_ratio = 0
+            downside_risk = 0
+            sortino_ratio = 0
+            R_squared = 0
+            tail_ratio = 0
 
+            total_pnl = 0
             total_net_pnl = 0
             total_commission = 0
             total_slippage = 0
+            total_trade_count = 0
             total_trade = 0
 
             daily_net_pnl = 0
@@ -1175,6 +1200,8 @@ class BacktestingEngine:
             profit_loss_ratio = 0
 
             trade_mean = 0
+            average_commission = 0
+            average_slippage = 0
             trade_duration = 0
 
             total_profit = 0
@@ -1186,7 +1213,7 @@ class BacktestingEngine:
             loss_duration = 0
 
         else:
-            # 计算交易统计指标
+            # 计算基于trade_df的统计指标
             total_trade = len(trade_df)                                                                # 总交易笔数
             max_profit = trade_df["net_pnl"].max()                                                     # 单笔最大盈利
             max_loss = trade_df["net_pnl"].min()                                                       # 单笔最大亏损
@@ -1208,11 +1235,21 @@ class BacktestingEngine:
             trade_mean = total_net_pnl / total_trade                                                   # 平均每笔盈亏
             trade_duration = trade_df.duration.mean().total_seconds()/3600                             # 平均持仓小时
 
-            total_commission = trade_df["trade_commission"].sum()                                      # 交易手续费
-            total_slippage = trade_df["trade_slippage"].sum()                                          # 交易滑点费
+            total_pnl = trade_df["trade_profit"].sum()                                                 # 纯交易盈亏
+            total_commission = trade_df["trade_commission"].sum()                                      # 总交易手续费
+            total_slippage = trade_df["trade_slippage"].sum()                                          # 总交易滑点费
+            average_commission = total_commission / total_trade                                        # 平均每笔手续费
+            average_slippage = total_slippage / total_trade                                            # 平均每笔滑点费
 
 
+            # 计算基于daily_df的统计指标
             daily_df["balance"] = daily_df["net_pnl"].cumsum() + capital
+
+            if len(daily_df[daily_df["balance"] <= 0]) > 0:
+                self.output("*" * 30)
+                self.output(f'账号爆仓！爆仓日期为:{daily_df[daily_df["balance"] <= 0].index[0]}')
+                self.output("*" * 30)
+            
             daily_df["return"] = np.log(daily_df["balance"] / daily_df["balance"].shift(1)).fillna(0)
             daily_df["highlevel"] = daily_df["balance"].rolling(min_periods=1, window=len(daily_df), center=False).max()
             daily_df["drawdown"] = daily_df["balance"] - daily_df["highlevel"]
@@ -1221,39 +1258,57 @@ class BacktestingEngine:
             start_date = daily_df.index[0]
             end_date = daily_df.index[-1]
 
-            total_trade_days = tradedays(start_date, end_date)
-
             total_days = len(daily_df)
             profit_days = len(daily_df[daily_df["net_pnl"] > 0])
             loss_days = len(daily_df[daily_df["net_pnl"] < 0])
 
-            end_balance = daily_df["balance"].iloc[-1]
+            end_balance = trade_df["balance"].iloc[-1]                 # 此处调整为基于trade_df的结束资金，算上未平仓交易的手续费和滑点费
+
             max_drawdown = daily_df["drawdown"].min()
-            max_ddpercent = daily_df["ddpercent"].min()
+            max_ddpercent = daily_df["ddpercent"].min()                               # 百分比最大回撤：empyrical.max_drawdown(returns)
+            average_drawdown = daily_df["ddpercent"].mean()                           # 百分比平均回撤：就是每日百分比回撤的算数平均，即采用简单的算术平均计算策略整体每日亏损的风险。
+            lw_drawdown = talib.LINEARREG(daily_df["ddpercent"], total_days)[-1]      # 百分比线性加权回撤：就是使用最小二乘法（OLS）对回撤曲线进行线性回归，从而得到一条回撤的趋势线。最小化误差平方和的方法有利于避免极端情况的影响，让我们把关注点更多集中在策略的整体风险水平上。一个好的策略，其回撤的回归直线的斜率应该尽可能的小。
+            daily_df["ddpercent^2"] = daily_df["ddpercent"] * daily_df["ddpercent"]                             
+            average_square_drawdown = - daily_df["ddpercent^2"].mean()                # 百分比均方回撤：每日百分比回撤的平方的期望值，采用这种计量方法的原因在于认为策略样本内回测属于小样本评估，属于有偏估算。
             max_drawdown_end = daily_df["drawdown"].idxmin()
 
             if isinstance(max_drawdown_end, date):
                 max_drawdown_start = daily_df["balance"][:max_drawdown_end].idxmax()
-                max_drawdown_duration = (max_drawdown_end - max_drawdown_start).days
+                max_drawdown_duration = (max_drawdown_end - max_drawdown_start).days    # 最长回撤天数
+                max_drawdown_range = f"{max_drawdown_start}~{max_drawdown_end}"         # 最长回撤区间
             else:
                 max_drawdown_duration = 0
 
-            daily_net_pnl = total_net_pnl / total_trade_days
-            daily_commission = total_commission / total_trade_days
-            daily_slippage = total_slippage / total_trade_days
-            daily_trade_count = total_trade / total_trade_days
+            daily_net_pnl = total_net_pnl / total_days                # 日均盈亏
+            daily_commission = total_commission / total_days          # 日均手续费
+            daily_slippage = total_slippage / total_days              # 日均滑点费
+            daily_trade_count = total_trade / total_days              # 日均交易笔数
 
-            total_return = (end_balance / capital - 1) * 100
-            annual_return = total_return / total_trade_days * 244       # 中国平均一年市场交易日在244天左右
-            daily_return = daily_df["return"].mean() * 100
-            return_std = daily_df["return"].std() * 100
+            total_trade_count = daily_df["trade_count"].sum()         # 总共成交的委托数量
+
+            total_return = (end_balance / capital - 1) * 100          # 总收益率
+            annual_return = total_return / total_days * 244           # 年化收益率：empyrical.annual_return(returns, period='daily', annualization=None)
+            daily_return = daily_df["return"].mean() * 100            # 日均收益率
+            return_std = daily_df["return"].std() * 100               # 收益标准差
+            return_drawdown_ratio = -total_return / max_ddpercent     # 收益回撤比
 
             if return_std:
-                sharpe_ratio = daily_return / return_std * np.sqrt(240)
+                sharpe_ratio = daily_return / return_std * np.sqrt(244)     # 夏普比率：empyrical.sharpe_ratio(returns, risk_free=0, period='daily', annualization=None)
             else:
                 sharpe_ratio = 0
 
-            return_drawdown_ratio = -total_return / max_ddpercent
+            cagr = empyrical.cagr(daily_df["return"], period='daily', annualization=244) * 100                                          # 年复合增长率
+            annual_volatility = empyrical.annual_volatility(daily_df["return"], alpha=2.0, annualization=244) * 100                     # 年化波动率：用来测量策略的风险性，波动越大代表策略风险越高。
+            omega_ratio = empyrical.omega_ratio(daily_df["return"], risk_free=0.0, required_return=0.0, annualization=244)              # Omega比率：上涨概率比下跌概率，衡量的是收益-损失比率，一般越大越好。
+            calmar_ratio = empyrical.calmar_ratio(daily_df["return"], annualization=244)                                                # Calmar比率：描述的是收益和最大回撤之间的关系。计算方式为年化收益率与历史最大回撤之间的比率。Calmar比率数值越大，基金的业绩表现越好。反之，基金的业绩表现越差。
+            downside_risk = empyrical.downside_risk(daily_df["return"], required_return=0, annualization=244)                           # 下限风险：在基金投资中，下限风险是指基金净值增长率的下方标准差，测量的是基金的净值增长率与目标回报率或者期望回报率反向的偏差程度。
+            sortino_ratio = empyrical.sortino_ratio(daily_df["return"], required_return=0, annualization=244, _downside_risk=None)      # 索提诺比率：一种衡量投资组合相对表现的方法。与夏普比率(Sharpe Ratio)有相似之处，但索提诺比率运用下偏标准差而不是总标准差，以区别不利和有利的波动。和夏普比率类似，这一比率越高，表明基金承担相同单位下行风险能获得更高的超额回报率。索提诺比率可以看做是夏普比率在衡量对冲基金/私募基金时的一种修正方式。
+            R_squared = empyrical.stability_of_timeseries(daily_df["return"])                                                           # R平方：是反映业绩基准的变动对基金表现的影响，影响程度以 0～100 计。如果R平方值等于100，表示基金回报的变动完全由业绩基准的变动所致；若R平方值等于35，即35%的基金回报可归因于业绩基准的变动。简言之，R 平方值越低，由业绩基准变动导致的基金业绩的变动便越少。此外，R平方也可用来确定β系数或α系数的准确性。一般而言，基金的R平方值越高，其两个系数的准确性便越高。
+            tail_ratio = empyrical.tail_ratio(daily_df["return"])                                                                       # 尾部比率：
+
+            # 用于生成每日平仓头寸后的净盈亏散点图
+            trade_daily_df = trade_df[["trade_date", "net_pnl"]].groupby("trade_date").sum()
+            self.trade_daily_df = trade_daily_df.sort_index()
 
         # Output
         if output:
@@ -1261,7 +1316,6 @@ class BacktestingEngine:
 
             self.output(f"首个交易日：\t{start_date}")
             self.output(f"最后交易日：\t{end_date}")
-            self.output(f"市场交易日：\t{total_trade_days}")
 
             self.output(f"总交易日：  \t{total_days}")
             self.output(f"盈利交易日：\t{profit_days}")
@@ -1271,19 +1325,32 @@ class BacktestingEngine:
             self.output(f"结束资金：  \t{end_balance:,.2f}")
 
             self.output(f"总收益率：  \t{total_return:,.2f}%")
-            self.output(f"年化收益：  \t{annual_return:,.2f}%")
-            self.output(f"最大回撤:   \t{max_drawdown:,.2f}")
-            self.output(f"百分比最大回撤: \t{max_ddpercent:,.2f}%")
+            self.output(f"年化收益率：  \t{annual_return:,.2f}%")
+            self.output(f"年复合增长率：  \t{cagr:,.2f}%")
+            self.output(f"年化波动率：  \t{annual_volatility:,.2f}%")
+            self.output(f"最大回撤金额:   \t{max_drawdown:,.2f}")
+            self.output(f"%最大回撤:  \t{max_ddpercent:,.2f}%")
+            self.output(f"%平均回撤:  \t{average_drawdown:,.2f}%")                           
+            self.output(f"%线性加权回撤: \t{lw_drawdown:,.2f}%")                           
+            self.output(f"%均方回撤:  \t{average_square_drawdown:,.2f}%")
             self.output(f"最长回撤天数:   \t{max_drawdown_duration}")
+            self.output(f"最长回撤区间：  \t{max_drawdown_range}")
 
             self.output(f"日均收益率：  \t{daily_return:,.2f}%")
             self.output(f"收益标准差：  \t{return_std:,.2f}%")
-            self.output(f"夏普比率：    \t{sharpe_ratio:,.2f}")
             self.output(f"收益回撤比：  \t{return_drawdown_ratio:,.2f}")
+            self.output(f"夏普比率：    \t{sharpe_ratio:,.2f}")
+            self.output(f"Omega比率：   \t{omega_ratio:,.2f}")
+            self.output(f"Calmar比率：  \t{calmar_ratio:,.2f}")
+            self.output(f"下限风险：    \t{downside_risk:,.2f}")
+            self.output(f"索提诺比率：  \t{sortino_ratio:,.2f}")
+            self.output(f"R平方：      \t{R_squared:,.2f}")
+            self.output(f"尾部比率：    \t{tail_ratio:,.2f}")
 
             self.output(f"总盈亏：     \t{total_net_pnl:,.2f}")
             self.output(f"总手续费：   \t{total_commission:,.2f}")
             self.output(f"总滑点费：   \t{total_slippage:,.2f}")
+            self.output(f"总成交数量：  \t{total_trade_count}")
             self.output(f"总交易笔数：  \t{total_trade}")
 
             self.output(f"日均盈亏：   \t{daily_net_pnl:,.2f}")
@@ -1299,6 +1366,8 @@ class BacktestingEngine:
             self.output(f"盈亏比：     \t{profit_loss_ratio:,.2f}")
 
             self.output(f"平均每笔盈亏：\t{trade_mean:,.2f}")
+            self.output(f"平均每笔手续费：\t{average_commission:,.2f}")
+            self.output(f"平均每笔滑点费：\t{average_slippage:,.2f}")
             self.output(f"平均持仓小时：\t{trade_duration:,.2f}")
 
             self.output(f"盈利总金额： \t{total_profit:,.2f}")
@@ -1314,7 +1383,6 @@ class BacktestingEngine:
         statistics = {
             "start_date": start_date,
             "end_date": end_date,
-            "total_trade_days": total_trade_days,
             "total_days": total_days,
             "profit_days": profit_days,
             "loss_days": loss_days,
@@ -1322,16 +1390,30 @@ class BacktestingEngine:
             "end_balance": end_balance,
             "total_return": total_return,
             "annual_return": annual_return,
+            "cagr": cagr,
+            "annual_volatility": annual_volatility,
             "max_drawdown": max_drawdown,
             "max_ddpercent": max_ddpercent,
+            "average_drawdown": average_drawdown,
+            "lw_drawdown": lw_drawdown,
+            "average_square_drawdown": average_square_drawdown,
             "max_drawdown_duration": max_drawdown_duration,
+            "max_drawdown_range": max_drawdown_range,
             "daily_return": daily_return,
             "return_std": return_std,
-            "sharpe_ratio": sharpe_ratio,
             "return_drawdown_ratio": return_drawdown_ratio,
+            "sharpe_ratio": sharpe_ratio,
+            "omega_ratio": omega_ratio,
+            "calmar_ratio": calmar_ratio,
+            "downside_risk": downside_risk,
+            "sortino_ratio": sortino_ratio,
+            "R_squared": R_squared,
+            "tail_ratio": tail_ratio,
+            "total_pnl": total_pnl,
             "total_net_pnl": total_net_pnl,
             "total_commission": total_commission,
             "total_slippage": total_slippage,
+            "total_trade_count": total_trade_count,
             "total_trade": total_trade,
             "daily_net_pnl": daily_net_pnl,
             "daily_commission": daily_commission,
@@ -1344,6 +1426,8 @@ class BacktestingEngine:
             "rate_of_win": rate_of_win,
             "profit_loss_ratio": profit_loss_ratio,
             "trade_mean": trade_mean,
+            "average_commission": average_commission,
+            "average_slippage": average_slippage,
             "trade_duration": trade_duration,
             "total_profit": total_profit,
             "profit_mean": profit_mean,
@@ -1364,10 +1448,12 @@ class BacktestingEngine:
         if chart:
             self.show_chart(daily_df)
 
+            statistics_chart = self.statistics_chart(statistics)
             daily_chart = self.daily_grid_chart(daily_df)
-            trade_chart = self.trade_grid_chart(trade_df, daily_df)
+            trade_chart = self.trade_grid_chart(trade_df, trade_daily_df, daily_df)
 
             tab_chart = Tab(page_title="投资组合分析图表")
+            tab_chart.add(statistics_chart, "各类统计指标")
             tab_chart.add(daily_chart, "日收益分析图")
             tab_chart.add(trade_chart, "交易盈亏分布图")
 
@@ -1379,6 +1465,8 @@ class BacktestingEngine:
             filepath  = temp_path.joinpath(filename)
 
             tab_chart.render(filepath)
+
+        self.statistics = statistics
 
         return statistics
 
@@ -1490,6 +1578,7 @@ class BacktestingEngine:
                 yaxis_opts = opts.AxisOpts(
                     is_scale = True,
                     splitarea_opts = opts.SplitAreaOpts(is_show = True, areastyle_opts = opts.AreaStyleOpts(opacity=0.8)),
+                    splitline_opts = opts.SplitLineOpts(is_show=True),
                 ),
                 
                 brush_opts = opts.BrushOpts(
@@ -1559,7 +1648,7 @@ class BacktestingEngine:
                 yaxis_opts=opts.AxisOpts(
                     axisline_opts=opts.AxisLineOpts(is_on_zero=False),
                     axistick_opts=opts.AxisTickOpts(is_show=False),
-                    splitline_opts=opts.SplitLineOpts(is_show=False),
+                    splitline_opts=opts.SplitLineOpts(is_show=True),
                     axislabel_opts=opts.LabelOpts(is_show=True),
                 ),
             )
@@ -1586,14 +1675,14 @@ class BacktestingEngine:
                 yaxis_opts=opts.AxisOpts(
                     axisline_opts=opts.AxisLineOpts(is_on_zero=False),
                     axistick_opts=opts.AxisTickOpts(is_show=False),
-                    splitline_opts=opts.SplitLineOpts(is_show=False),
+                    splitline_opts=opts.SplitLineOpts(is_show=True),
                     axislabel_opts=opts.LabelOpts(is_show=True),
                 ),
             )
         )
 
         grid_chart = (
-            Grid(init_opts=opts.InitOpts(width="1900px", height="900px", chart_id="1"))
+            Grid(init_opts=opts.InitOpts(width="1900px", height="900px", chart_id="收益回撤图"))
             .add(balance_line, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="5%", height="27%"))
             .add(net_pnl_bar, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="38%", height="27%"))
             .add(drawdown_line, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="69%", height="27%"))
@@ -1602,9 +1691,10 @@ class BacktestingEngine:
         return grid_chart
 
     # 每笔交易盈亏分布，每日交易盈亏分布
-    def trade_grid_chart(self, trade_df = None, daily_df = None):
+    def trade_grid_chart(self, trade_df = None, trade_daily_df = None, daily_df = None):
         if trade_df is None and daily_df is None:
             trade_df = self.trade_result_df
+            trade_daily_df = self.trade_daily_df
             daily_df = self.daily_df
 
         trade_scatter = (
@@ -1617,7 +1707,8 @@ class BacktestingEngine:
                 label_opts = opts.LabelOpts(is_show=False),
             ) 
             .set_global_opts(
-                title_opts=opts.TitleOpts(title="每笔交易盈亏分布", pos_top="1%"),
+                title_opts=opts.TitleOpts(title="每笔交易盈亏分布", pos_top="0%"),
+                yaxis_opts=opts.AxisOpts(splitline_opts=opts.SplitLineOpts(is_show=True)),
                 datazoom_opts=[
                     opts.DataZoomOpts(
                         is_show=False,
@@ -1630,6 +1721,13 @@ class BacktestingEngine:
                         is_show=False,
                         type_="inside",
                         xaxis_index=[0, 1],
+                        range_start=0,
+                        range_end=100,
+                    ),
+                    opts.DataZoomOpts(
+                        is_show=False,
+                        type_="inside",
+                        xaxis_index=[0, 2],
                         range_start=0,
                         range_end=100,
                     ),
@@ -1660,26 +1758,138 @@ class BacktestingEngine:
             )
         )
 
+        trade_daily_scatter = (
+            EffectScatter()
+            .add_xaxis(xaxis_data = list(trade_daily_df.index))
+            .add_yaxis(
+                series_name = "每日平仓盈亏",
+                y_axis = trade_daily_df.net_pnl.apply(lambda x: round(x, 2)).values.tolist(),
+                symbol_size = 12,
+                label_opts = opts.LabelOpts(is_show=False),
+            ) 
+            .set_global_opts(
+                title_opts=opts.TitleOpts(title="每日平仓盈亏分布", pos_top="34%"),
+                yaxis_opts=opts.AxisOpts(splitline_opts=opts.SplitLineOpts(is_show=True)),
+                legend_opts = opts.LegendOpts(is_show = True, type_ = "scroll", selected_mode = "multiple", 
+                                                pos_left = "48%", pos_top = "0%", legend_icon = "roundRect",),
+            )
+        )
+
         daily_scatter = (
             EffectScatter()
             .add_xaxis(xaxis_data = list(daily_df.index))
             .add_yaxis(
-                series_name = "每日盈亏",
+                series_name = "逐日盯市盈亏",
                 y_axis = daily_df.net_pnl.apply(lambda x: round(x, 2)).values.tolist(),
                 symbol_size = 12,
                 label_opts = opts.LabelOpts(is_show=False),
             ) 
             .set_global_opts(
-                title_opts=opts.TitleOpts(title="每日交易盈亏分布", pos_top="49%"),
+                title_opts=opts.TitleOpts(title="逐日盯市盈亏分布", pos_top="66%"),
+                yaxis_opts=opts.AxisOpts(splitline_opts=opts.SplitLineOpts(is_show=True)),
                 legend_opts = opts.LegendOpts(is_show = True, type_ = "scroll", selected_mode = "multiple", 
-                                                pos_left = "50%", pos_top = "0%", legend_icon = "roundRect",),
+                                                pos_left = "56%", pos_top = "0%", legend_icon = "roundRect",),
             )
         )
 
         grid_chart = (
-            Grid(init_opts=opts.InitOpts(width="1900px", height="900px", chart_id="10"))
-            .add(trade_scatter, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="5%", height="40%"))
-            .add(daily_scatter, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="55%", height="40%"))
+            Grid(init_opts=opts.InitOpts(width="1900px", height="900px", chart_id="交易盈亏分布"))
+            .add(trade_scatter, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="4%", height="27%"))
+            .add(trade_daily_scatter, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="37%", height="27%"))
+            .add(daily_scatter, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="70%", height="27%"))
+        )
+
+        return grid_chart
+
+    def statistics_chart(self, statistics = None):
+        if statistics is None:
+            s = self.statistics
+        else:
+            s = statistics
+
+        print([int(s["capital"]), round(s["end_balance"],2), round(s["total_pnl"],2), round(s["total_commission"],2), round(s["total_slippage"],2), round(s["total_net_pnl"],2)])
+        capita_bar = (
+            Bar()
+            .add_xaxis(["起始资金", "结束资金", "交易盈亏", "手续费", "滑点费", "总盈亏"])
+            .add_yaxis(
+                series_name="盈亏情况",
+                y_axis=[int(s["capital"]), round(s["end_balance"],2), round(s["total_pnl"],2), round(s["total_commission"],2), round(s["total_slippage"],2), round(s["total_net_pnl"],2)],
+                label_opts=opts.LabelOpts(font_size=15, font_weight="bolder"),
+            )
+            .set_global_opts(
+                legend_opts = opts.LegendOpts(is_show = False),
+                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=15, font_weight="bolder")),
+                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder"), splitline_opts=opts.SplitLineOpts(is_show=True),),
+            )
+        )
+
+        return_bar = (
+            Bar()
+            .add_xaxis(["总收益率%", "年化收益率%", "年复合增长率%", "年化波动率%", "日均收益率%", "胜率%", "盈亏比"])
+            .add_yaxis(
+                series_name="收益率%",
+                y_axis=[round(s["total_return"], 2), round(s["annual_return"], 2), round(s["cagr"], 2), round(s["annual_volatility"], 2), round(s["daily_return"], 2), round(s["rate_of_win"], 2), round(s["profit_loss_ratio"], 2)],
+                label_opts=opts.LabelOpts(font_size=15, font_weight="bolder"),
+            )
+            .set_global_opts(
+                legend_opts = opts.LegendOpts(is_show = False),
+                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder", rotate=0)),
+                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder"), splitline_opts=opts.SplitLineOpts(is_show=True),),
+            )
+        )
+
+        rate_bar = (
+            Bar()
+            .add_xaxis(["夏普比率", "Omega比率", "Calmar比率", "下限风险", "索提诺比率", "R平方", "尾部比率", "收益回撤比"])
+            .add_yaxis(
+                series_name="比率指标",
+                y_axis=[round(s["sharpe_ratio"], 2), round(s["omega_ratio"], 2), round(s["calmar_ratio"], 2), round(s["downside_risk"], 2), round(s["sortino_ratio"], 2), round(s["R_squared"], 2), round(s["tail_ratio"], 2), round(s["return_drawdown_ratio"], 2)],
+                label_opts=opts.LabelOpts(font_size=15, font_weight="bolder"),
+            )
+            .set_global_opts(
+                legend_opts = opts.LegendOpts(is_show = False),
+                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder", rotate=0)),
+                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder"), splitline_opts=opts.SplitLineOpts(is_show=True),),
+            )
+        )
+
+        drawdown_bar = (
+            Bar()
+            .add_xaxis(["最大回撤金额", "%最大回撤", "%平均回撤", "%线性加权回撤", "%均方回撤", "最长回撤天数"])
+            .add_yaxis(
+                series_name="回撤情况",
+                y_axis=[round(s["max_drawdown"], 2), round(s["max_ddpercent"], 2), round(s["average_drawdown"], 2), round(s["lw_drawdown"], 2), round(s["average_square_drawdown"], 2), int(s["max_drawdown_duration"])],
+                label_opts=opts.LabelOpts(font_size=15, font_weight="bolder"),
+            )
+            .set_global_opts(
+                legend_opts = opts.LegendOpts(is_show = False),
+                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder", rotate=-10, horizontal_align="center", margin=16)),
+                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder"), splitline_opts=opts.SplitLineOpts(is_show=True),),
+            )
+        )
+
+        trade_bar = (
+            Bar()
+            .add_xaxis(["总交易笔数", "盈利交易笔数", "亏损交易笔数", "日均交易笔数", "平均持仓小时", "盈利持仓小时", "亏损持仓小时"])
+            .add_yaxis(
+                series_name="交易笔数",
+                y_axis=[int(s["total_trade"]), int(s["profit_times"]), int(s["loss_times"]), round(s["daily_trade_count"],2), int(s["trade_duration"]), int(s["profit_duration"]), int(s["loss_duration"])],
+                label_opts=opts.LabelOpts(font_size=15, font_weight="bolder"),
+            )
+            .set_global_opts(
+                legend_opts = opts.LegendOpts(is_show = False),
+                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder", rotate=-10, horizontal_align="center", margin=16)),
+                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12, font_weight="bolder"), splitline_opts=opts.SplitLineOpts(is_show=True),),
+            )
+        )
+
+        grid_chart = (
+            Grid(init_opts=opts.InitOpts(width="1900px", height="900px", chart_id="统计指标"))
+            .add(capita_bar, grid_opts=opts.GridOpts(pos_left="5%", pos_right="5%", pos_top="1%", height="25%"))
+            .add(return_bar, grid_opts=opts.GridOpts(pos_left="5%", pos_right="50%", pos_top="35%", height="25%"))
+            .add(rate_bar, grid_opts=opts.GridOpts(pos_left="55%", pos_right="5%", pos_top="35%", height="25%"))
+            .add(drawdown_bar, grid_opts=opts.GridOpts(pos_left="5%", pos_right="50%", pos_top="70%", height="25%"))
+            .add(trade_bar, grid_opts=opts.GridOpts(pos_left="55%", pos_right="5%", pos_top="70%", height="25%"))
         )
 
         return grid_chart
@@ -1687,6 +1897,7 @@ class BacktestingEngine:
     def save_tab_chart(self):
         page_title = f"{self.symbol} {self.strategy_class.__name__}"
         tab_chart = Tab(page_title=page_title)
+        tab_chart.add(self.statistics_chart(), "各类统计指标")
         tab_chart.add(self.daily_grid_chart(), "日收益分析图")
         tab_chart.add(self.trade_grid_chart(), "交易盈亏分布图")
         tab_chart.add(self.draw_kline_chart(), "K线 + 成交记录 + 资金曲线")

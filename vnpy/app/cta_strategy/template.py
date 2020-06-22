@@ -55,6 +55,17 @@ class CtaTemplate(ABC):
         self.trade_data_list = []        # 成交信息列表
         self.trade_data_dict = dict()    # 成交信息字典
 
+        # 委托状态控制初始化     
+        self.chase_long_trigger = False   
+        self.chase_sell_trigger = False     
+        self.chase_short_trigger = False   
+        self.chase_cover_trigger = False    
+        self.long_trade_volume = 0    
+        self.short_trade_volume = 0    
+        self.sell_trade_volume = 0       
+        self.cover_trade_volume = 0    
+        self.chase_interval = 10         # 拆单间隔:秒
+
         self.update_setting(setting)
 
     def update_setting(self, setting: dict):
@@ -298,6 +309,74 @@ class CtaTemplate(ABC):
 
 
     # 自定义增强功能
+
+    def get_position_detail(self, vt_symbol: str) -> "PositionHolding":        
+        """查询long_pos,short_pos(持仓)，long_pnl,short_pnl(盈亏)，active_orders(未成交字典)"""        
+        return self.cta_engine.get_position_detail(vt_symbol)
+
+    def tick_chase_trade(self, tick: TickData):
+        """
+        该方法用于在Tick级别进行追击成交，需在策略实例的on_tick函数中调用。委托挂撤单管理逻辑如下：
+        1、调用CTA策略模板新增的get_position_detail函数，通过engine获取活动委托字典active_orders。注意的是，该字典只缓存未成交或者部分成交的委托，其中key是字符串格式的vt_orderid，value对应OrderData对象；
+        2、engine取到的活动委托为空，表示委托已完成，即order_finished=True；否则，表示委托还未完成，即order_finished=False，需要进行精细度管理；
+        3、精细管理的第一步是先处理最老的活动委托，先获取委托号vt_orderid和OrderData对象，然后对OrderData对象的开平仓属性（即offst）判断是进行开仓追单还是平仓追单：
+           a. 开仓追单情况下，先得到未成交量order.untraded，若当前委托超过10秒还未成交（chase_interval = 10)，并且没有触发追单（chase_long_trigger = False），先把该委托撤销掉，然后把触发追单器启动；
+           b. 平仓追单情况下，同样先得到未成交量，若委托超时还未成交并且平仓触发器没有启动，先撤单，然后启动平仓触发器；
+        4、当所有未成交委托处理完毕后，活动委托字典将清空，此时order_finished状态从False变成True，用最新的买卖一档行情，该追单开仓的追单开仓，该追单平仓的赶紧平仓，每次操作后恢复委托触发器的初始状态：
+        
+        注意要点：Tick级精细挂撤单的管理逻辑，无法通过K线来进行回测检验，因此需通过仿真交易（比如期货基于SimNow）进行充分的测试。
+        """
+        active_orders = self.get_position_detail(tick.vt_symbol).active_orders
+
+        if active_orders:
+            # 委托完成状态
+            order_finished = False
+            vt_orderid = list(active_orders.keys())[0]   # 委托单vt_orderid
+            order = list(active_orders.values())[0]      # 委托单字典
+
+            # 开仓追单，部分交易没有平仓指令(Offset.NONE)
+            if order.offset in (Offset.NONE, Offset.OPEN):
+                if order.direction == Direction.LONG:
+                    self.long_trade_volume = order.untraded
+                    if (tick.datetime - order.datetime).seconds > self.chase_interval and self.long_trade_volume > 0 and (not self.chase_long_trigger) and vt_orderid:
+                        # 撤销之前发出的未成交订单
+                        self.cancel_order(vt_orderid)
+                        self.chase_long_trigger = True
+                elif order.direction == Direction.SHORT:
+                    self.short_trade_volume = order.untraded
+                    if (tick.datetime - order.datetime).seconds > self.chase_interval and self.short_trade_volume > 0 and (not self.chase_short_trigger) and vt_orderid:
+                        self.cancel_order(vt_orderid)
+                        self.chase_short_trigger = True
+            # 平仓追单
+            elif order.offset in (Offset.CLOSE, Offset.CLOSETODAY):
+                if order.direction == Direction.SHORT:
+                    self.sell_trade_volume = order.untraded
+                    if (tick.datetime - order.datetime).seconds > self.chase_interval and self.sell_trade_volume > 0 and (not self.chase_sell_trigger) and vt_orderid:
+                        self.cancel_order(vt_orderid)
+                        self.chase_sell_trigger = True
+                if order.direction == Direction.LONG:
+                    self.cover_trade_volume = order.untraded
+                    if (tick.datetime - order.datetime).seconds > self.chase_interval and self.cover_trade_volume > 0 and (not self.chase_cover_trigger) and vt_orderid:
+                        self.cancel_order(vt_orderid)
+                        self.chase_cover_trigger = True
+        else:
+            order_finished = True
+
+        if self.chase_long_trigger and order_finished:
+            self.buy(tick.ask_price_1, self.long_trade_volume)
+            self.chase_long_trigger = False
+
+        elif self.chase_short_trigger and order_finished:
+            self.short(tick.bid_price_1, self.short_trade_volume)
+            self.chase_short_trigger = False
+
+        elif self.chase_sell_trigger and order_finished:
+            self.sell(tick.bid_price_1, self.sell_trade_volume)
+            self.chase_sell_trigger = False
+
+        elif self.chase_cover_trigger and order_finished:
+            self.cover(tick.ask_price_1, self.cover_trade_volume)
+            self.chase_cover_trigger = False
 
     def get_contract_data(self) -> ContractData:
         """

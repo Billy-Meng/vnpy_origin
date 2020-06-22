@@ -725,75 +725,106 @@ class ArrayManager(object):
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #
     # Overlap Studies 重叠研究指标
-    def sma(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def sma(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Simple moving average. 简单移动平均线
         """
-        result = talib.SMA(self.close, timeperiod=n)
+        if log:
+            result = talib.SMA(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.SMA(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def ema(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def ema(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Exponential moving average.  指数移动平均线：趋向类指标，其构造原理是仍然对价格收盘价进行算术平均，并根据计算结果来进行分析，用于判断价格未来走势的变动趋势。
         """
-        result = talib.EMA(self.close, timeperiod=n)
+        if log:
+            result = talib.EMA(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.EMA(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def dema(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def dema(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Double Exponential Moving Average.  双指数移动平均线：两条指数移动平均线来产生趋势信号，较长期者用来识别趋势，较短期者用来选择时机。正是两条平均线及价格三者的相互作用，才共同产生了趋势信号。
         """
-        result = talib.DEMA(self.close, timeperiod=n)
+        if log:
+            result = talib.DEMA(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.DEMA(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def kama(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def kama(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         KAMA. 考夫曼自适应移动平均线：短期均线贴近价格走势，灵敏度高，但会有很多噪声，产生虚假信号；长期均线在判断趋势上一般比较准确 ，但是长期均线有着严重滞后的问题。
         我们想得到这样的均线，当价格沿一个方向快速移动时，短期的移动 平均线是最合适的；当价格在横盘的过程中，长期移动平均线是合适的。
         """
-        result = talib.KAMA(self.close, timeperiod=n)
+        if log:
+            result = talib.KAMA(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.KAMA(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def wma(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def wma(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Weighted Moving Average. 加权移动平均线
         """
-        result = talib.WMA(self.close, timeperiod=n)
+        if log:
+            result = talib.WMA(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.WMA(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def ma(self, n: int, matype: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+    def ma(self, n: int, matype: int = 0, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Moving average.  移动平均线：matype: 0=SMA(默认), 1=EMA(指数移动平均线), 2=WMA(加权移动平均线), 3=DEMA(双指数移动平均线), 4=TEMA(三重指数移动平均线), 5=TRIMA, 6=KAMA(考夫曼自适应移动平均线), 7=MAMA, 8=T3(三重指数移动平均线)
         """
-        result = talib.MA(self.close, timeperiod=n, matype=matype)
+        if log:
+            result = talib.MA(np.log(self.close), timeperiod=n, matype=matype)
+        else:
+            result = talib.MA(self.close, timeperiod=n, matype=matype)
+
         if array:
             return result
         return result[-1]
 
-    def sar(self, acceleration: int = 0, maximum: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+    def sar(self, acceleration: int = 0, maximum: int = 0, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Parabolic SAR.  抛物线指标：抛物线转向也称停损点转向，是利用抛物线方式，随时调整停损点位置以观察买卖点。由于停损点（又称转向点SAR）以弧形的方式移动，故称之为抛物线转向指标。
         """
-        result = talib.SAR(self.high, self.low, acceleration=acceleration, maximum=maximum)
+        if log:
+            result = talib.SAR(np.log(self.high), np.log(self.low), acceleration=acceleration, maximum=maximum)
+        else:
+            result = talib.SAR(self.high, self.low, acceleration=acceleration, maximum=maximum)
+
         if array:
             return result
         return result[-1]
 
-    def boll(self, n: int, dev_up: float = 2, dev_dn: float = 2, array: bool = False, matype: int = 0) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
+    def boll(self, n: int, dev_up: float = 2, dev_dn: float = 2, array: bool = False, log: bool = False, matype: int = 0) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
         """
         Bollinger Channel.  布林线指标：其利用统计原理，求出股价的标准差及其信赖区间，从而确定股价的波动范围及未来走势，利用波带显示股价的安全高低价位，因而也被称为布林带。
         """
-        upperband, middleband, lowerband = talib.BBANDS(self.close, timeperiod=n, nbdevup=dev_up, nbdevdn=dev_dn, matype=matype)
+        if log:
+            upperband, middleband, lowerband = talib.BBANDS(np.log(self.close), timeperiod=n, nbdevup=dev_up, nbdevdn=dev_dn, matype=matype)
+        else:
+            upperband, middleband, lowerband = talib.BBANDS(self.close, timeperiod=n, nbdevup=dev_up, nbdevdn=dev_dn, matype=matype)
 
         if array:
             return upperband, middleband, lowerband
@@ -802,46 +833,62 @@ class ArrayManager(object):
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #
     # Momentum Indicator 动量指标
-    def apo(self, fastperiod: int = 12, slowperiod: int = 26, matype: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+    def apo(self, fastperiod: int = 12, slowperiod: int = 26, matype: int = 0, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Absolute Price Oscillator.
         """
-        result = talib.APO(self.close, fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
+        if log:
+            result = talib.APO(np.log(self.close), fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
+        else:
+            result = talib.APO(self.close, fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
+
         if array:
             return result
         return result[-1]
 
-    def cmo(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def cmo(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Chande Momentum Oscillator. 钱德动量摆动指标：与其他动量指标摆动指标如相对强弱指标（RSI）和随机指标（KDJ）不同，钱德动量指标在计算公式的分子中采用上涨日和下跌日的数据。 计算公式：CMO=（Su－Sd）*100/（Su+Sd）
         其中：Su是今日收盘价与昨日收盘价（上涨日）差值加总。若当日下跌，则增加值为0；Sd是今日收盘价与做日收盘价（下跌日）差值的绝对值加总。若当日上涨，则增加值为0。
         指标应用：本指标类似RSI指标。当本指标下穿-50水平时是买入信号，上穿+50水平是卖出信号。钱德动量摆动指标的取值介于-100和100之间。本指标也能给出良好的背离信号。当股票价格创出新低而本指标未能创出新低时，出现牛市背离；
         当股票价格创出新高而本指标未能创出新高时，当出现熊市背离时。我们可以用移动均值对该指标进行平滑。
         """
-        result = talib.CMO(self.close, timeperiod=n)
+        if log:
+            result = talib.CMO(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.CMO(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def mom(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def mom(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Momentum. 动量，上升动向值：
         """
-        result = talib.MOM(self.close, timeperiod=n)
+        if log:
+            result = talib.MOM(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.MOM(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def ppo(self, fastperiod: int = 12, slowperiod: int = 26, matype: int = 0, array: bool = False) -> Union[float, np.ndarray]:
+    def ppo(self, fastperiod: int = 12, slowperiod: int = 26, matype: int = 0, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Percentage Price Oscillator. 价格震荡百分比指数：PPO标准设定和MACD设定非常相似：12,26,9和PPO，和MACD一样说明了两条移动平均线的差距，但是它们有一个差别是PPO是用百分比说明。
         """
-        result = talib.PPO(self.close, fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
+        if log:
+            result = talib.PPO(np.log(self.close), fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
+        else:
+            result = talib.PPO(self.close, fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
+
         if array:
             return result
         return result[-1]
 
-    def roc(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def roc(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Rate of change. 变动率指标：ROC是由当天的股价与一定的天数之前的某一天股价比较，其变动速度的大小,来反映股票市变动的快慢程度。
         ROC ＝ (当日收盘价－N天前的收盘价) ÷ N天前的收盘价 * 100% 
@@ -850,48 +897,68 @@ class ArrayManager(object):
         当股价创新高时,ROC未能创新高,出现背离,表示头部形成。
         当股价创新低时,ROC未能创新低,出现背离,表示底部形成。
         """
-        result = talib.ROC(self.close, timeperiod=n)
+        if log:
+            result = talib.ROC(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.ROC(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def rocr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def rocr(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Rate of change ratio. (price/prevPrice)
         """
-        result = talib.ROCR(self.close, timeperiod=n)
+        if log:
+            result = talib.ROCR(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.ROCR(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def rocp(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def rocp(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Rate of change Percentage. (price-prevPrice)/prevPrice
         """
-        result = talib.ROCP(self.close, timeperiod=n)
+        if log:
+            result = talib.ROCP(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.ROCP(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def rocr_100(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def rocr_100(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Rate of change ratio 100 scale. (price/prevPrice)*100
         """
-        result = talib.ROCR100(self.close, timeperiod=n)
+        if log:
+            result = talib.ROCR100(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.ROCR100(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def trix(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def trix(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         1-day Rate-Of-Change (ROC) of a Triple Smooth EMA.
         """
-        result = talib.TRIX(self.close, timeperiod=n)
+        if log:
+            result = talib.TRIX(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.TRIX(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def cci(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def cci(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Commodity Channel Index (CCI). 顺势指标：该指标用来测量股价脱离正常价格范围之变异性，正常波动范围在±100之间。属于超买超卖类指标中较特殊的一种，是专门对付极端行情的。在一般常态行情下，CCI指标不会发生作用，当CCI扫描到异常股价波动时，立求速战速决，胜负瞬间立即分晓，赌输了也必须立刻加速逃逸。
         指标应用
@@ -908,49 +975,69 @@ class ArrayManager(object):
         MD = 最近n日 ABS(MATP - 每日TP)累计和 ÷ n
         CCI(n) = (TP－ MA) ÷MD ÷0.015
         """
-        result = talib.CCI(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.CCI(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.CCI(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def rsi(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def rsi(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Relative Strenght Index (RSI). 相对强弱指数：通过比较一段时期内的平均收盘涨数和平均收盘跌数来分析市场买沽盘的意向和实力，从而作出未来市场的走势。
         """
-        result = talib.RSI(self.close, timeperiod=n)
+        if log:
+            result = talib.RSI(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.RSI(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def macd(self, fast_period: int, slow_period: int, signal_period: int, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
+    def macd(self, fast_period: int, slow_period: int, signal_period: int, array: bool = False, log: bool = False) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
         """
         Moving Average Convergence/Divergence. 平滑异同移动平均线：利用收盘价的短期（常用为12日）指数移动平均线与长期（常用为26日）指数移动平均线之间的聚合与分离状况，对买进、卖出时机作出研判的技术指标。
         """
-        macd, signal, hist = talib.MACD(self.close, fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
+        if log:
+            macd, signal, hist = talib.MACD(np.log(self.close), fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
+        else:
+            macd, signal, hist = talib.MACD(self.close, fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
+
         if array:
             return macd, signal, hist
         return macd[-1], signal[-1], hist[-1]
     
-    def bop(self, array: bool = False) -> Union[float, np.ndarray]:
+    def bop(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Balance Of Power. 均势指标
         """
-        result = talib.BOP(self.open, self.high, self.low, self.close)
+        if log:
+            result = talib.BOP(np.log(self.open), np.log(self.high), np.log(self.low), np.log(self.close))
+        else:
+            result = talib.BOP(self.open, self.high, self.low, self.close)
+
 
         if array:
             return result
         return result[-1]
 
-    def dx(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def dx(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Directional Movement Index. 动向指标或趋向指标：通过分析股票价格在涨跌过程中买卖双方力量均衡点的变化情况，即多空双方的力量的变化受价格波动的影响而发生由均衡到失衡的循环过程，从而提供对趋势判断依据的一种技术指标。
         """
-        result = talib.DX(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.DX(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.DX(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def adx(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def adx(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Average Directional Movement Index. 平均趋向指标：使用ADX指标，指标判断盘整、振荡和单边趋势。
         指标应用：
@@ -959,127 +1046,175 @@ class ArrayManager(object):
         3、ADX持续偏高时，代表“超买”（Overbought）或“超卖”（Oversold）的现象，行情反转的机会将增加，此时则不适宜顺势操作。当ADX数值从上升趋势转为下跌时，则代表行情即将反转；若ADX数值由下跌趋势转为上升时，行情将止跌回升。
         4、总言之，DMI指标包含4条线：+DI、-DI、ADX和ADXR。+DI代表买盘的强度、-DI代表卖盘的强度；ADX代表趋势的强度、ADXR则为ADX的移动平均。
         """
-        result = talib.ADX(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.ADX(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.ADX(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def adxr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def adxr(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Average Directional Movement Index Rating. 平均趋向指数的趋向指数：使用ADXR指标判断ADX趋势，ADXR则为ADX的移动平均。
         """
-        result = talib.ADXR(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.ADXR(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.ADXR(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def minus_di(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def minus_di(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Minus Directional Indicator. DMI 中的DI指标，负方向指标，下升动向值：通过分析股票价格在涨跌过程中买卖双方力量均衡点的变化情况，即多空双方的力量的变化受价格波动的影响而发生由均衡到失衡的循环过程，从而提供对趋势判断依据的一种技术指标。
         """
-        result = talib.MINUS_DI(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.MINUS_DI(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.MINUS_DI(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def minus_dm(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def minus_dm(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Minus Directional Movement. DMI中的DM代表正趋向变动值，即上升动向值：通过分析股票价格在涨跌过程中买卖双方力量均衡点的变化情况，即多空双方的力量的变化受价格波动的影响而发生由均衡到失衡的循环过程，从而提供对趋势判断依据的一种技术指标。
         """
-        result = talib.MINUS_DM(self.high, self.low, timeperiod=n)
+        if log:
+            result = talib.MINUS_DM(np.log(self.high), np.log(self.low), timeperiod=n)
+        else:
+            result = talib.MINUS_DM(self.high, self.low, timeperiod=n)
 
         if array:
             return result
         return result[-1]
 
-    def plus_di(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def plus_di(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Plus Directional Indicator.
         """
-        result = talib.PLUS_DI(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.PLUS_DI(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.PLUS_DI(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def plus_dm(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def plus_dm(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Plus Directional Movement.
         """
-        result = talib.PLUS_DM(self.high, self.low, timeperiod=n)
+        if log:
+            result = talib.PLUS_DM(np.log(self.high), np.log(self.low), timeperiod=n)
+        else:
+            result = talib.PLUS_DM(self.high, self.low, timeperiod=n)
 
         if array:
             return result
         return result[-1]
 
-    def willr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def willr(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Williams' %R. 威廉指标：WMS表示的是市场处于超买还是超卖状态。
         """
-        result = talib.WILLR(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.WILLR(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.WILLR(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def ultosc(self, array: bool = False) -> Union[float, np.ndarray]:
+    def ultosc(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Ultimate Oscillator. 终极波动指标：UOS是一种多方位功能的指标，除了趋势确认及超买超卖方面的作用之外，它的“突破”讯号不仅可以提供最适当的交易时机之外，更可以进一步加强指标的可靠度。
         """
-        result = talib.ULTOSC(self.high, self.low, self.close)
+        if log:
+            result = talib.WILLR(np.log(self.high), np.log(self.low), np.log(self.close))
+        else:
+            result = talib.ULTOSC(self.high, self.low, self.close)
+
         if array:
             return result
         return result[-1]
 
-    def keltner(self, n: int, dev: float, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
+    def keltner(self, n: int, dev: float, array: bool = False, log: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
         """
         Keltner Channel. 金肯特纳通道
         """
-        mid = self.sma(n, array)
-        atr = self.atr(n, array)
+        if log:
+            mid = self.sma(n, array, log)
+            atr = self.atr(n, array, log)
+        else:
+            mid = self.sma(n, array)
+            atr = self.atr(n, array)
 
         up = mid + atr * dev
         down = mid - atr * dev
 
         return up, down
 
-    def donchian(self, n: int, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
+    def donchian(self, n: int, array: bool = False, log: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
         """
         Donchian Channel. 唐奇安通道
         """
-        up = talib.MAX(self.high, n)
-        down = talib.MIN(self.low, n)
+        if log:
+            up = talib.MAX(np.log(self.high), n)
+            down = talib.MIN(np.log(self.low), n)
+        else:
+            up = talib.MAX(self.high, n)
+            down = talib.MIN(self.low, n)
 
         if array:
             return up, down
         return up[-1], down[-1]
 
-    def aroon(self, n: int, array: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
+    def aroon(self, n: int, array: bool = False, log: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
         """
         Aroon indicator. 阿隆指标：通过计算自价格达到近期最高值和最低值以来所经过的期间数，阿隆指标帮助你预测价格趋势到趋势区域（或者反过来，从趋势区域到趋势）的变化。
         计算公式：
         Aroon(上升)=[(计算期天数-最高价后的天数)/计算期天数]*100
         Aroon(下降)=[(计算期天数-最低价后的天数)/计算期天数]*100
         """
-        aroon_up, aroon_down = talib.AROON(self.high, self.low, timeperiod=n)
+        if log:
+            result = talib.AROON(np.log(self.high), np.log(self.low), timeperiod=n)
+        else:
+            result = talib.AROON(self.high, self.low, timeperiod=n)
 
         if array:
             return aroon_up, aroon_down
         return aroon_up[-1], aroon_down[-1]
 
-    def aroonosc(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def aroonosc(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Aroon Oscillator. 阿隆振荡
         """
-        result = talib.AROONOSC(self.high, self.low, timeperiod=n)
+        if log:
+            result = talib.AROONOSC(np.log(self.high), np.log(self.low), timeperiod=n)
+        else:
+            result = talib.AROONOSC(self.high, self.low, timeperiod=n)
 
         if array:
             return result
         return result[-1]
 
-    def mfi(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def mfi(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Money Flow Index. 资金流量指标
         """
-        result = talib.MFI(self.high, self.low, self.close, self.volume, timeperiod=n)
+        if log:
+            result = talib.MFI(np.log(self.high), np.log(self.low), np.log(self.close), self.volume, timeperiod=n)
+        else:
+            result = talib.MFI(self.high, self.low, self.close, self.volume, timeperiod=n)
+
         if array:
             return result
         return result[-1]
@@ -1087,7 +1222,7 @@ class ArrayManager(object):
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #
     # Volume Indicators 成交量指标
-    def ad(self, array: bool = False) -> Union[float, np.ndarray]:
+    def ad(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Accumulation/Distribution Line. 量价指标（累积/派发线）：平衡交易量指标，以当日的收盘价位来估算成交流量，用于估定一段时间内该证券累积的资金流量。
         计算公式：
@@ -1099,12 +1234,16 @@ class ArrayManager(object):
         3、应当注意A/D忽略了缺口的影响，事实上，跳空缺口的意义是不能轻易忽略的
         A/D指标无需设置参数，但在应用时，可结合指标的均线进行分析
         """
-        result = talib.AD(self.high, self.low, self.close, self.volume)
+        if log:
+            result = talib.AD(np.log(self.high), np.log(self.low), np.log(self.close), self.volume)
+        else:
+            result = talib.AD(self.high, self.low, self.close, self.volume)
+
         if array:
             return result
         return result[-1]
     
-    def obv(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def obv(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         On Balance Volume 能量潮指标：通过统计成交量变动的趋势推测股价趋势。
         计算公式：以某日为基期，逐日累计每日上市股票总成交量，若隔日指数或股票上涨 ，则基期OBV加上本日成交量为本日OBV。隔日指数或股票下跌， 则基期OBV减去本日成交量为本日OBV
@@ -1114,16 +1253,24 @@ class ArrayManager(object):
         3、用多空比率净额法进行修正，但不知TA-Lib采用哪种方法
         计算公式： 多空比率净额= [（收盘价－最低价）－（最高价-收盘价）] ÷（ 最高价－最低价）× 成交量
         """
-        result = talib.OBV(self.close, self.volume)
+        if log:
+            result = talib.OBV(np.log(self.close), self.volume)
+        else:
+            result = talib.OBV(self.close, self.volume)
+
         if array:
             return result
         return result[-1]
 
-    def adosc(self, fastperiod:int = 3, slowperiod:int = 10, array: bool = False) -> Union[float, np.ndarray]:
+    def adosc(self, fastperiod:int = 3, slowperiod:int = 10, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         ADOSC. 震荡指标：将资金流动情况与价格行为相对比，检测市场中资金流入和流出的情况。
         """
-        result = talib.ADOSC(self.high, self.low, self.close, self.volume, fastperiod=fastperiod, slowperiod=slowperiod)
+        if log:
+            result = talib.ADOSC(np.log(self.high), np.log(self.low), np.log(self.close), self.volume, fastperiod=fastperiod, slowperiod=slowperiod)
+        else:
+            result = talib.ADOSC(self.high, self.low, self.close, self.volume, fastperiod=fastperiod, slowperiod=slowperiod)
+
         if array:
             return result
         return result[-1]
@@ -1131,114 +1278,162 @@ class ArrayManager(object):
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #
     # Volatility Indicator 波动率指标
-    def trange(self, array: bool = False) -> Union[float, np.ndarray]:
+    def trange(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         TRANGE. 真实波动幅度 = max(当日最高价, 昨日收盘价) − min(当日最低价, 昨日收盘价)
         """
-        result = talib.TRANGE(self.high, self.low, self.close)
+        if log:
+            result = talib.TRANGE(np.log(self.high), np.log(self.low), np.log(self.close))
+        else:
+            result = talib.TRANGE(self.high, self.low, self.close)
+
         if array:
             return result
         return result[-1]
 
-    def atr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def atr(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Average True Range (ATR). 平均真实波动幅度：真实波动幅度的 N 日 指数移动平均数。
         """
-        result = talib.ATR(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.ATR(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.ATR(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def natr(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def natr(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Normalized Average True Range. 归一化波动幅度均值
         """
-        result = talib.NATR(self.high, self.low, self.close, timeperiod=n)
+        if log:
+            result = talib.NATR(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.NATR(self.high, self.low, self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #
     # Statistic 统计学指标
-    def std(self, n: int, dev: int = 1, array: bool = False) -> Union[float, np.ndarray]:
+    def std(self, n: int, dev: int = 1, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Standard deviation. 标准偏差：量度数据分布的分散程度之标准，用以衡量数据值偏离算术平均值的程度。标准偏差越小，这些值偏离平均值就越少，反之亦然。标准偏差的大小可通过标准偏差与平均值的倍率关系来衡量。
         """
-        result = talib.STDDEV(self.close, timeperiod=n, nbdev=dev)
+        if log:
+            result = talib.STDDEV(np.log(self.close), timeperiod=n, nbdev=dev)
+        else:
+            result = talib.STDDEV(self.close, timeperiod=n, nbdev=dev)
+
         if array:
             return result
         return result[-1]
 
-    def var(self, n: int, dev: int = 1, array: bool = False) -> Union[float, np.ndarray]:
+    def var(self, n: int, dev: int = 1, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         VAR. 方差：用来计算每一个变量（观察值）与总体均数之间的差异。为避免出现离均差总和为零，离均差平方和受样本含量的影响，统计学采用平均离均差平方和来描述变量的变异程度。
         """
-        result = talib.VAR(self.close, timeperiod=n, nbdev=dev)
+        if log:
+            result = talib.VAR(np.log(self.close), timeperiod=n, nbdev=dev)
+        else:
+            result = talib.VAR(self.close, timeperiod=n, nbdev=dev)
+
         if array:
             return result
         return result[-1]
 
-    def linearreg(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def linearreg(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Linear Regression. 直线回归方程
         """
-        result = talib.LINEARREG(self.close, timeperiod=n)
+        if log:
+            result = talib.LINEARREG(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.LINEARREG(self.close, timeperiod=n)
+ 
         if array:
             return result
         return result[-1]
 
-    def intercept(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def intercept(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Linear Regression Intercept. 线性回归截距
         """
-        result = talib.LINEARREG_INTERCEPT(self.close, timeperiod=n)
+        if log:
+            result = talib.LINEARREG_INTERCEPT(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.LINEARREG_INTERCEPT(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def slope(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def slope(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Linear Regression Slope. 线性回归斜率
         """
-        result = talib.LINEARREG_SLOPE(self.close, timeperiod=n)
+        if log:
+            result = talib.LINEARREG_SLOPE(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.LINEARREG_SLOPE(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def angle(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def angle(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Linear Regression Angle. 线性回归角度
         """
-        result = talib.LINEARREG_ANGLE(self.close, timeperiod=n)
+        if log:
+            result = talib.LINEARREG_ANGLE(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.LINEARREG_ANGLE(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def tsf(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def tsf(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Time Series Forecast. 时间序列预测：一种历史资料延伸预测，也称历史引伸预测法。是以时间数列所能反映的社会经济现象的发展过程和规律性，进行引伸外推，预测其发展趋势的方法。
         """
-        result = talib.TSF(self.close, timeperiod=n)
+        if log:
+            result = talib.TSF(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.TSF(self.close, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def beta(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def beta(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Beta. β系数(贝塔系数)：一种风险指数，用来衡量个别股票或 股票基金相对于整个股市的价格波动情况 贝塔系数衡量股票收益相对于业绩评价基准收益的总体波动性，是一个相对指标。
         β 越高，意味着股票相对于业绩评价基准的波动性越大。 β 大于 1 ， 则股票的波动性大于业绩评价基准的波动性。
         """
-        result = talib.BETA(self.high, self.low, timeperiod=n)
+        if log:
+            result = talib.BETA(np.log(self.high), np.log(self.low), timeperiod=n)
+        else:
+            result = talib.BETA(self.high, self.low, timeperiod=n)
+
         if array:
             return result
         return result[-1]
 
-    def correl(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+    def correl(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Pearson's Correlation Coefficient. 皮尔逊相关系数：用于度量两个变量X和Y之间的相关（线性相关），其值介于-1与1之间皮尔逊相关系数是一种度量两个变量间相关程度的方法。
         它是一个介于 1 和 -1 之间的值， 其中，1 表示变量完全正相关， 0 表示无关，-1 表示完全负相关。
         """
-        result = talib.CORREL(self.high, self.low, timeperiod=n)
+        if log:
+            result = talib.CORREL(np.log(self.high), np.log(self.low), timeperiod=n)
+        else:
+            result = talib.CORREL(self.high, self.low, timeperiod=n)
+
         if array:
             return result
         return result[-1]

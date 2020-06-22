@@ -526,7 +526,6 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
     KEY_NAME_MAP = {
         "start_date": "首个交易日",
         "end_date": "最后交易日",
-        "total_trade_days": "市场交易日",
 
         "total_days": "总交易日",
         "profit_days": "盈利交易日",
@@ -536,19 +535,32 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "end_balance": "结束资金",
 
         "total_return": "总收益率",
-        "annual_return": "年化收益",
-        "max_drawdown": "最大回撤",
-        "max_ddpercent": "百分比最大回撤",
+        "annual_return": "年化收益率",
+        "cagr": "年复合增长率",
+        "annual_volatility": "年化波动率",
+        "max_drawdown": "最大回撤金额",
+        "max_ddpercent": "%最大回撤",
+        "average_drawdown": "%平均回撤",
+        "lw_drawdown": "%线性加权回撤",
+        "average_square_drawdown": "%均方回撤",
         "max_drawdown_duration": "最长回撤天数",
+        "max_drawdown_range": "最长回撤区间",
 
         "daily_return": "日均收益率",
         "return_std": "收益标准差",
-        "sharpe_ratio": "夏普比率",
         "return_drawdown_ratio": "收益回撤比",
+        "sharpe_ratio": "夏普比率",
+        "omega_ratio": "Omega比率",
+        "calmar_ratio": "Calmar比率",
+        "downside_risk": "下限风险",
+        "sortino_ratio": "索提诺比率",
+        "R_squared": "R平方",
+        "tail_ratio": "尾部比率",
 
         "total_net_pnl": "总盈亏",
         "total_commission": "总手续费",
         "total_slippage": "总滑点费",
+        "total_trade_count": "总成交数量",
         "total_trade": "总交易笔数",
 
         "daily_net_pnl": "日均盈亏",
@@ -564,6 +576,8 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "profit_loss_ratio": "盈亏比",
 
         "trade_mean": "平均每笔盈利",
+        "average_commission": "平均每笔手续费",
+        "average_slippage": "平均每笔滑点费",
         "trade_duration": "平均持仓小时",
 
         "total_profit": "盈利总金额",
@@ -612,13 +626,24 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
 
         data["total_return"] = f"{data['total_return']:,.2f}%"
         data["annual_return"] = f"{data['annual_return']:,.2f}%"
+        data["cagr"] = f"{data['cagr']:,.2f}%"
+        data["annual_volatility"] = f"{data['annual_volatility']:,.2f}%"
         data["max_drawdown"] = f"{data['max_drawdown']:,.2f}"
         data["max_ddpercent"] = f"{data['max_ddpercent']:,.2f}%"
+        data["average_drawdown"] = f"{data['average_drawdown']:,.2f}%"
+        data["lw_drawdown"] = f"{data['lw_drawdown']:,.2f}%"
+        data["average_square_drawdown"] = f"{data['average_square_drawdown']:,.2f}%"
 
         data["daily_return"] = f"{data['daily_return']:,.2f}%"
         data["return_std"] = f"{data['return_std']:,.2f}%"
-        data["sharpe_ratio"] = f"{data['sharpe_ratio']:,.2f}"
         data["return_drawdown_ratio"] = f"{data['return_drawdown_ratio']:,.2f}"
+        data["sharpe_ratio"] = f"{data['sharpe_ratio']:,.2f}"
+        data["omega_ratio"] = f"{data['omega_ratio']:,.2f}"
+        data["calmar_ratio"] = f"{data['calmar_ratio']:,.2f}"
+        data["downside_risk"] = f"{data['downside_risk']:,.2f}"
+        data["sortino_ratio"] = f"{data['sortino_ratio']:,.2f}"
+        data["R_squared"] = f"{data['R_squared']:,.2f}"
+        data["tail_ratio"] = f"{data['tail_ratio']:,.2f}"
 
         data["total_net_pnl"] = f"{data['total_net_pnl']:,.2f}"
         data["total_commission"] = f"{data['total_commission']:,.2f}"
@@ -635,6 +660,8 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         data["profit_loss_ratio"] = f"{data['profit_loss_ratio']:,.2f}"
         
         data["trade_mean"] = f"{data['trade_mean']:,.2f}"
+        data["average_commission"] = f"{data['average_commission']:,.2f}"
+        data["average_slippage"] = f"{data['average_slippage']:,.2f}"
         data["trade_duration"] = f"{data['trade_duration']:,.2f}"
 
         data["total_profit"] = f"{data['total_profit']:,.2f}"

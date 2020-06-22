@@ -6,7 +6,7 @@ import talib as ta
 from pyecharts.commons.utils import JsCode
 from pyecharts import options as opts
 from pyecharts.globals import ThemeType, SymbolType
-from pyecharts.charts import Bar, Kline, Line, Grid, EffectScatter, Tab, Scatter, Page
+from pyecharts.charts import Bar, Kline, Line, Grid, EffectScatter, Tab
 
 class MyPyecharts():
 

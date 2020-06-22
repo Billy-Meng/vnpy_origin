@@ -126,6 +126,7 @@ class OrderData(BaseData):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
         self.vt_orderid = f"{self.gateway_name}.{self.orderid}"
+        self.untraded = self.volume - self.traded
 
     def is_active(self) -> bool:
         """
