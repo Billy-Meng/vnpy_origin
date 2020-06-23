@@ -52,6 +52,10 @@
     添加    
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib
     source /etc/profile
+    或者：
+        创建一个 /etc/ld.so.conf.d/talib.conf文件，内容:
+            /usr/lib    
+        执行sudo ldconfig。
 
 9、数字货币的增量安装
 

@@ -13,7 +13,7 @@
 
     cythonize -i demo_strategy.py
     
-    编译完成后，Demo文件夹下会多出2个新的文件，其中就有已加密的策略文件demo_strategy.cp37-win_amd64.pyd
+    编译完成后，Demo文件夹下会多出2个新的文件，其中就有已加密的策略文件demo_strategy.cp37-win_amd64.pyd 
     
     改名=> demo_strategy.pyd
     

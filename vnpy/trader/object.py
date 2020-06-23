@@ -219,6 +219,7 @@ class PositionData(BaseData):
     exchange: Exchange
     direction: Direction
     accountid: str = ""   # 账号id
+    name: str = ""
     volume: float = 0
     frozen: float = 0
     price: float = 0
@@ -234,6 +235,8 @@ class PositionData(BaseData):
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
         self.vt_positionid = f"{self.gateway_name}.{self.vt_symbol}.{self.direction.value}"
         self.vt_accountid = f"{self.gateway_name}.{self.accountid}"
+        if self.name == "":
+            self.name = self.vt_symbol
 
 @dataclass
 class AccountData(BaseData):

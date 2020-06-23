@@ -12,6 +12,7 @@ from .template import (
     Status,
     Color,
     Interval,
+    OrderType,
     TickData,
     BarData,
     TradeData,

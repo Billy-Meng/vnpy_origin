@@ -17,8 +17,11 @@ import json
 
 t1 = FakeStrategy()
 t2 = FakeStrategy()
-# 创建API对象
-api_01 = TdxStockData(t1)
+
+# 创建API对象(使用本地socket5代理）
+api_01 = TdxStockData(strategy=t1, proxy_ip='localhost', proxy_port=1080)
+# 不使用代理
+#api_01 = TdxStockData(strategy=t1)
 
 # 获取市场下股票
 for market_id in range(2):
@@ -48,6 +51,6 @@ for market_id in range(2):
 #    print(r)
 
 # 获取历史分时数据
-ret, result = api_01.get_history_transaction_data('600410', '20190925')
+ret, result = api_01.get_history_transaction_data('110031', '20200504')
 for r in result[0:10] + result[-10:]:
     print(r)

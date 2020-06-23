@@ -365,12 +365,12 @@ class AlgoEngine(BaseEngine):
 
         if len(vt_accountid) > 0:
             account = self.main_engine.get_account(vt_accountid)
-            return account.balance, account.avaliable, round(account.frozen * 100 / (account.balance + 0.01), 2), 100
+            return account.balance, account.available, round(account.frozen * 100 / (account.balance + 0.01), 2), 100
         else:
             accounts = self.main_engine.get_all_accounts()
             if len(accounts) > 0:
                 account = accounts[0]
-                return account.balance, account.avaliable, round(account.frozen * 100 / (account.balance + 0.01),
+                return account.balance, account.available, round(account.frozen * 100 / (account.balance + 0.01),
                                                                  2), 100
             else:
                 return 0, 0, 0, 0

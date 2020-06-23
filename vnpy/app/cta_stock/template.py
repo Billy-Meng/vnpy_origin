@@ -371,7 +371,7 @@ class StockPolicy(CtaPolicy):
         super().from_json(json_data)
 
         self.cur_trading_date = json_data.get('cur_trading_date', None)
-        self.sub_tns = json_data.get('sub_tns')
+        self.sub_tns = json_data.get('sub_tns',{})
         signals = json_data.get('signals', {})
         for kline_name, signal in signals:
             last_signal = signal.get('last_signal', "")
@@ -414,8 +414,9 @@ class CtaStockTemplate(CtaTemplate):
     cancel_seconds = 120  # 撤单时间(秒)
 
     # 资金相关
-    max_invest_rate = 0.1  # 最大仓位(0~1)
-    max_invest_margin = 0  # 资金上限 0，不限制
+    max_invest_rate = 0.1  # 策略使用账号的最大仓位(0~1)
+    max_invest_margin = 0  # 策略资金上限， 0，不限制
+    max_single_margin = 0  # 策略内，各只股票使用的资金上限
 
     # 是否回测状态
     backtesting = False
@@ -433,7 +434,7 @@ class CtaStockTemplate(CtaTemplate):
         self.klines = {}  # K线组件字典: kline_name: kline
         self.positions = {}     # 策略内持仓记录，  vt_symbol: PositionData
         self.order_type = OrderType.LIMIT
-        self.cancel_seconds = 10  # 撤单时间(秒)
+        self.cancel_seconds = 120  # 撤单时间(秒)
 
         # 资金相关
         self.max_invest_rate = 0.1  # 最大仓位(0~1)
@@ -545,6 +546,7 @@ class CtaStockTemplate(CtaTemplate):
     def get_klines_snapshot(self):
         """返回当前klines的切片数据"""
         try:
+            self.write_log(f'获取{self.strategy_name}的切片数据')
             d = {
                 'strategy': self.strategy_name,
                 'datetime': datetime.now()}
@@ -586,17 +588,19 @@ class CtaStockTemplate(CtaTemplate):
                         self.write_log(f'清除委托单：{lg.order_ids}')
                         [self.cta_engine.cancel_order(self, vt_orderid) for vt_orderid in lg.order_ids]
                         lg.order_ids = []
-                    if lg.open_status and not lg.close_status and not lg.open_status:
+                    if lg.open_status and not lg.close_status and not lg.order_status:
                         pos = self.get_position(lg.vt_symbol)
                         pos.volume += lg.volume
                         lg.traded_volume = 0
                         self.write_log(u'持仓状态，加载持仓多单[{},价格:{},数量:{}手, 开仓时间:{}'
                                        .format(lg.vt_symbol, lg.open_price, lg.volume, lg.open_time))
+                        self.positions.update({lg.vt_symbol: pos})
                     elif lg.order_status and not lg.open_status and not lg.close_status and lg.traded_volume > 0:
                         pos = self.get_position(lg.vt_symbol)
                         pos.volume += lg.traded_volume
                         self.write_log(u'开仓状态，加载部分持仓多单[{},价格:{},数量:{}手, 开仓时间:{}'
                                        .format(lg.vt_symbol, lg.open_price, lg.traded_volume, lg.open_time))
+                        self.positions.update({lg.vt_symbol: pos})
                     elif lg.order_status and lg.open_status and lg.close_status:
                         if lg.traded_volume > 0:
                             old_volume = lg.volume
@@ -608,6 +612,9 @@ class CtaStockTemplate(CtaTemplate):
                         pos.volume += lg.volume
                         self.write_log(u'卖出状态，加载持仓多单[{},价格:{},数量:{}手, 开仓时间:{}'
                                        .format(lg.vt_symbol, lg.open_price, lg.volume, lg.open_time))
+
+                        self.positions.update({lg.vt_symbol: pos})
+
         self.gt.save()
         self.display_grids()
 
@@ -774,6 +781,7 @@ class CtaStockTemplate(CtaTemplate):
             self.gt.save()
 
         # 在策略得活动订单中，移除
+        self.write_log(f'移除活动订单:{order.vt_orderid}')
         self.active_orders.pop(order.vt_orderid, None)
 
     def on_order_open_canceled(self, order: OrderData):
@@ -867,16 +875,52 @@ class CtaStockTemplate(CtaTemplate):
         # 多单网格逐一止损/止盈检查：
         long_grids = self.gt.get_opened_grids(direction=Direction.LONG)
         for lg in long_grids:
-
             if lg.close_status or lg.order_status or not lg.open_status:
                 continue
 
             cur_price = self.cta_engine.get_price(lg.vt_symbol)
-            if not lg.stop_price and lg.stop_price > cur_price > 0:
+            if cur_price is None:
+                self.write_log(f'没有获取到{lg.vt_symbol}的当前价格，提交订阅')
+                self.cta_engine.subscribe_symbol(strategy_name=self.strategy_name, vt_symbol=lg.vt_symbol)
+                continue
+
+            # 主动止盈
+            if 0 < lg.close_price <= cur_price:
+                cn_name = self.cta_engine.get_name(lg.vt_symbol)
                 # 调用平仓模块
-                self.write_log(u'{} {}当前价:{} 触发止损线{},开仓价:{},v：{}'.
+                self.write_log(u'{} {}[{}] 当前价:{} 触发止盈{},开仓价:{},v：{}'.
                                format(self.cur_datetime,
                                       lg.vt_symbol,
+                                      cn_name,
+                                      cur_price,
+                                      lg.close_price,
+                                      lg.open_price,
+                                      lg.volume))
+
+                if lg.traded_volume > 0:
+                    lg.volume -= lg.traded_volume
+                    lg.traded_volume = 0
+                if lg.volume <= 0:
+                    remove_gids.append(lg.id)
+                    lg.open_status = False
+                    lg.order_status = False
+                    lg.close_status = False
+                    continue
+
+                lg.order_status = True
+                lg.close_status = True
+                self.write_log(f'{lg.vt_symbol}[{cn_name}] 数量:{lg.volume}，准备卖出')
+                continue
+
+            # 止损
+            if lg.stop_price != 0 and lg.stop_price > cur_price > 0:
+                cn_name = self.cta_engine.get_name(lg.vt_symbol)
+
+                # 调用平仓模块
+                self.write_log(u'{} {}[{}] 当前价:{} 触发止损线{},开仓价:{},v：{}'.
+                               format(self.cur_datetime,
+                                      lg.vt_symbol,
+                                      cn_name,
                                       cur_price,
                                       lg.stop_price,
                                       lg.open_price,
@@ -894,13 +938,13 @@ class CtaStockTemplate(CtaTemplate):
 
                 lg.order_status = True
                 lg.close_status = True
-                self.write_log(f'{lg.vt_symbol} 数量:{lg.volume}，准备卖出')
+                self.write_log(f'{lg.vt_symbol}[{cn_name}] 数量:{lg.volume}，准备卖出')
 
         if len(remove_gids) > 0:
             self.gt.remove_grids_by_ids(direction=Direction.LONG, ids=remove_gids)
             self.gt.save()
 
-    def tns_excute_sell_grids(self):
+    def tns_excute_sell_grids(self, vt_symbol=None):
         """
         事务执行卖出网格
          1、找出所有order_status=True,open_status=Talse, close_status=True的网格。
@@ -920,6 +964,10 @@ class CtaStockTemplate(CtaTemplate):
 
         ordering_grid = None
         for grid in self.gt.dn_grids:
+            # 只扫描vt_symbol 匹配的网格
+            if vt_symbol and vt_symbol != grid.vt_symbol:
+                continue
+
             # 排除: 未开仓/非平仓/非委托的网格
             if not grid.open_status or not grid.close_status or not grid.open_status:
                 continue
@@ -959,6 +1007,11 @@ class CtaStockTemplate(CtaTemplate):
         # 实盘运行时，要加入市场买卖量的判断
         if not self.backtesting:
             symbol_tick = self.cta_engine.get_tick(vt_symbol)
+            if symbol_tick is None:
+                self.cta_engine.subscribe_symbol(strategy_name=self.strategy_name, vt_symbol=vt_symbol)
+                self.write_log(f'获取不到{vt_symbol}得tick,无法根据市场深度进行计算')
+                return
+
             symbol_volume_tick = self.cta_engine.get_volume_tick(vt_symbol)
             # 根据市场计算，前5档买单数量
             if all([symbol_tick.ask_volume_1, symbol_tick.ask_volume_2, symbol_tick.ask_volume_3,
@@ -1025,7 +1078,7 @@ class CtaStockTemplate(CtaTemplate):
         self.gt.save()
         self.policy.save()
 
-    def tns_execute_buy_grids(self):
+    def tns_execute_buy_grids(self, vt_symbol=None):
         """
         事务执行买入网格
         :return:
@@ -1042,6 +1095,11 @@ class CtaStockTemplate(CtaTemplate):
 
         ordering_grid = None
         for grid in self.gt.dn_grids:
+
+            # 只扫描vt_symbol 匹配的网格
+            if vt_symbol and vt_symbol != vt_symbol:
+                continue
+
             # 排除已经执行完毕(处于开仓状态）的网格， 或者处于平仓状态的网格
             if grid.open_status or grid.close_status:
                 continue
@@ -1093,7 +1151,7 @@ class CtaStockTemplate(CtaTemplate):
             buy_volume = max_buy_volume
 
         # 实盘运行时，要加入市场买卖量的判断
-        if not self.backtesting:
+        if not self.backtesting and 'market' in ordering_grid.snapshot:
             symbol_tick = self.cta_engine.get_tick(vt_symbol)
             # 根据市场计算，前5档买单数量
             if all([symbol_tick.ask_volume_1, symbol_tick.ask_volume_2, symbol_tick.ask_volume_3,
@@ -1107,7 +1165,7 @@ class CtaStockTemplate(CtaTemplate):
                     buy_volume = min(market_bid_volumes / 4, market_ask_volumes / 4, buy_volume)
                     buy_volume = max(buy_volume - buy_volume % min_trade_volume, min_trade_volume)
 
-        buy_price = cur_price + self.cta_engine.get_price_tick(vt_symbol)
+        buy_price = cur_price + self.cta_engine.get_price_tick(vt_symbol) * 10
 
         vt_orderids = self.buy(
             vt_symbol=vt_symbol,
@@ -1119,7 +1177,7 @@ class CtaStockTemplate(CtaTemplate):
             self.write_error(f'委托买入失败，{vt_symbol} 委托价:{buy_price} 数量:{buy_volume}')
             return
         else:
-            self.write_error(f'已委托买入，{vt_symbol} 委托价:{buy_price} 数量:{buy_volume}')
+            self.write_error(f'{vt_orderids},已委托买入，{vt_symbol} 委托价:{buy_price} 数量:{buy_volume}')
 
     def tns_finish_buy_grid(self, grid):
         """

@@ -460,6 +460,7 @@ class PositionMonitor(BaseMonitor):
     sorting = True
 
     headers = {
+        "name": {"display": "名称", "cell": BaseCell, "update": False},
         "symbol": {"display": "代码", "cell": BaseCell, "update": False},
         "exchange": {"display": "交易所", "cell": EnumCell, "update": False},
         "direction": {"display": "方向", "cell": DirectionCell, "update": False},
@@ -1035,12 +1036,12 @@ class ContractManager(QtWidgets.QWidget):
         """
         Show contracts by symbol
         """
-        flt = str(self.filter_line.text())
+        flt = str(self.filter_line.text()).lower()
 
         all_contracts = self.main_engine.get_all_contracts()
         if flt:
             contracts = [
-                contract for contract in all_contracts if flt in contract.vt_symbol
+                contract for contract in all_contracts if flt in contract.vt_symbol.lower()
             ]
         else:
             contracts = all_contracts

@@ -601,7 +601,8 @@ class CtaFutureTemplate(CtaTemplate):
 
     def init_policy(self):
         self.write_log(u'init_policy(),初始化执行逻辑')
-        self.policy.load()
+        if self.policy:
+            self.policy.load()
 
     def init_position(self):
         """
@@ -1356,11 +1357,13 @@ class CtaFutureTemplate(CtaTemplate):
             return
         self.write_log(u'{} 当前 {}价格：{}'
                        .format(self.cur_datetime, self.vt_symbol, self.cur_price))
+
         if hasattr(self, 'policy'):
             policy = getattr(self, 'policy')
-            op = getattr(policy, 'to_json', None)
-            if callable(op):
-                self.write_log(u'当前Policy:{}'.format(json.dumps(policy.to_json(), indent=2, ensure_ascii=False)))
+            if policy:
+                op = getattr(policy, 'to_json', None)
+                if callable(op):
+                    self.write_log(u'当前Policy:{}'.format(json.dumps(policy.to_json(), indent=2, ensure_ascii=False)))
 
     def save_dist(self, dist_data):
         """

@@ -68,7 +68,8 @@ from vnpy.trader.utility import (
     get_trading_date,
     get_underlying_symbol,
     round_to,
-    BarGenerator
+    BarGenerator,
+    print_dict
 )
 from vnpy.trader.event import EVENT_TIMER
 
@@ -222,6 +223,12 @@ class CtpGateway(BaseGateway):
             self.combiner_conf_dict = c.get_config()
             if len(self.combiner_conf_dict) > 0:
                 self.write_log(u'加载的自定义价差/价比配置:{}'.format(self.combiner_conf_dict))
+
+                contract_dict = c.get_contracts()
+                for vt_symbol, contract in contract_dict.items():
+                    contract.gateway_name = self.gateway_name
+                    self.on_contract(contract)
+
         except Exception as ex:  # noqa
             pass
         if not self.td_api:
@@ -1604,7 +1611,7 @@ class SubMdApi():
 
             tick = TickData(gateway_name=self.gateway_name,
                             exchange=Exchange(d.get('exchange')),
-                            symbol=d.get('symbol'),
+                            symbol=symbol,
                             datetime=dt)
             d.pop('exchange', None)
             d.pop('symbol', None)

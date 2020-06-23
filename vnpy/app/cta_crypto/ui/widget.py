@@ -8,12 +8,14 @@ from vnpy.trader.ui.widget import (
     TimeCell,
     BaseMonitor
 )
+from vnpy.trader.ui.kline.ui_snapshot import UiSnapshot
 from ..base import (
     APP_NAME,
     EVENT_CTA_LOG,
     EVENT_CTA_STOPORDER,
     EVENT_CTA_STRATEGY
 )
+
 from ..engine import CtaEngine
 
 
@@ -202,11 +204,11 @@ class StrategyManager(QtWidgets.QFrame):
         reload_button = QtWidgets.QPushButton("重载")
         reload_button.clicked.connect(self.reload_strategy)
 
-        save_button = QtWidgets.QPushButton("缓存")
+        save_button = QtWidgets.QPushButton("保存")
         save_button.clicked.connect(self.save_strategy)
 
-        snapshot_button = QtWidgets.QPushButton("切片")
-        snapshot_button.clicked.connect(self.save_snapshot)
+        view_button = QtWidgets.QPushButton("K线")
+        view_button.clicked.connect(self.view_strategy_snapshot)
 
         strategy_name = self._data["strategy_name"]
         vt_symbol = self._data["vt_symbol"]
@@ -230,7 +232,7 @@ class StrategyManager(QtWidgets.QFrame):
         hbox.addWidget(remove_button)
         hbox.addWidget(reload_button)
         hbox.addWidget(save_button)
-        hbox.addWidget(snapshot_button)
+        hbox.addWidget(view_button)
 
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(label)
@@ -283,12 +285,17 @@ class StrategyManager(QtWidgets.QFrame):
         self.cta_engine.reload_strategy(self.strategy_name)
 
     def save_strategy(self):
-        """保存K线缓存"""
+        """保存策略缓存数据"""
         self.cta_engine.save_strategy_data(self.strategy_name)
-
-    def save_snapshot(self):
-        """ 保存切片"""
         self.cta_engine.save_strategy_snapshot(self.strategy_name)
+
+    def view_strategy_snapshot(self):
+        """实时查看策略切片"""
+        snapshot = self.cta_engine.get_strategy_snapshot(self.strategy_name)
+        if snapshot is None:
+            return
+        ui_snapshot = UiSnapshot()
+        ui_snapshot.show(snapshot_file="", d=snapshot)
 
 class DataMonitor(QtWidgets.QTableWidget):
     """

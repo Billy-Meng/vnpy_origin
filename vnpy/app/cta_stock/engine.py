@@ -59,7 +59,8 @@ from vnpy.trader.utility import (
     TRADER_DIR,
     get_folder_path,
     get_underlying_symbol,
-    append_data)
+    append_data,
+    import_module_by_str)
 
 from vnpy.trader.util_logger import setup_logger, logging
 from vnpy.trader.util_wechat import send_wx_msg
@@ -143,7 +144,9 @@ class CtaEngine(BaseEngine):
 
         self.positions = {}
 
-        self.last_minute = None
+        self.last_minute = datetime.now().strftime('%H%M')
+
+        self.health_status = {}
 
     def init_engine(self):
         """
@@ -202,25 +205,25 @@ class CtaEngine(BaseEngine):
 
     def process_timer_event(self, event: Event):
         """ 处理定时器事件"""
-        all_trading = True
-        # 触发每个策略的定时接口
-        for strategy in list(self.strategies.values()):
-            strategy.on_timer()
-            if not strategy.trading:
-                all_trading = False
 
         dt = datetime.now()
+        # 每分钟执行的逻辑
+        if self.last_minute != dt.strftime('%H%M'):
+            self.last_minute = dt.strftime('%H%M')
 
-        if self.last_minute != dt.minute:
-            self.last_minute = dt.minute
+            # 检测策略的交易情况
+            self.health_check()
 
-            if all_trading:
+            # 在国内股市开盘期间做检查
+            if '0930' < self.last_minute < '1530':
                 # 主动获取所有策略得持仓信息
                 all_strategy_pos = self.get_all_strategy_pos()
 
-                if dt.minute % 5 == 0:
+                # 每5分钟检查一次
+                if dt.minute % 10 == 0:
                     # 比对仓位，使用上述获取得持仓信息，不用重复获取
-                    self.compare_pos(strategy_pos_list=copy(all_strategy_pos))
+                    #self.compare_pos(strategy_pos_list=copy(all_strategy_pos))
+                    pass
 
                 # 推送到事件
                 self.put_all_strategy_pos_event(all_strategy_pos)
@@ -346,6 +349,20 @@ class CtaEngine(BaseEngine):
 
         # Update GUI
         self.put_strategy_event(strategy)
+
+        if self.engine_config.get('trade_2_wx', False):
+            accountid = self.engine_config.get('accountid', 'XXX')
+            d = {
+                'account': accountid,
+                'strategy': strategy_name,
+                'symbol': trade.symbol,
+                'action': f'{trade.direction.value} {trade.offset.value}',
+                'price': str(trade.price),
+                'volume': trade.volume,
+                'remark': f'{accountid}:{strategy_name}',
+                'timestamp': trade.time
+            }
+            send_wx_msg(content=d, target=accountid, msg_type='TRADE')
 
     def process_position_event(self, event: Event):
         """"""
@@ -708,6 +725,9 @@ class CtaEngine(BaseEngine):
     def cancel_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
         """
+        if vt_orderid is None or len(vt_orderid) == 0:
+            return False
+
         if vt_orderid.startswith(STOPORDER_PREFIX):
             return self.cancel_local_stop_order(strategy, vt_orderid)
         else:
@@ -1148,10 +1168,22 @@ class CtaEngine(BaseEngine):
 
         module_name = self.class_module_map[class_name]
         # 重新load class module
-        if not self.load_strategy_class_from_module(module_name):
-            err_msg = f'不能加载模块:{module_name}'
-            self.write_error(err_msg)
-            return False, err_msg
+        #if not self.load_strategy_class_from_module(module_name):
+        #    err_msg = f'不能加载模块:{module_name}'
+        #    self.write_error(err_msg)
+        #    return False, err_msg
+        if module_name:
+            new_class_name = module_name + '.' + class_name
+            self.write_log(u'转换策略为全路径:{}'.format(new_class_name))
+
+            strategy_class = import_module_by_str(new_class_name)
+            if strategy_class is None:
+                err_msg = u'加载策略模块失败:{}'.format(class_name)
+                self.write_error(err_msg)
+                return False, err_msg
+
+            self.write_log(f'重新加载模块成功，使用新模块:{new_class_name}')
+            self.classes[class_name] = strategy_class
 
         # 停止当前策略实例的运行，撤单
         self.stop_strategy(strategy_name)
@@ -1206,6 +1238,25 @@ class CtaEngine(BaseEngine):
         except Exception as ex:
             self.write_error(u'保存策略{}数据异常:'.format(strategy_name, str(ex)))
             self.write_error(traceback.format_exc())
+
+    def get_strategy_snapshot(self, strategy_name):
+        """实时获取策略的K线切片（比较耗性能）"""
+        strategy = self.strategies.get(strategy_name, None)
+        if strategy is None:
+            return None
+
+        try:
+            # 5.保存策略切片
+            snapshot = strategy.get_klines_snapshot()
+            if not snapshot:
+                self.write_log(f'{strategy_name}返回得K线切片数据为空')
+                return None
+            return snapshot
+
+        except Exception as ex:
+            self.write_error(u'获取策略{}切片数据异常:'.format(strategy_name, str(ex)))
+            self.write_error(traceback.format_exc())
+            return None
 
     def save_strategy_snapshot(self, select_name: str = 'ALL'):
         """
@@ -1584,6 +1635,29 @@ class CtaEngine(BaseEngine):
             self.write_log(u'账户持仓与策略一致')
             return True, compare_info
 
+    def health_check(self):
+        """策略健康检查"""
+        for strategy_name in list(self.strategies.keys()):
+            # 获取策略
+            strategy = self.strategies.get(strategy_name)
+            if not strategy:
+                continue
+
+            health_count = self.health_status.get(strategy_name, 0)
+
+            # 取消计数器
+            if health_count > 0 and strategy.trading:
+                self.health_status.pop(strategy_name, None)
+                continue
+
+            # 增加计数器，如果超时十次，发出告警信息
+            if not strategy.trading:
+                health_count += 1
+                if health_count > 10:
+                    self.send_wechat(f'{strategy_name}交易状态停止超过10次检查周期,请检查')
+                    health_count = 0
+                    self.health_status.update({strategy_name: health_count})
+
     def init_all_strategies(self):
         """
         """
@@ -1704,8 +1778,10 @@ class CtaEngine(BaseEngine):
                 self.logger.log(level, msg)
 
         # 如果日志数据异常，错误和告警，输出至sys.stderr
-        if level in [logging.CRITICAL, logging.ERROR, logging.WARNING]:
-            print(f"{strategy_name}: {msg}" if strategy_name else msg, file=sys.stderr)
+        if level in [logging.CRITICAL]:
+            log_msg = f"{strategy_name}: {msg}" if strategy_name else msg
+            print(log_msg, file=sys.stderr)
+            send_wx_msg(log_msg)
 
     def write_error(self, msg: str, strategy_name: str = ''):
         """写入错误日志"""

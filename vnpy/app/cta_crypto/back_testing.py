@@ -160,7 +160,7 @@ class BackTestingEngine(object):
         self.net_capital = self.init_capital  # 实时资金净值（每日根据capital和持仓浮盈计算）
         self.max_capital = self.init_capital  # 资金最高净值
         self.max_net_capital = self.init_capital
-        self.avaliable = self.init_capital
+        self.available = self.init_capital
 
         self.max_pnl = 0  # 最高盈利
         self.min_pnl = 0  # 最大亏损
@@ -257,7 +257,7 @@ class BackTestingEngine(object):
         if self.net_capital == 0.0:
             self.percent = 0.0
 
-        return self.net_capital, self.avaliable, self.percent, self.percent_limit
+        return self.net_capital, self.available, self.percent, self.percent_limit
 
     def set_test_start_date(self, start_date: str = '20100416', init_days: int = 10):
         """设置回测的启动日期"""
@@ -290,7 +290,7 @@ class BackTestingEngine(object):
         self.net_capital = capital  # 实时资金净值（每日根据capital和持仓浮盈计算）
         self.max_capital = capital  # 资金最高净值
         self.max_net_capital = capital
-        self.avaliable = capital
+        self.available = capital
         self.init_capital = capital
 
     def set_margin_rate(self, vt_symbol: str, margin_rate: float):
@@ -1705,7 +1705,7 @@ class BackTestingEngine(object):
                                                                                                         0)
 
         # 可用资金 = 当前净值 - 占用保证金
-        self.avaliable = self.net_capital - occupy_money
+        self.available = self.net_capital - occupy_money
         # 当前保证金占比
         self.percent = round(float(occupy_money * 100 / self.net_capital), 2)
         # 更新最大保证金占比
@@ -1759,7 +1759,7 @@ class BackTestingEngine(object):
             self.write_log(msg)
 
         # 重新计算一次avaliable
-        self.avaliable = self.net_capital - occupy_money
+        self.available = self.net_capital - occupy_money
         self.percent = round(float(occupy_money * 100 / self.net_capital), 2)
 
     def saving_daily_data(self, d, c, m, commission, benchmark=0):

@@ -1,9 +1,13 @@
 <p align="center">
-  <img src ="https://github.com/msincenselee/vnpy/blob/master/huafu_on_premise.jpg"/>
+  <img src ="https://github.com/msincenselee/vnpy/blob/vnpy2/huafu_on_premise.jpg"/>
+  <img src ="https://gitee.com/vnpy2/vnpy/blob/vnpy2/huafu_on_premise.jpg"/>
 </p>
 
 
 # “当你想放弃时，想想你为什么开始。埃隆·马斯克”
+
+github 链接： https://github.com/msincenselee/vnpy
+gitee  链接： https://gitee.com/vnpy2/vnpy
 
 ###Fork版本主要改进如下
 1、 事件引擎，增加运行效率调试功能
@@ -32,8 +36,8 @@
 
 
     - 提供cta_line_bar k线组件，支持国内文华/交易师/TB等分钟/小时的计算模式，支持任意秒/分钟/小时/天/周等周期，支持k线数据实时生成。
-    - 提供cta_renko_bar k线组件，支持x跳动/千分比跳动 【特定开源对象】
-    - 提供cta_fund_kline 资金曲线组件，策略实例/账号基本的实时资金曲线 【特定开源对象】
+    - 提供cta_renko_bar k线组件，支持x跳动/千分比跳动 
+    - 提供cta_fund_kline 资金曲线组件，策略实例/账号基本的实时资金曲线 
     - 提供cta_position 组件，支持多/空/净仓位记录，支持套利
     - 提供cta_policy 组件，持久化复杂的策略执行逻辑
     - 提供cta_period 组件，支持策略中‘周期’的逻辑
@@ -82,6 +86,7 @@
     - 独立的CTA引擎 cta_crypto，运行数字货币时，替代原版cta_strategy引擎。
     - 支持bar方式回测/组合回测
     - 增强期货交易模板
+    - 修正vnpy.gateway.binance现货网关，恢复position
   
 13、 增加App: cta_stock, 包括：
     
@@ -95,6 +100,11 @@
     - 支持可转债日内交易回测，支持动态前复权。
     - 支持盘前复权信息事件【待更新】
     
+14、GUI界面增强
+    
+    - 交易界面，恢复部分v1版本的快捷功能，如快速平仓
+    - 策略运行界面，增加'保存’,'K线' 按钮，保存策略内部数据，保存切片，查看最新切片K线。
+    - K线切片,支持同一策略内多周期、多品种K线。    
     
     
 大佳

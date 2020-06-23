@@ -96,6 +96,8 @@ class BaseGateway(ABC):
         self.klines = {}
         self.status = {'name': gateway_name, 'con': False}
 
+        self.prices: Dict[str, float] = {}  # vt_symbol, last_price
+
         self.query_functions = []
 
     def create_logger(self):
@@ -329,13 +331,15 @@ class LocalOrderManager:
     Management tool to support use local order id for trading.
     """
 
-    def __init__(self, gateway: BaseGateway, order_prefix: str = ""):
+    def __init__(self, gateway: BaseGateway, order_prefix: str = "", order_rjust:int = 8):
         """"""
         self.gateway: BaseGateway = gateway
 
         # For generating local orderid
         self.order_prefix: str = order_prefix
+        self.order_rjust: int = order_rjust
         self.order_count: int = 0
+
         self.orders: Dict[str, OrderData] = {}  # local_orderid: order
 
         # Map between local and system orderid
@@ -360,7 +364,7 @@ class LocalOrderManager:
         Generate a new local orderid.
         """
         self.order_count += 1
-        local_orderid = self.order_prefix + str(self.order_count).rjust(8, "0")
+        local_orderid = self.order_prefix + str(self.order_count).rjust(self.order_rjust, "0")
         return local_orderid
 
     def get_local_orderid(self, sys_orderid: str) -> str:
@@ -419,8 +423,11 @@ class LocalOrderManager:
 
     def get_order_with_local_orderid(self, local_orderid: str) -> OrderData:
         """"""
-        order = self.orders[local_orderid]
-        return copy(order)
+        order = self.orders.get(local_orderid, None)
+        if order:
+            return copy(order)
+        else:
+            return None
 
     def on_order(self, order: OrderData) -> None:
         """

@@ -3,11 +3,13 @@ Please install futu-api before use.
 """
 
 from copy import copy
+from collections import OrderedDict
 from datetime import datetime
 from threading import Thread
 from time import sleep
 
 from futu import (
+    KLType,
     ModifyOrderOp,
     TrdSide,
     TrdEnv,
@@ -26,8 +28,9 @@ from futu import (
 
 from vnpy.trader.constant import Direction, Exchange, Product, Status
 from vnpy.trader.event import EVENT_TIMER
-from vnpy.trader.gateway import BaseGateway
+from vnpy.trader.gateway import BaseGateway, LocalOrderManager
 from vnpy.trader.object import (
+    BarData,
     TickData,
     OrderData,
     TradeData,
@@ -36,7 +39,9 @@ from vnpy.trader.object import (
     PositionData,
     SubscribeRequest,
     OrderRequest,
-    CancelRequest
+    CancelRequest,
+    HistoryRequest,
+    Interval
 )
 
 EXCHANGE_VT2FUTU = {
@@ -73,23 +78,31 @@ STATUS_FUTU2VT = {
     OrderStatus.DISABLED: Status.CANCELLED,
 }
 
+KLTYPE_MINUTES = [1, 3, 5, 15, 30, 60]
+
 
 class FutuGateway(BaseGateway):
-    """"""
+    """
+    富途证券API
+    # 网络访问路径： vnpy=>FutuGateway=>FutuOpenD 本地客户端[端口11111] => 富途证券
+    # FutuOpenD下载地址 https://www.futunn.com/download/openAPI?lang=zh-CN
+    # windows： 安装完毕后，使用客户端登录=》短信验证=》建立本地11111端口侦听
+    """
 
     default_setting = {
-        "密码": "",
+        "密码": "",  # 交易密码
         "地址": "127.0.0.1",
         "端口": 11111,
         "市场": ["HK", "US"],
         "环境": [TrdEnv.REAL, TrdEnv.SIMULATE],
     }
 
+    # 支持的交易所清单
     exchanges = list(EXCHANGE_FUTU2VT.values())
 
-    def __init__(self, event_engine):
+    def __init__(self, event_engine, gateway_name="FUTU"):
         """Constructor"""
-        super(FutuGateway, self).__init__(event_engine, "FUTU")
+        super(FutuGateway, self).__init__(event_engine, gateway_name)
 
         self.quote_ctx = None
         self.trade_ctx = None
@@ -103,6 +116,9 @@ class FutuGateway(BaseGateway):
         self.ticks = {}
         self.trades = set()
         self.contracts = {}
+
+        # 引入本地委托单号《=》接口委托单号的管理
+        self.order_manager = LocalOrderManager(gateway=self, order_prefix='', order_rjust=4)
 
         self.thread = Thread(target=self.query_data)
 
@@ -126,6 +142,7 @@ class FutuGateway(BaseGateway):
 
     def query_data(self):
         """
+        使用异步线程单独查询
         Query all data necessary.
         """
         sleep(2.0)  # Wait 2 seconds till connection completed.
@@ -140,7 +157,7 @@ class FutuGateway(BaseGateway):
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
     def process_timer_event(self, event):
-        """"""
+        """定时器"""
         self.count += 1
         if self.count < self.interval:
             return
@@ -152,12 +169,16 @@ class FutuGateway(BaseGateway):
     def connect_quote(self):
         """
         Connect to market data server.
+        连接行情服务器
         """
+
         self.quote_ctx = OpenQuoteContext(self.host, self.port)
 
+        # 股票行情处理的实现
         class QuoteHandler(StockQuoteHandlerBase):
             gateway = self
 
+            # 处理信息回调 =》 gateway.process_quote
             def on_recv_rsp(self, rsp_str):
                 ret_code, content = super(QuoteHandler, self).on_recv_rsp(
                     rsp_str
@@ -167,9 +188,11 @@ class FutuGateway(BaseGateway):
                 self.gateway.process_quote(content)
                 return RET_OK, content
 
+        # 订单簿的实现
         class OrderBookHandler(OrderBookHandlerBase):
             gateway = self
 
+            # 处理订单簿信息流回调 => gateway.process_orderbook
             def on_recv_rsp(self, rsp_str):
                 ret_code, content = super(OrderBookHandler, self).on_recv_rsp(
                     rsp_str
@@ -179,6 +202,7 @@ class FutuGateway(BaseGateway):
                 self.gateway.process_orderbook(content)
                 return RET_OK, content
 
+        # 绑定两个实现方法
         self.quote_ctx.set_handler(QuoteHandler())
         self.quote_ctx.set_handler(OrderBookHandler())
         self.quote_ctx.start()
@@ -188,6 +212,7 @@ class FutuGateway(BaseGateway):
     def connect_trade(self):
         """
         Connect to trade server.
+        连接交易服务器
         """
         # Initialize context according to market.
         if self.market == "US":
@@ -196,9 +221,11 @@ class FutuGateway(BaseGateway):
             self.trade_ctx = OpenHKTradeContext(self.host, self.port)
 
         # Implement handlers.
+        # 订单回报的实现
         class OrderHandler(TradeOrderHandlerBase):
             gateway = self
 
+            # 订单回报流 =》gateway.process_order
             def on_recv_rsp(self, rsp_str):
                 ret_code, content = super(OrderHandler, self).on_recv_rsp(
                     rsp_str
@@ -208,9 +235,11 @@ class FutuGateway(BaseGateway):
                 self.gateway.process_order(content)
                 return RET_OK, content
 
+        # 交易回报的实现
         class DealHandler(TradeDealHandlerBase):
             gateway = self
 
+            # 成交回报流 =》 gateway.process_deal
             def on_recv_rsp(self, rsp_str):
                 ret_code, content = super(DealHandler, self).on_recv_rsp(
                     rsp_str
@@ -221,6 +250,7 @@ class FutuGateway(BaseGateway):
                 return RET_OK, content
 
         # Unlock to allow trading.
+        # 解锁交易接口
         code, data = self.trade_ctx.unlock_trade(self.password)
         if code == RET_OK:
             self.write_log("交易接口解锁成功")
@@ -228,13 +258,14 @@ class FutuGateway(BaseGateway):
             self.write_log(f"交易接口解锁失败，原因：{data}")
 
         # Start context.
+        # 绑定订单回报、成交回报
         self.trade_ctx.set_handler(OrderHandler())
         self.trade_ctx.set_handler(DealHandler())
         self.trade_ctx.start()
         self.write_log("交易接口连接成功")
 
     def subscribe(self, req: SubscribeRequest):
-        """"""
+        """订阅行情"""
         for data_type in ["QUOTE", "ORDER_BOOK"]:
             futu_symbol = convert_symbol_vt2futu(req.symbol, req.exchange)
             code, data = self.quote_ctx.subscribe(futu_symbol, data_type, True)
@@ -242,8 +273,177 @@ class FutuGateway(BaseGateway):
             if code:
                 self.write_log(f"订阅行情失败：{data}")
 
+    def query_history(self, req: HistoryRequest):
+        """查询某只股票的历史K线数据"""
+        history = []
+        limit = 60
+
+        if req.interval not in [Interval.MINUTE, Interval.DAILY]:
+            self.write_error(f'查询股票历史范围，本接口只支持分钟/日线')
+            return history
+
+        futu_code = '{}.{}'.format(EXCHANGE_VT2FUTU.get(req.exchange), req.symbol)
+
+        if req.interval == Interval.MINUTE:
+            if req.interval_num not in KLTYPE_MINUTES:
+                self.write_error(f'查询股票历史范围，请求分钟数{req.interval_num}不在范围:{KLTYPE_MINUTES}')
+                return history
+            k_type = f'K_{req.interval_num}M'
+        else:
+            if req.interval_num != 1:
+                self.write_error(f'查询股票历史范围，请求日线{req.interval_num}只能是1')
+                return history
+            k_type = KLType.K_DAY
+        start_date = req.start.strftime('%Y-%m-%d')
+        end_date = req.end.strftime('%Y-%m-%d') if req.end else None
+
+        ret, df, page_req_key = self.quote_ctx.request_history_kline(
+            code=futu_code,
+            ktype=k_type,
+            start=start_date,
+            end=end_date,
+            max_count=limit)  # 每页5个，请求第一页
+        if ret == RET_OK:
+            for index, row in df.iterrows():
+                symbol = row['code']
+                str_time = row['time_key']
+                dt = datetime.strptime(str_time, '%Y-%m-%d %H:%M:%S')
+                bar = BarData(
+                    gateway_name=self.gateway_name,
+                    symbol=row['code'],
+                    exchange=req.exchange,
+                    datetime=dt,
+                    trading_day=dt.strftime('%Y-%m-%d'),
+                    interval=req.interval,
+                    interval_num=req.interval_num,
+                    volume=row['volume'],
+                    open_price=float(row['open']),
+                    high_price=float(row['high']),
+                    low_price=float(row['low']),
+                    close_price=float(row['close'])
+                )
+                history.append(bar)
+        else:
+            return history
+        while page_req_key != None:  # 请求后面的所有结果
+            ret, df, page_req_key = self.quote_ctx.request_history_kline(
+                code=futu_code,
+                ktype=k_type,
+                start=start_date,
+                end=end_date,
+                page_req_key=page_req_key)  # 请求翻页后的数据
+            if ret == RET_OK:
+                for index, row in df.iterrows():
+                    symbol = row['code']
+                    str_time = row['time_key']
+                    dt = datetime.strptime(str_time, '%Y-%m-%d %H:%M:%S')
+                    bar = BarData(
+                        gateway_name=self.gateway_name,
+                        symbol=row['code'],
+                        exchange=req.exchange,
+                        datetime=dt,
+                        trading_day=dt.strftime('%Y-%m-%d'),
+                        interval=req.interval,
+                        interval_num=req.interval_num,
+                        volume=row['volume'],
+                        open_price=float(row['open']),
+                        high_price=float(row['high']),
+                        low_price=float(row['low']),
+                        close_price=float(row['close'])
+                    )
+                    history.append(bar)
+
+        return history
+
+    def download_bars(self, req: HistoryRequest):
+        """获取某只股票的历史K线数据"""
+        history = []
+        limit = 60
+
+        if req.interval not in [Interval.MINUTE, Interval.DAILY]:
+            self.write_error(f'查询股票历史范围，本接口只支持分钟/日线')
+            return history
+
+        futu_code = '{}.{}'.format(EXCHANGE_VT2FUTU.get(req.exchange), req.symbol)
+
+        if req.interval == Interval.MINUTE:
+            if req.interval_num not in KLTYPE_MINUTES:
+                self.write_error(f'查询股票历史范围，请求分钟数{req.interval_num}不在范围:{KLTYPE_MINUTES}')
+                return history
+            k_type = f'K_{req.interval_num}M'
+        else:
+            if req.interval_num != 1:
+                self.write_error(f'查询股票历史范围，请求日线{req.interval_num}只能是1')
+                return history
+            k_type = KLType.K_DAY
+        start_date = req.start.strftime('%Y-%m-%d')
+        end_date = req.end.strftime('%Y-%m-%d') if req.end else None
+
+        ret, df, page_req_key = self.quote_ctx.request_history_kline(
+            code=futu_code,
+            ktype=k_type,
+            start=start_date,
+            end=end_date,
+            max_count=limit)  # 每页5个，请求第一页
+        if ret == RET_OK:
+            for index, row in df.iterrows():
+                symbol = row['code']
+                str_time = row['time_key']
+                dt = datetime.strptime(str_time, '%Y-%m-%d %H:%M:%S')
+                bar = OrderedDict({
+                    "datetime": str_time,
+                    "open": float(row['open']),
+                    "close": float(row['close']),
+                    "high": float(row['high']),
+                    "low": float(row['low']),
+                    "volume": row['volume'],
+                    "amount": row['turnover'],
+                    "symbol": row['code'],
+                    "trading_date": dt.strftime('%Y-%m-%d'),
+                    "date": dt.strftime('%Y-%m-%d'),
+                    "time": dt.strftime('%H:%M:%S'),
+                    "pre_close": float(row['last_close']),
+                    "turnover_rate": float(row.get('turnover_rate', 0)),
+                    "change_rate": float(row.get('change_rate', 0))
+
+                })
+                history.append(bar)
+        else:
+            return history
+        while page_req_key != None:  # 请求后面的所有结果
+            ret, df, page_req_key = self.quote_ctx.request_history_kline(
+                code=futu_code,
+                ktype=k_type,
+                start=start_date,
+                end=end_date,
+                page_req_key=page_req_key)  # 请求翻页后的数据
+            if ret == RET_OK:
+                for index, row in df.iterrows():
+                    symbol = row['code']
+                    str_time = row['time_key']
+                    dt = datetime.strptime(str_time, '%Y-%m-%d %H:%M:%S')
+                    bar = OrderedDict({
+                        "datetime": str_time,
+                        "open": float(row['open']),
+                        "close": float(row['close']),
+                        "high": float(row['high']),
+                        "low": float(row['low']),
+                        "volume": row['volume'],
+                        "amount": row['turnover'],
+                        "symbol": row['code'],
+                        "trading_date": dt.strftime('%Y-%m-%d'),
+                        "date": dt.strftime('%Y-%m-%d'),
+                        "time": dt.strftime('%H:%M:%S'),
+                        "pre_close": float(row['last_close']),
+                        "turnover_rate": float(row.get('turnover_rate', 0)),
+                        "change_rate": float(row.get('change_rate', 0))
+                    })
+                    history.append(bar)
+
+        return history
+
     def send_order(self, req: OrderRequest):
-        """"""
+        """发送委托"""
         side = DIRECTION_VT2FUTU[req.direction]
         futu_order_type = OrderType.NORMAL  # Only limit order is supported.
 
@@ -254,6 +454,19 @@ class FutuGateway(BaseGateway):
             adjust_limit = -0.05
 
         futu_symbol = convert_symbol_vt2futu(req.symbol, req.exchange)
+
+        # 港股交易手数为整数
+        if req.exchange == Exchange.SEHK:
+            self.write_log(f'交易手数:{req.volume}=>{int(req.volume)}')
+            req.volume = int(req.volume)
+
+        local_orderid = self.order_manager.new_local_orderid()
+        order = req.create_order_data(local_orderid, self.gateway_name)
+
+        # 发出委托确认
+        order.status = Status.SUBMITTING
+        self.order_manager.on_order(order)
+
         code, data = self.trade_ctx.place_order(
             req.price,
             req.volume,
@@ -266,23 +479,59 @@ class FutuGateway(BaseGateway):
 
         if code:
             self.write_log(f"委托失败：{data}")
+            order.status = Status.REJECTED
+            self.order_manager.on_order(order)
             return ""
 
+        sys_orderid = ""
         for ix, row in data.iterrows():
-            orderid = str(row["order_id"])
+            sys_orderid = str(row.get("order_id",""))
+            if len(sys_orderid) > 0:
+                self.write_log(f'系统委托号:{sys_orderid}')
+                break
 
-        order = req.create_order_data(orderid, self.gateway_name)
-        self.on_order(order)
+        if len(sys_orderid) == 0:
+            order.status = Status.REJECTED
+            self.order_manager.on_order(order)
+            return ""
+
+        # 绑定 系统委托号
+        order.sys_orderid = sys_orderid
+        order.status = Status.NOTTRADED
+        self.order_manager.update_orderid_map(local_orderid, sys_orderid)
+        # 更新订单为已委托
+        self.order_manager.on_order(copy(order))
+
         return order.vt_orderid
 
     def cancel_order(self, req: CancelRequest):
         """"""
+
+        order = self.order_manager.get_order_with_local_orderid(req.orderid)
+
+        # 更新订单委托状态为正在撤销
+        if order:
+            if order.status in [Status.REJECTED, Status.ALLTRADED, Status.CANCELLED]:
+                self.write_error(f'委托单:{req.orderid}，状态已经是:{order.status}，不能撤单')
+                return False
+
+            order.status = Status.CANCELLING
+            self.order_manager.on_order(order)
+            sys_orderid = order.sys_orderid
+        else:
+            sys_orderid = req.orderid
+
+        # 向接口发出撤单请求
         code, data = self.trade_ctx.modify_order(
-            ModifyOrderOp.CANCEL, req.orderid, 0, 0, trd_env=self.env
+            ModifyOrderOp.CANCEL, sys_orderid, 0, 0, trd_env=self.env
         )
 
         if code:
             self.write_log(f"撤单失败：{data}")
+            return False
+        else:
+            self.write_log(f'成功发出撤单请求:orderid={req.orderid},sys_orderid:{sys_orderid}')
+            return True
 
     def query_contract(self):
         """"""
@@ -290,6 +539,8 @@ class FutuGateway(BaseGateway):
             code, data = self.quote_ctx.get_stock_basicinfo(
                 self.market, futu_product
             )
+
+            self.write_log(f'开始查询{futu_product}市场的合约清单')
 
             if code:
                 self.write_log(f"查询合约信息失败：{data}")
@@ -305,6 +556,7 @@ class FutuGateway(BaseGateway):
                     size=1,
                     pricetick=0.001,
                     net_position=True,
+                    history_data=True,
                     gateway_name=self.gateway_name,
                 )
                 self.on_contract(contract)
@@ -459,38 +711,73 @@ class FutuGateway(BaseGateway):
                 continue
 
             symbol, exchange = convert_symbol_futu2vt(row["code"])
-            order = OrderData(
-                symbol=symbol,
-                exchange=exchange,
-                orderid=str(row["order_id"]),
-                direction=DIRECTION_FUTU2VT[row["trd_side"]],
-                price=float(row["price"]),
-                volume=row["qty"],
-                traded=row["dealt_qty"],
-                status=STATUS_FUTU2VT[row["order_status"]],
-                time=row["create_time"].split(" ")[-1],
-                gateway_name=self.gateway_name,
-            )
 
-            self.on_order(order)
+            # 获取系统委托编号
+            sys_orderid = str(row["order_id"])
+
+            # 系统委托变化=》 缓存 order
+            order = self.order_manager.get_order_with_sys_orderid(sys_orderid)
+
+            if order is None:
+                # 本地委托 《=》系统委托号
+                local_orderid = self.order_manager.get_local_orderid(sys_orderid)
+
+                # 创建本地order缓存
+                order = OrderData(
+                    symbol=symbol,
+                    exchange=exchange,
+                    orderid=local_orderid,
+                    sys_orderid=sys_orderid,
+                    direction=DIRECTION_FUTU2VT[row["trd_side"]],
+                    price=float(row["price"]),
+                    volume=row["qty"],
+                    traded=row["dealt_qty"],
+                    status=STATUS_FUTU2VT[row["order_status"]],
+                    time=row["create_time"].split(" ")[-1],
+                    gateway_name=self.gateway_name,
+                )
+                self.write_log(f'新建委托单缓存=>{order.__dict__}')
+                self.order_manager.on_order(copy(order))
+            else:
+                # 缓存order存在，判断状态、成交数量是否发生变化
+                changed = False
+                order_status = STATUS_FUTU2VT[row["order_status"]]
+                if order.status != order_status:
+                    order.status = order_status
+                    changed = True
+                if order.traded != row["dealt_qty"]:
+                    order.traded = row["dealt_qty"]
+                    changed = True
+                if changed:
+                    self.write_log(f'委托单更新=>{order.__dict__}')
+                    self.order_manager.on_order(copy(order))
 
     def process_deal(self, data):
         """
         Process trade data for both query and update.
         """
         for ix, row in data.iterrows():
+            # 系统委托编号
             tradeid = str(row["deal_id"])
             if tradeid in self.trades:
                 continue
+
             self.trades.add(tradeid)
 
             symbol, exchange = convert_symbol_futu2vt(row["code"])
+
+            # 系统委托号
+            sys_orderid = row["order_id"]
+            # 本地委托号
+            local_orderid = self.order_manager.get_local_orderid(sys_orderid)
+
             trade = TradeData(
                 symbol=symbol,
                 exchange=exchange,
                 direction=DIRECTION_FUTU2VT[row["trd_side"]],
                 tradeid=tradeid,
-                orderid=row["order_id"],
+                orderid=local_orderid,
+                sys_orderid=sys_orderid,
                 price=float(row["price"]),
                 volume=row["qty"],
                 time=row["create_time"].split(" ")[-1],

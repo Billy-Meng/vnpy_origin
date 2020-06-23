@@ -645,8 +645,8 @@ class CtaGridTrade(CtaComponent):
             if lots > 0:
                 for i in range(0, lots, 1):
                     # 做多，开仓价为下阻力线-网格高度*i，平仓价为开仓价+止盈高度，开仓数量为缺省
-                    open_price = int((down_line - self.grid_height * down_rate) / self.price_tick) * self.price_tick
-                    close_price = int((open_price + self.grid_win * down_rate) / self.price_tick) * self.price_tick
+                    open_price = int((down_line - self.grid_height * down_rate * i) / self.price_tick) * self.price_tick
+                    close_price = int((open_price + self.grid_win * down_rate * i) / self.price_tick) * self.price_tick
 
                     grid = CtaGrid(direction=Direction.LONG,
                                    open_price=open_price,
@@ -686,8 +686,8 @@ class CtaGridTrade(CtaComponent):
             if lots > 0:
                 # 做空，开仓价为上阻力线+网格高度*i，平仓价为开仓价-止盈高度，开仓数量为缺省
                 for i in range(0, lots, 1):
-                    open_price = int((upper_line + self.grid_height * upper_rate) / self.price_tick) * self.price_tick
-                    close_price = int((open_price - self.grid_win * upper_rate) / self.price_tick) * self.price_tick
+                    open_price = int((upper_line + self.grid_height * upper_rate * i) / self.price_tick) * self.price_tick
+                    close_price = int((open_price - self.grid_win * upper_rate * i) / self.price_tick) * self.price_tick
 
                     grid = CtaGrid(direction=Direction.SHORT,
                                    open_price=open_price,

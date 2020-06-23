@@ -120,7 +120,14 @@ class TdxStockData(object):
                     self.config.update({'best_ip': self.best_ip})
                     save_cache_config(self.config, TDX_STOCK_CONFIG)
 
-                self.api.connect(self.best_ip.get('ip'), self.best_ip.get('port'))
+                # 如果配置proxy5，使用vnpy项目下的pytdx
+                if len(self.proxy_ip) > 0 and self.proxy_port > 0:
+                    self.api.connect(ip=self.best_ip['ip'], port=self.best_ip['port'],
+                                     proxy_ip=self.proxy_ip, proxy_port=self.proxy_port)
+                else:
+                    # 使用pip install pytdx
+                    self.api.connect(ip=self.best_ip['ip'], port=self.best_ip['port'])
+
                 self.write_log(f'创建tdx连接, : {self.best_ip}')
                 self.connection_status = True
 

@@ -344,7 +344,7 @@ def get_csv_last_dt(file_name, dt_index=0, dt_format='%Y-%m-%d %H:%M:%S', line_l
                     return None
         return None
 
-def append_data(file_name: str, dict_data: dict, field_names: list = []):
+def append_data(file_name: str, dict_data: dict, field_names: list = [], auto_header=True, encoding='utf8'):
     """
     添加数据到csv文件中
     :param file_name:  csv的文件全路径
@@ -354,15 +354,16 @@ def append_data(file_name: str, dict_data: dict, field_names: list = []):
     dict_fieldnames = sorted(list(dict_data.keys())) if len(field_names) == 0 else field_names
 
     try:
-        if not os.path.exists(file_name):
+        if not os.path.exists(file_name): # or os.path.getsize(file_name) == 0:
             print(u'create csv file:{}'.format(file_name))
             with open(file_name, 'a', encoding='utf8', newline='\n') as csvWriteFile:
                 writer = csv.DictWriter(f=csvWriteFile, fieldnames=dict_fieldnames, dialect='excel')
-                print(u'write csv header:{}'.format(dict_fieldnames))
-                writer.writeheader()
+                if auto_header:
+                    print(u'write csv header:{}'.format(dict_fieldnames))
+                    writer.writeheader()
                 writer.writerow(dict_data)
         else:
-            with open(file_name, 'a', encoding='utf8', newline='\n') as csvWriteFile:
+            with open(file_name, 'a', encoding=encoding, newline='\n') as csvWriteFile:
                 writer = csv.DictWriter(f=csvWriteFile, fieldnames=dict_fieldnames, dialect='excel',
                                         extrasaction='ignore')
                 writer.writerow(dict_data)

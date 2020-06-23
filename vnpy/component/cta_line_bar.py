@@ -143,11 +143,9 @@ class CtaLineBar(object):
     # 参数列表，保存了参数的名称
     paramList = ['vt_symbol']
 
-    # 参数列表
-
     def __init__(self, strategy, cb_on_bar, setting=None):
 
-        # OnBar事件回调函数
+        # on_bar事件回调函数,X周期bar合成完毕时，回调到策略的cb_on_bar接口
         self.cb_on_bar = cb_on_bar
 
         # 周期变更事件回调函数
@@ -156,27 +154,28 @@ class CtaLineBar(object):
         # K 线服务的策略
         self.strategy = strategy
 
+        # 当前商品合约 属性
         self.underly_symbol = ''  # 商品的短代码
         self.price_tick = 1  # 商品的最小价格单位
         self.round_n = 4  # round() 小数点的截断数量
+        self.is_7x24 = False    # 是否7x24小时运行（ 一般为数字货币）
 
-        self.is_7x24 = False
-
-        # 当前的Tick
-        self.cur_tick = None
-        self.last_tick = None
-        self.cur_datetime = None
-        self.cur_trading_day = ''
-        self.cur_price = 0
+        # 当前的Tick的信息
+        self.cur_tick = None  # 当前 onTick()函数接收的 最新的tick
+        self.last_tick = None  # 当前正在合成的 X周期bar 的最后(新)一根tick
+        self.cur_datetime = None  # 当前add_bar()传进来的bar/on_tick()传进来tick 对应的最新时间
+        self.cur_trading_day = ''  # 当前传入tick/bar对应的交易日
+        self.cur_price = 0  # 当前curTick.last_price/add_bar中的bar.close_price传进来的 最新市场价格
 
         # K线保存数据
         self.cur_bar = None  # K线数据对象，代表最后一根/未走完的bar
-        self.line_bar = []  # K线缓存数据队列
-        self.bar_len = 0  # 当前K线得真实数量
+        self.line_bar = []  # K线缓存数据队列(缓存合成完 以及正在合成的bar)
+        self.bar_len = 0  # 当前K线得真实数量(包含已经合成以及正在合成的bar)
         self.max_hold_bars = 2000
         self.is_first_tick = False  # K线的第一条Tick数据
 
-        # (实时运行时，或者addbar小于bar得周期时，不包含最后一根Bar）
+        # (实时运行时，或者addbar小于bar得周期时，不包含最后一根正在合成的Bar）
+        # 目标bar合成成功后，才会更新以下序列
         self.open_array = np.zeros(self.max_hold_bars)  # 与lineBar一致得开仓价清单
         self.open_array[:] = np.nan
         self.high_array = np.zeros(self.max_hold_bars)  # 与lineBar一致得最高价清单
@@ -192,14 +191,14 @@ class CtaLineBar(object):
         self.mid4_array[:] = np.nan
         self.mid5_array = np.zeros(self.max_hold_bars)  # 收盘价*2/开仓价/最高/最低价 的平均价
         self.mid5_array[:] = np.nan
+        # 导出到CSV文件 的目录名 和 要导出的 字段
+        self.export_filename = None  # 数据要导出的目标文件夹
+        self.export_fields = []  # 定义要导出的数据字段
 
-        self.export_filename = None
-        self.export_fields = []
-
-        # 创建内部变量
+        # 创建本类型bar的内部变量，以及添加所有指标输入参数，到self.paramList列表
         self.init_properties()
 
-        # 创建初始化指标
+        # 初始化定义所有的指标输入参数，以及指标生成的数据
         self.init_indicators()
 
         # 启动实时得函数
@@ -209,6 +208,7 @@ class CtaLineBar(object):
         # 注册回调函数
         self.cb_dict = {}
 
+        self.minute_interval = None   # 把各个周期的bar转换为分钟，在first_tick中，用来修正bar为整点分钟周期
         if setting:
             self.set_params(setting)
 
@@ -221,11 +221,13 @@ class CtaLineBar(object):
                 self.minute_interval = 60
             elif self.interval == Interval.DAILY:
                 self.minute_interval = 60 * 24
+
             # 修正精度
             if self.price_tick < 1:
                 exponent = decimal.Decimal(str(self.price_tick))
                 self.round_n = max(abs(exponent.as_tuple().exponent) + 2, 4)
                 self.write_log(f'round_n: {self.round_n}')
+
             # 导入卡尔曼过滤器
             if self.para_active_kf:
                 try:
@@ -246,37 +248,45 @@ class CtaLineBar(object):
             self.cb_on_period = cb_func
 
     def init_param_list(self):
-        self.paramList.append('bar_interval')
-        self.paramList.append('interval')
-        self.paramList.append('mode')
+        """初始化添加，本类型bar的内部变量，以及添加所有指标输入参数，到self.paramList列表"""
+        # ------- 本类型bar的内部变量   ---------
+        self.paramList.append('name')  # K线的名称
+        self.paramList.append('bar_interval') # bar的周期数量
+        self.paramList.append('interval')   # bar的类型
+        self.paramList.append('mode')   # tick/bar模式
+        self.paramList.append('is_7x24') #是否为7X24小时运行的bar（一般为数字货币)
+        self.paramList.append('price_tick') # 最小跳动，用于处理指数等不一致的价格
+        self.paramList.append('underly_symbol')  # 短合约，
 
-        self.paramList.append('para_pre_len')
-        self.paramList.append('para_ma1_len')
+        # ----------  下方为指标输入参数     ---------------
+        self.paramList.append('para_pre_len')  # 唐其安通道的长度（前高/前低）
+
+        self.paramList.append('para_ma1_len')  # 三条均线
         self.paramList.append('para_ma2_len')
         self.paramList.append('para_ma3_len')
 
-        self.paramList.append('para_ema1_len')
+        self.paramList.append('para_ema1_len') # 三条EMA均线
         self.paramList.append('para_ema2_len')
         self.paramList.append('para_ema3_len')
 
         self.paramList.append('para_dmi_len')
         self.paramList.append('para_dmi_max')
 
-        self.paramList.append('para_atr1_len')
+        self.paramList.append('para_atr1_len')  # 三个波动率
         self.paramList.append('para_atr2_len')
         self.paramList.append('para_atr3_len')
 
-        self.paramList.append('para_vol_len')
+        self.paramList.append('para_vol_len')   # 成交量平均
 
-        self.paramList.append('para_rsi1_len')
+        self.paramList.append('para_rsi1_len')  # 2组 RSI摆动指标
         self.paramList.append('para_rsi2_len')
 
-        self.paramList.append('para_cmi_len')
+        self.paramList.append('para_cmi_len')  #
 
-        self.paramList.append('para_boll_len')
-        self.paramList.append('para_boll_tb_len')
-        self.paramList.append('para_boll_std_rate')
-        self.paramList.append('para_boll2_len')
+        self.paramList.append('para_boll_len')  # 布林通道长度（文华计算方式）
+        self.paramList.append('para_boll_tb_len') # 布林通道长度（tb计算方式）
+        self.paramList.append('para_boll_std_rate') # 标准差倍率，一般为2
+        self.paramList.append('para_boll2_len')  # 第二条布林通道
         self.paramList.append('para_boll2_tb_len')
         self.paramList.append('para_boll2_std_rate')
 
@@ -291,22 +301,22 @@ class CtaLineBar(object):
         self.paramList.append('para_macd_slow_len')
         self.paramList.append('para_macd_signal_len')
 
-        self.paramList.append('para_active_kf')
+        self.paramList.append('para_active_kf')  # 卡尔曼均线
 
         self.paramList.append('para_sar_step')
         self.paramList.append('para_sar_limit')
 
-        self.paramList.append('para_active_skd')
+        self.paramList.append('para_active_skd')  # 摆动指标
         self.paramList.append('para_skd_fast_len')
         self.paramList.append('para_skd_slow_len')
         self.paramList.append('para_skd_low')
         self.paramList.append('para_skd_high')
 
-        self.paramList.append('para_active_yb')
+        self.paramList.append('para_active_yb')  # 重心线
         self.paramList.append('para_yb_len')
         self.paramList.append('para_yb_ref')
 
-        self.paramList.append('para_golden_n')
+        self.paramList.append('para_golden_n')  # 黄金分割
 
         self.paramList.append('para_active_area')
 
@@ -319,12 +329,7 @@ class CtaLineBar(object):
 
         self.paramList.append('para_bd_len')
 
-        self.paramList.append('is_7x24')
 
-        self.paramList.append('price_tick')
-        self.paramList.append('underly_symbol')
-
-        self.paramList.append('name')
 
     def init_properties(self):
         """
@@ -361,9 +366,9 @@ class CtaLineBar(object):
             self.__dict__[key] = state.__dict__[key]
 
     def init_indicators(self):
-        """ 定义所有的指标数据"""
+        """ 初始化定义所有的指标输入参数，以及指标生成的数据 """
 
-        # 指标参数
+        # -------------    指标输入参数   ------------------
         self.para_pre_len = 0  # 20        # 前高前低的周期长度
 
         self.para_ma1_len = 0  # 10        # 第一根MA均线的周期长度
@@ -403,7 +408,7 @@ class CtaLineBar(object):
 
         self.para_cci_len = 0  # 计算CCI的K线周期
 
-        self.para_macd_fast_len = 0  # 计算MACD的K线周期
+        self.para_macd_fast_len = 0  # 计算MACD的K线周期(26,12,9)
         self.para_macd_slow_len = 0  # 慢线周期
         self.para_macd_signal_len = 0  # 平滑周期
 
@@ -412,7 +417,7 @@ class CtaLineBar(object):
         self.para_sar_step = 0  # 抛物线的参数
         self.para_sar_limit = 0  # 抛物线参数
 
-        self.para_active_skd = False  # 是否激活摆动指标
+        self.para_active_skd = False  # 是否激活摆动指标 优化的多空动量线
         self.para_skd_fast_len = 13  # 摆动指标快线周期1
         self.para_skd_slow_len = 8  # 摆动指标慢线周期2
         self.para_skd_low = 30  # 摆动指标下限区域
@@ -435,7 +440,7 @@ class CtaLineBar(object):
 
         self.para_bd_len = 0   # 波段买卖观测长度
 
-        # K 线的相关计算结果数据
+        # --------------- K 线的指标相关计算结果数据 ----------------
         self.line_pre_high = []  # K线的前para_pre_len的的最高
         self.line_pre_low = []  # K线的前para_pre_len的的最低
 
@@ -452,13 +457,13 @@ class CtaLineBar(object):
         self._rt_ma2_atan = None
         self._rt_ma3_atan = None
 
-        self.ma12_count = 0  # ma1 与 ma2 ,金叉/死叉后第几根bar
-        self.ma13_count = 0  # ma1 与 ma3 ,金叉/死叉后第几根bar
-        self.ma23_count = 0  # ma2 与 ma3 ,金叉/死叉后第几根bar
+        self.ma12_count = 0  # ma1 与 ma2 ,金叉/死叉后第几根bar，金叉正数，死叉负数
+        self.ma13_count = 0  # ma1 与 ma3 ,金叉/死叉后第几根bar，金叉正数，死叉负数
+        self.ma23_count = 0  # ma2 与 ma3 ,金叉/死叉后第几根bar，金叉正数，死叉负数
 
-        self.line_ema1 = []  # K线的EMA1均线，周期是InputEmaLen1，不包含当前bar
-        self.line_ema2 = []  # K线的EMA2均线，周期是InputEmaLen2，不包含当前bar
-        self.line_ema3 = []  # K线的EMA3均线，周期是InputEmaLen3，不包含当前bar
+        self.line_ema1 = []  # K线的EMA1均线，周期是para_ema1_len1，不包含当前bar
+        self.line_ema2 = []  # K线的EMA2均线，周期是para_ema1_len2，不包含当前bar
+        self.line_ema3 = []  # K线的EMA3均线，周期是para_ema1_len3，不包含当前bar
 
         self._rt_ema1 = None  # K线的实时EMA(para_ema1_len)
         self._rt_ema2 = None  # K线的实时EMA(para_ema2_len)
@@ -485,9 +490,9 @@ class CtaLineBar(object):
         self.signal_adx_short = False  # 空过滤器条件,做空趋势的判断，ADXR高于前一天，下降动向> inputMM
 
         # K线的ATR技术数据
-        self.line_atr1 = []  # K线的ATR1,周期为inputAtr1Len
-        self.line_atr2 = []  # K线的ATR2,周期为inputAtr2Len
-        self.line_atr3 = []  # K线的ATR3,周期为inputAtr3Len
+        self.line_atr1 = []  # K线的ATR1,周期为para_atr1_len
+        self.line_atr2 = []  # K线的ATR2,周期为para_atr2_len
+        self.line_atr3 = []  # K线的ATR3,周期为para_atr3_len
 
         self.cur_atr1 = 0
         self.cur_atr2 = 0
@@ -497,22 +502,25 @@ class CtaLineBar(object):
         self.line_vol_ma = []  # K 线的交易量平均
 
         # K线的RSI计算数据
-        self.line_rsi1 = []  # 记录K线对应的RSI数值，只保留inputRsi1Len*8
-        self.line_rsi2 = []  # 记录K线对应的RSI数值，只保留inputRsi2Len*8
+        self.line_rsi1 = []  # 记录K线对应的RSI数值，只保留para_rsi1_len*8
+        self.line_rsi2 = []  # 记录K线对应的RSI数值，只保留para_rsi2_len*8
+
         self.para_rsi_low = 30  # RSI的最低线
         self.para_rsi_high = 70  # RSI的最高线
+
         self.rsi_top_list = []  # 记录RSI的最高峰，只保留 inputRsiLen个
         self.rsi_buttom_list = []  # 记录RSI的最低谷，只保留 inputRsiLen个
         self.cur_rsi_top_buttom = {}  # 最近的一个波峰/波谷
 
         # K线的CMI计算数据
-        self.line_cmi = []  # 记录K线对应的Cmi数值，只保留inputCmiLen*8
+        self.line_cmi = []  # 记录K线对应的Cmi数值，只保留para_cmi_len*8
 
         # K线的布林特计算数据
         self.line_boll_upper = []  # 上轨
         self.line_boll_middle = []  # 中线
         self.line_boll_lower = []  # 下轨
         self.line_boll_std = []  # 标准差
+
         self.line_upper_atan = []
         self.line_middle_atan = []
         self.line_lower_atan = []
@@ -523,17 +531,19 @@ class CtaLineBar(object):
         self._rt_middle_atan = None
         self._rt_lower_atan = None
 
-        self.cur_upper = 0  # 最后一根K的Boll上轨数值（与MinDiff取整）
-        self.cur_middle = 0  # 最后一根K的Boll中轨数值（与MinDiff取整）
-        self.cur_lower = 0  # 最后一根K的Boll下轨数值（与MinDiff取整+1）
+        self.cur_upper = 0  # 最后一根K的Boll上轨数值（与price_tick取整）
+        self.cur_middle = 0  # 最后一根K的Boll中轨数值（与price_tick取整）
+        self.cur_lower = 0  # 最后一根K的Boll下轨数值（与price_tick取整+1）
 
         self.line_boll2_upper = []  # 上轨
         self.line_boll2_middle = []  # 中线
         self.line_boll2_lower = []  # 下轨
         self.line_boll2_std = []  # 标准差
+
         self.line_upper2_atan = []
         self.line_middle2_atan = []
         self.line_lower2_atan = []
+
         self._rt_upper2 = None
         self._rt_middle2 = None
         self._rt_lower2 = None
@@ -541,16 +551,16 @@ class CtaLineBar(object):
         self._rt_middle2_atan = None
         self._rt_lower2_atan = None
 
-        self.cur_upper2 = 0  # 最后一根K的Boll2上轨数值（与MinDiff取整）
-        self.cur_middle2 = 0  # 最后一根K的Boll2中轨数值（与MinDiff取整）
-        self.cur_lower2 = 0  # 最后一根K的Boll2下轨数值（与MinDiff取整+1）
+        self.cur_upper2 = 0  # 最后一根K的Boll2上轨数值（与price_tick取整）
+        self.cur_middle2 = 0  # 最后一根K的Boll2中轨数值（与price_tick取整）
+        self.cur_lower2 = 0  # 最后一根K的Boll2下轨数值（与price_tick取整+1）
 
         # K线的KDJ指标计算数据
         self.line_k = []  # K为快速指标
         self.line_d = []  # D为慢速指标
         self.line_j = []  #
-        self.kdj_top_list = []  # 记录KDJ最高峰，只保留 inputKdjLen个
-        self.kdj_buttom_list = []  # 记录KDJ的最低谷，只保留 inputKdjLen个
+        self.kdj_top_list = []  # 记录KDJ最高峰，只保留 para_kdj_len个
+        self.kdj_buttom_list = []  # 记录KDJ的最低谷，只保留 para_kdj_len个
         self.line_rsv = []  # RSV
         self.cur_kdj_top_buttom = {}  # 最近的一个波峰/波谷
         self.cur_k = 0  # bar内计算时，最后一个未关闭的bar的实时K值
@@ -620,6 +630,7 @@ class CtaLineBar(object):
         self.line_skd_sto = []  # 根据RSI演算的STO
         self.line_sk = []  # 快线
         self.line_sd = []  # 慢线
+
         self.cur_skd_count = 0  # 当前金叉/死叉后累加
         self._rt_sk = None  # 实时SK值
         self._rt_sd = None  # 实时SD值
@@ -664,6 +675,7 @@ class CtaLineBar(object):
         self.line_bd_fast = []  # 波段快线
         self.line_bd_slow = []  # 波段慢线
         self.cur_bd_count = 0  # 当前波段快线慢线金叉死叉， +金叉计算， - 死叉技术
+
         self._bd_fast = 0
         self._bd_slow = 0
 
@@ -795,6 +807,7 @@ class CtaLineBar(object):
 
     def on_bar(self, bar: BarData):
         """OnBar事件"""
+        # 将上一根bar合成完结了，触发本on_bar事件(缓存开高收低等序列，计算各个指标)
         if not bar.interval:
             bar.interval = self.interval
             bar.interval_num = self.bar_interval
@@ -804,7 +817,7 @@ class CtaLineBar(object):
         bar_mid4 = round((2 * bar.close_price + bar.high_price + bar.low_price) / 4, self.round_n)
         bar_mid5 = round((2 * bar.close_price + bar.open_price + bar.high_price + bar.low_price) / 5, self.round_n)
 
-        # 扩展open,close,high,low numpy array列表
+        # 扩展open,close,high,low numpy array列表 平移更新序列最新值
         self.open_array[:-1] = self.open_array[1:]
         self.open_array[-1] = bar.open_price
 
@@ -826,7 +839,11 @@ class CtaLineBar(object):
         self.mid5_array[:-1] = self.mid5_array[1:]
         self.mid5_array[-1] = bar_mid5
 
-        self.bar_len = len(self.line_bar)
+        # 计算当前self.line_bar长度，并维持self.line_bar序列在max_hold_bars长度
+        self.bar_len = len(self.line_bar)   # 当前K线得真实数量(包含已经合成以及正在合成的bar)
+        if self.bar_len > self.max_hold_bars:
+            del self.line_bar[0]
+            self.bar_len = self.bar_len - 1  # 删除了最前面的bar，bar长度少一位
 
         self.__count_pre_high_low()
         self.__count_ma()
@@ -853,9 +870,9 @@ class CtaLineBar(object):
         self.__count_skdj()
         self.export_to_csv(bar)
 
-        self.rt_executed = False
+        self.rt_executed = False  # 是否 启动实时计算得函数
 
-        # 回调上层调用者
+        # 回调上层调用者，将合成的 x分钟bar，回调给策略 def on_bar_x(self, bar: BarData):函数
         if self.cb_on_bar:
             self.cb_on_bar(bar=bar)
 
@@ -890,6 +907,7 @@ class CtaLineBar(object):
 
     def export_to_csv(self, bar: BarData):
         """ 输出到csv文件"""
+        # 将我们配置在self.export_fields的要输出的 bar信息以及指标信息 ==》输出到csv文件
         if self.export_filename is None or len(self.export_fields) == 0:
             return
         field_names = []
@@ -911,6 +929,8 @@ class CtaLineBar(object):
                         save_dict[field_name] = 0
                     else:
                         save_dict[field_name] = list_obj[-1]
+                elif type_ == 'string':
+                    save_dict[field_name] = getattr(self, str(attr_name), '')
                 else:
                     save_dict[field_name] = getattr(self, str(attr_name), 0)
 
@@ -940,21 +960,21 @@ class CtaLineBar(object):
         if self.para_ma2_len > 0 and len(self.line_ma2) > 0:
             msg = msg + u',MA({0}):{1}'.format(self.para_ma2_len, self.line_ma2[-1])
             if self.ma12_count == 1:
-                msg = msg + u'MA{}金叉MA{}'.format(self.para_ma1_len, self.para_ma2_len)
+                msg = msg + u',MA{}金叉MA{}'.format(self.para_ma1_len, self.para_ma2_len)
             elif self.ma12_count == -1:
-                msg = msg + u'MA{}死叉MA{}'.format(self.para_ma1_len, self.para_ma2_len)
+                msg = msg + u',MA{}死叉MA{}'.format(self.para_ma1_len, self.para_ma2_len)
 
         if self.para_ma3_len > 0 and len(self.line_ma3) > 0:
             msg = msg + u',MA({0}):{1}'.format(self.para_ma3_len, self.line_ma3[-1])
             if self.ma13_count == 1:
-                msg = msg + u'MA{}金叉MA{}'.format(self.para_ma1_len, self.para_ma3_len)
+                msg = msg + u',MA{}金叉MA{}'.format(self.para_ma1_len, self.para_ma3_len)
             elif self.ma13_count == -1:
-                msg = msg + u'MA{}死叉MA{}'.format(self.para_ma1_len, self.para_ma3_len)
+                msg = msg + u',MA{}死叉MA{}'.format(self.para_ma1_len, self.para_ma3_len)
 
             if self.ma23_count == 1:
-                msg = msg + u'MA{}金叉MA{}'.format(self.para_ma2_len, self.para_ma3_len)
+                msg = msg + u',MA{}金叉MA{}'.format(self.para_ma2_len, self.para_ma3_len)
             elif self.ma23_count == -1:
-                msg = msg + u'MA{}死叉MA{}'.format(self.para_ma2_len, self.para_ma3_len)
+                msg = msg + u',MA{}死叉MA{}'.format(self.para_ma2_len, self.para_ma3_len)
 
         if self.para_ema1_len > 0 and len(self.line_ema1) > 0:
             msg = msg + u',EMA({0}):{1}'.format(self.para_ema1_len, self.line_ema1[-1])
@@ -1016,7 +1036,7 @@ class CtaLineBar(object):
                        round(self.line_upper_atan[-1], self.round_n) if len(self.line_upper_atan) > 0 else 0,
                        round(self.line_lower_atan[-1], self.round_n) if len(self.line_lower_atan) > 0 else 0)
 
-        if (self.para_boll2_len > 0 or self.para_boll2_tb_len > 0) and len(self.line_boll_upper) > 0:
+        if (self.para_boll2_len > 0 or self.para_boll2_tb_len > 0) and len(self.line_boll2_upper) > 0:
             msg = msg + u',Boll2({}):std:{},m:{},u:{},l:{}'. \
                 format(self.para_boll2_len, round(self.line_boll_std[-1], self.round_n),
                        round(self.line_boll2_middle[-1], self.round_n),
@@ -1092,6 +1112,7 @@ class CtaLineBar(object):
     def first_tick(self, tick: TickData):
         """ K线的第一个Tick数据"""
 
+        # 1、当前新合成的line_bar的第一个tick 数据，创建新的cur_bar，并更新其属性
         self.cur_bar = BarData(
             gateway_name=tick.gateway_name,
             symbol=tick.symbol,
@@ -1130,13 +1151,14 @@ class CtaLineBar(object):
             # K线的日期时间（去除秒）设为第一个Tick的时间
             self.cur_bar.datetime = self.cur_bar.datetime.replace(second=0, microsecond=0)
         self.cur_bar.time = self.cur_bar.datetime.strftime('%H:%M:%S')
-        self.cur_bar.volume = tick.volume
+        self.cur_bar.volume = tick.last_volume
         if self.cur_trading_day != self.cur_bar.trading_day or not self.line_bar:
             # bar的交易日与记录的当前交易日不一致：
             self.cur_trading_day = self.cur_bar.trading_day
 
         self.is_first_tick = True  # 标识该Tick属于该Bar的第一个tick数据
 
+        # 6、将生成的正在合成的self.cur_bar 推入到line_bar队列
         self.line_bar.append(self.cur_bar)  # 推入到lineBar队列
 
     def generate_bar(self, tick: TickData):
@@ -1159,6 +1181,7 @@ class CtaLineBar(object):
         # 处理日内的间隔时段最后一个tick，如10:15分，11:30分，15:00 和 2:30分
         endtick = False
         if not self.is_7x24:
+            # 标记日内的间隔时段最后一个tick，如10:15分，11:30分，15:00 和 2:30分
             if (tick.datetime.hour == 10 and tick.datetime.minute == 15) \
                     or (tick.datetime.hour == 11 and tick.datetime.minute == 30) \
                     or (tick.datetime.hour == 15 and tick.datetime.minute == 00) \
@@ -1235,6 +1258,7 @@ class CtaLineBar(object):
             # 触发OnBar事件
             self.on_bar(lastBar)
 
+        # 6、没有产生新bar，更新当前正在合成的lastBar属性
         else:
             # 更新当前最后一个bar
             self.is_first_tick = False
@@ -1244,7 +1268,12 @@ class CtaLineBar(object):
             lastBar.low_price = min(lastBar.low_price, tick.last_price)
             lastBar.close_price = tick.last_price
             lastBar.open_interest = tick.open_interest
-            lastBar.volume += tick.volume
+
+            # 更新bar的 bar内成交量，老版，将tick的volume，减去上一bar的dayVolume
+            # volume_change = tick.volume - self.last_tick.volume
+            # lastbar.volume += max(volume_change, 0)
+            # 更新 bar内成交量volume 新版根据tick内成交量运算
+            lastBar.volume += tick.last_volume
 
             # 更新Bar的颜色
             if lastBar.close_price > lastBar.open_price:
@@ -1265,20 +1294,21 @@ class CtaLineBar(object):
 
         if self.para_pre_len <= 0:  # 不计算
             return
-        count_len = min(self.para_pre_len, self.bar_len)
+        count_len = min(self.para_pre_len, self.bar_len - 1)
 
-        # 2.计算前inputPreLen周期内(不包含当前周期）的Bar高点和低点
+        # 2.计算前self.para_pre_len周期内的Bar高点和低点(不包含当前周期，因为当前正在合成的bar
+        # 还未触发on_bar，不会存入开高低收序列）
         preHigh = max(self.high_array[-count_len:])
         preLow = min(self.low_array[-count_len:])
         if np.isnan(preHigh) or np.isnan(preLow):
             return
-        # 保存
-        if len(self.line_pre_high) > self.max_hold_bars:
+        # 保存前高值到 前高序列
+        if len(self.line_pre_high) > self.max_hold_bars:  # 维持最大缓存数量 超过则删除最前面
             del self.line_pre_high[0]
         self.line_pre_high.append(preHigh)
 
-        # 保存
-        if len(self.line_pre_low) > self.max_hold_bars:
+        # 保存前低值到 前低序列
+        if len(self.line_pre_low) > self.max_hold_bars:  # 维持最大缓存数量 超过则删除最前面
             del self.line_pre_low[0]
         self.line_pre_low.append(preLow)
 
@@ -1457,7 +1487,7 @@ class CtaLineBar(object):
 
         # 计算第一条MA均线
         if self.para_ma1_len > 0:
-            count_len = min(self.para_ma1_len, self.bar_len)
+            count_len = min(self.para_ma1_len, self.bar_len - 1)
 
             barMa1 = ta.MA(self.close_array[-count_len:], count_len)[-1]
             if np.isnan(barMa1):
@@ -1478,7 +1508,7 @@ class CtaLineBar(object):
 
         # 计算第二条MA均线
         if self.para_ma2_len > 0:
-            count_len = min(self.para_ma2_len, self.bar_len)
+            count_len = min(self.para_ma2_len, self.bar_len - 1)
             barMa2 = ta.MA(self.close_array[-count_len:], count_len)[-1]
             if np.isnan(barMa2):
                 return
@@ -1498,7 +1528,7 @@ class CtaLineBar(object):
 
         # 计算第三条MA均线
         if self.para_ma3_len > 0:
-            count_len = min(self.para_ma3_len, self.bar_len)
+            count_len = min(self.para_ma3_len, self.bar_len - 1)
             barMa3 = ta.MA(self.close_array[-count_len:], count_len)[-1]
             if np.isnan(barMa3):
                 return
@@ -1695,7 +1725,7 @@ class CtaLineBar(object):
 
         # 计算第一条EMA均线
         if self.para_ema1_len > 0:
-            count_len = min(self.para_ema1_len, self.bar_len)
+            count_len = min(self.para_ema1_len, self.bar_len - 1)
 
             # 3、获取前InputN周期(不包含当前周期）的K线
             barEma1 = ta.EMA(self.close_array[-ema1_data_len:], count_len)[-1]
@@ -1709,7 +1739,7 @@ class CtaLineBar(object):
 
         # 计算第二条EMA均线
         if self.para_ema2_len > 0:
-            count_len = min(self.bar_len, self.para_ema2_len)
+            count_len = min(self.bar_len - 1, self.para_ema2_len)
 
             # 3、获取前InputN周期(不包含当前周期）的自适应均线
 
@@ -1724,7 +1754,7 @@ class CtaLineBar(object):
 
         # 计算第三条EMA均线
         if self.para_ema3_len > 0:
-            count_len = min(self.bar_len, self.para_ema3_len)
+            count_len = min(self.bar_len - 1, self.para_ema3_len)
 
             # 3、获取前InputN周期(不包含当前周期）的自适应均线
             barEma3 = ta.EMA(self.close_array[-ema3_data_len:], count_len)[-1]
@@ -1952,7 +1982,7 @@ class CtaLineBar(object):
 
         # 计算 ATR
         if self.para_atr1_len > 0:
-            count_len = min(self.bar_len, self.para_atr1_len)
+            count_len = min(self.bar_len - 1, self.para_atr1_len)
             cur_atr1 = ta.ATR(self.high_array[-count_len * 2:], self.low_array[-count_len * 2:],
                               self.close_array[-count_len * 2:], count_len)
             self.cur_atr1 = round(cur_atr1[-1], self.round_n)
@@ -1961,7 +1991,7 @@ class CtaLineBar(object):
             self.line_atr1.append(self.cur_atr1)
 
         if self.para_atr2_len > 0:
-            count_len = min(self.bar_len, self.para_atr2_len)
+            count_len = min(self.bar_len - 1, self.para_atr2_len)
             cur_atr2 = ta.ATR(self.high_array[-count_len * 2:], self.low_array[-count_len * 2:],
                               self.close_array[-count_len * 2:], count_len)
             self.cur_atr2 = round(cur_atr2[-1], self.round_n)
@@ -1970,7 +2000,7 @@ class CtaLineBar(object):
             self.line_atr2.append(self.cur_atr2)
 
         if self.para_atr3_len > 0:
-            count_len = min(self.bar_len, self.para_atr3_len)
+            count_len = min(self.bar_len - 1, self.para_atr3_len)
             cur_atr3 = ta.ATR(self.high_array[-count_len * 2:], self.low_array[-count_len * 2:],
                               self.close_array[-count_len * 2:], count_len)
             self.cur_atr3 = round(cur_atr3[-1], self.round_n)
@@ -1987,8 +2017,8 @@ class CtaLineBar(object):
         if self.para_vol_len <= 0:  # 不计算
             return
 
-        bar_len = min(self.bar_len, self.para_vol_len)
-        sumVol = sum([x.volume for x in self.line_bar[-bar_len:]])
+        bar_len = min(self.bar_len - 1, self.para_vol_len)
+        sumVol = sum([x.volume for x in self.line_bar[-bar_len - 1:-1]])
         avgVol = round(sumVol / bar_len, 0)
 
         if len(self.line_vol_ma) > self.max_hold_bars:
@@ -2104,7 +2134,7 @@ class CtaLineBar(object):
                 self.write_log(u'数据未充分,当前Bar数据数量：{0}，计算Boll需要：{1}'.
                                format(len(self.line_bar), min(14, self.para_boll_len) + 1))
             else:
-                bollLen = min(self.bar_len, self.para_boll_len)
+                bollLen = min(self.bar_len - 1, self.para_boll_len)
 
                 # 不包含当前最新的Bar
                 upper_list, middle_list, lower_list = ta.BBANDS(self.close_array,
@@ -2165,7 +2195,7 @@ class CtaLineBar(object):
                 self.write_log(u'数据未充分,当前Bar数据数量：{0}，计算Boll2需要：{1}'.
                                format(len(self.line_bar), min(14, self.para_boll2_len) + 1))
             else:
-                boll2Len = min(self.bar_len, self.para_boll2_len)
+                boll2Len = min(self.bar_len - 1, self.para_boll2_len)
 
                 # 不包含当前最新的Bar
                 upper_list, middle_list, lower_list = ta.BBANDS(self.close_array,
@@ -2226,7 +2256,7 @@ class CtaLineBar(object):
                 self.write_log(u'数据未充分,当前Bar数据数量：{0}，计算Boll需要：{1}'.
                                format(len(self.line_bar), min(14, self.para_boll_tb_len) + 1))
             else:
-                bollLen = min(self.bar_len, self.para_boll_tb_len)
+                bollLen = min(self.bar_len - 1, self.para_boll_tb_len)
 
                 # 不包含当前最新的Bar
 
@@ -2282,7 +2312,7 @@ class CtaLineBar(object):
                 self.write_log(u'数据未充分,当前Bar数据数量：{0}，计算Boll2需要：{1}'.
                                format(len(self.line_bar), min(14, self.para_boll2_tb_len) + 1))
             else:
-                boll2Len = min(self.bar_len, self.para_boll2_tb_len)
+                boll2Len = min(self.bar_len - 1, self.para_boll2_tb_len)
 
                 if len(self.line_boll2_upper) > self.max_hold_bars:
                     del self.line_boll2_upper[0]
@@ -2535,7 +2565,7 @@ class CtaLineBar(object):
         if self.para_kdj_smooth_len == 0:
             self.para_kdj_smooth_len = 3
 
-        inputKdjLen = min(self.para_kdj_len, self.bar_len)
+        inputKdjLen = min(self.para_kdj_len, self.bar_len - 1)
 
         hhv = max(self.high_array[-inputKdjLen:])
         llv = min(self.low_array[-inputKdjLen:])
@@ -2650,7 +2680,7 @@ class CtaLineBar(object):
         if self.bar_len < 3:
             return
 
-        data_len = min(self.bar_len, self.para_kdj_tb_len)
+        data_len = min(self.bar_len - 1, self.para_kdj_tb_len)
 
         hhv = max(self.high_array[-data_len:])
         llv = min(self.low_array[-data_len:])
@@ -2778,13 +2808,13 @@ class CtaLineBar(object):
 
         maxLen = max(self.para_macd_fast_len, self.para_macd_slow_len) + self.para_macd_signal_len
 
-        maxLen = maxLen * 3  # 注：数据长度需要足够，才能准确。测试过，3倍长度才可以与国内的文华等软件一致
+        # maxLen = maxLen * 3  # 注：数据长度需要足够，才能准确。测试过，3倍长度才可以与国内的文华等软件一致
 
-        if self.bar_len < maxLen:
-            self.write_log(u'数据未充分,当前Bar数据数量：{0}，计算MACD需要：{1}'.format(len(self.line_bar), maxLen))
+        if self.bar_len - 1 < maxLen:
+            self.write_log(u'数据未充分,当前Bar数据数量：{0}，计算MACD需要：{1}'.format(self.bar_len - 1, maxLen))
             return
 
-        dif_list, dea_list, macd_list = ta.MACD(self.close_array[-2 * maxLen:], fastperiod=self.para_macd_fast_len,
+        dif_list, dea_list, macd_list = ta.MACD(self.close_array, fastperiod=self.para_macd_fast_len,
                                                 slowperiod=self.para_macd_slow_len,
                                                 signalperiod=self.para_macd_signal_len)
         if np.isnan(dif_list[-1]) or np.isnan(dea_list[-1]) or np.isnan(macd_list[-1]):
@@ -2905,7 +2935,7 @@ class CtaLineBar(object):
         if self.bar_len < maxLen:
             return
 
-        dif, dea, macd = ta.MACD(np.append(self.close_array[-maxLen:], [self.line_bar[-1].close]),
+        dif, dea, macd = ta.MACD(np.append(self.close_array[-maxLen:], [self.line_bar[-1].close_price]),
                                  fastperiod=self.para_macd_fast_len,
                                  slowperiod=self.para_macd_slow_len, signalperiod=self.para_macd_signal_len)
 
@@ -3193,7 +3223,7 @@ class CtaLineBar(object):
                                                                    observation=self.close_array[-1])
             m = state_means[-1].item()
             c = state_covariances[-1].item()
-        std_len = 26 if self.bar_len > 26 else self.bar_len
+        std_len = 26 if self.bar_len - 1 > 26 else self.bar_len - 1
         std = np.std(self.close_array[-std_len:], ddof=1)
         self.cur_state_std = std
         if len(self.line_state_mean) > self.max_hold_bars:
@@ -3473,7 +3503,7 @@ class CtaLineBar(object):
             return
 
         data_len = max(self.para_skd_fast_len * 2, self.para_skd_fast_len + 20)
-        if self.bar_len < data_len:
+        if self.bar_len - 1 < data_len:
             return
 
         # 计算最后一根Bar的RSI指标
@@ -3936,7 +3966,7 @@ class CtaLineBar(object):
         #                     format(len(self.lineBar), 4 * self.inputYbLen))
         #    return
 
-        ema_len = min(self.bar_len, self.para_yb_len)
+        ema_len = min(self.bar_len - 1, self.para_yb_len)
         if ema_len < 3:
             self.write_log(u'数据未充分,当前Bar数据数量：{0}'.
                            format(len(self.line_bar)))
@@ -3978,7 +4008,7 @@ class CtaLineBar(object):
             return
         # 3、获取前InputN周期(包含当前周期）的K线
         last_bar_mid3 = (self.line_bar[-1].close_price + self.line_bar[-1].high_price + self.line_bar[-1].low_price) / 3
-        bar_mid3_ema10 = ta.EMA(np.append(self.mid3_array[-ema_len * 3:], [last_bar_mid3]), ema_len)[-1]
+        bar_mid3_ema10 = ta.EMA(np.append(self.mid3_array[-ema_len * 4:], [last_bar_mid3]), ema_len)[-1]
         self._rt_yb = round(float(bar_mid3_ema10), self.round_n)
 
     @property
@@ -3997,7 +4027,7 @@ class CtaLineBar(object):
             return
         if self.bar_len < 2:
             return
-        bar_len = min(self.para_golden_n, self.bar_len)
+        bar_len = min(self.para_golden_n, self.bar_len - 1)
 
         hhv = max(self.high_array[-bar_len:])
         llv = min(self.low_array[-bar_len:])
@@ -4087,7 +4117,7 @@ class CtaLineBar(object):
                                format(len(self.line_bar), min(14, self.para_bias_len) + 1))
             else:
 
-                BiasLen = min(self.para_bias_len, self.bar_len)
+                BiasLen = min(self.para_bias_len, self.bar_len - 1)
 
                 # 计算BIAS
                 m = np.mean(self.close_array[-BiasLen:])
@@ -4103,7 +4133,7 @@ class CtaLineBar(object):
                 self.write_log(u'数据未充分,当前Bar数据数量：{0}，计算Bias2需要：{1}'.
                                format(len(self.line_bar), min(14, self.para_bias2_len) + 1))
             else:
-                Bias2Len = min(self.bar_len, self.para_bias2_len)
+                Bias2Len = min(self.bar_len - 1, self.para_bias2_len)
                 # 计算BIAS2
                 m = np.mean(self.close_array[-Bias2Len:])
                 bias2 = (self.close_array[-1] - m) / m * 100
@@ -4117,7 +4147,7 @@ class CtaLineBar(object):
                 self.write_log(u'数据未充分,当前Bar数据数量：{0}，计算Bias3需要：{1}'.
                                format(len(self.line_bar), min(14, self.para_bias3_len) + 1))
             else:
-                Bias3Len = min(self.bar_len, self.para_bias3_len)
+                Bias3Len = min(self.bar_len - 1, self.para_bias3_len)
                 # 计算BIAS3
                 m = np.mean(self.close_array[-Bias3Len:])
                 bias3 = (self.close_array[-1] - m) / m * 100

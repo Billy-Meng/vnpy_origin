@@ -32,7 +32,7 @@ class receiver(base_broker):
         # self.channel.basic_qos(prefetch_count=1)
 
     def callback(self, chan, method_frame, _header_frame, body, userdata=None):
-        print(1)
+        #print(1)
         print(" [x] received: %r" % body)
 
     def subscribe(self):
@@ -44,7 +44,7 @@ class receiver(base_broker):
         try:
             self.subscribe()
         except Exception as e:
-            print(e)
+            print('start consumer exception:{}'.format(str(e)))
             self.start()
 
 
@@ -72,7 +72,7 @@ class worker(base_broker):
         self.channel.basic_qos(prefetch_count=1)
 
     def callback(self, chan, method_frame, _header_frame, body, userdata=None):
-        print(1)
+        #print(1)
         print(" [x] received task: %r" % body)
         chan.basic_ack(delivery_tag=method_frame.delivery_tag)
         print(" [x] task finished ")
@@ -120,7 +120,7 @@ class subscriber(base_broker):
         self.cb_func = cb_func
 
     def callback(self, chan, method_frame, _header_frame, body, userdata=None):
-        print(1)
+        #print(1)
         print(" [x] %r" % body)
 
     def subscribe(self):
@@ -160,7 +160,7 @@ class subscriber_routing(base_broker):
                                     routing_key=routing_key)
 
     def callback(self, chan, method_frame, _header_frame, body, userdata=None):
-        print(1)
+        #print(1)
         print(" [x] %r" % body)
 
     def subscribe(self):
@@ -198,7 +198,7 @@ class subscriber_topic(base_broker):
                                     routing_key=routing_key)
 
     def callback(self, chan, method_frame, _header_frame, body, userdata=None):
-        print(1)
+        #print(1)
         print(" [x] %r" % body)
 
     def subscribe(self):

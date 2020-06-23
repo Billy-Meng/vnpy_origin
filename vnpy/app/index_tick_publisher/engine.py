@@ -387,11 +387,17 @@ class IndexTickPublisher(BaseEngine):
             else:
                 tick_datetime = tick_datetime.replace(microsecond=0)
 
+            # 通达信上能源的交易所为上期所，需要改正过来
+            if vn_symbol in ['NR99', 'SC99']:
+                exchange = Exchange.INE
+            else:
+                exchange = self.symbol_exchange_dict.get(tdx_symbol, Exchange.LOCAL)
+
             tick = TickData(
                 gateway_name='tdx',
                 symbol=vn_symbol,
                 datetime=tick_datetime,
-                exchange=self.symbol_exchange_dict.get(tdx_symbol, Exchange.LOCAL)
+                exchange=exchange
             )
 
             tick.pre_close = float(d.get('ZuoJie', 0.0))

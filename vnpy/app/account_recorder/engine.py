@@ -93,6 +93,8 @@ class AccountRecorder(BaseEngine):
         # 账号的同步记录
         self.account_dict = {}  # gateway_name: setting
 
+        self.is_7x24 = False  # 7 x 24 运行的账号( 数字货币)
+
         self.last_qry_dict = {}
         self.copy_history_orders = []  # 需要复制至历史成交的gateway名称
         self.copy_history_trades = []  # 需要复制至历史成交的gateway名称
@@ -101,7 +103,7 @@ class AccountRecorder(BaseEngine):
 
         self.gw_name_acct_id = {}
 
-        self.is_remove_pre_data = False
+        self.cur_trading_date = ""
 
         self.scaning_gw = []
 
@@ -143,6 +145,7 @@ class AccountRecorder(BaseEngine):
 
             # 获取需要处理处理得账号配置
             self.account_dict = d.get('accounts', {})
+            self.is_7x24 = d.get('is_7x24', False)
 
             # 识别配置，检查账号是否需要复制委托/成交到历史表
             for gateway_name, account_setting in self.account_dict.items():
@@ -288,7 +291,7 @@ class AccountRecorder(BaseEngine):
         :param trading_day:
         :return:
         """
-        if self.is_remove_pre_data:
+        if self.cur_trading_date == trading_day:
             return
 
         # 移除非当日得交易/持仓
@@ -322,7 +325,7 @@ class AccountRecorder(BaseEngine):
             col_name=TODAY_STRATEGY_POS_COL,
             flt=flt)
 
-        self.is_remove_pre_data = True
+        self.cur_trading_date = trading_day
 
     def update_order(self, event: Event):
         """更新当日记录"""
@@ -374,10 +377,16 @@ class AccountRecorder(BaseEngine):
 
             self.update_data(db_name=ACCOUNT_DB_NAME, col_name=HISTORY_ORDER_COL, fld=fld2, data=history_data)
 
+    def get_trading_date(self, dt:datetime):
+        if self.is_7x24:
+            return dt.strftime('%Y-%m-%d')
+        else:
+            return get_trading_date(dt)
+
     def update_trade(self, event: Event):
         """更新当日成交"""
         trade = event.data
-        trade_date = get_trading_date(datetime.now())
+        trade_date = self.get_trading_date(datetime.now())
 
         fld = {'vt_symbol': trade.vt_symbol,
                'account_id': trade.accountid,
@@ -413,7 +422,7 @@ class AccountRecorder(BaseEngine):
     def update_position(self, event: Event):
         """更新当日持仓"""
         pos = event.data
-        trade_date = get_trading_date(datetime.now())
+        trade_date = self.get_trading_date(datetime.now())
 
         # 不处理交易所返回得套利合约
         if pos.symbol.startswith('SP') and '&' in pos.symbol and ' ' in pos.symbol:
@@ -532,7 +541,7 @@ class AccountRecorder(BaseEngine):
                 d.update({'msg': data.msg})
                 d.update({'additional_info': data.additional_info})
                 d.update({'log_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-                d.update({'trading_day': get_trading_date()})
+                d.update({'trading_day': self.get_trading_date(datetime.now())})
 
                 account_id = self.gw_name_acct_id.get(data.gateway_name, None)
                 if account_id:
@@ -584,7 +593,7 @@ class AccountRecorder(BaseEngine):
                 d.update({'msg': data.msg})
                 d.update({'additional_info': data.additional_info})
                 d.update({'log_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-                d.update({'trading_day': get_trading_date()})
+                d.update({'trading_day': self.get_trading_date(datetime.now())})
 
                 account_id = self.gw_name_acct_id.get(data.gateway_name, None)
                 if account_id:

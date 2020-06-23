@@ -43,6 +43,7 @@ class Status(Enum):
     CANCELLED = "已撤销"
     CANCELLING = "撤销中"
     REJECTED = "拒单"
+    UNKNOWN = "未知"
 
 
 class Product(Enum):
@@ -95,9 +96,12 @@ class Exchange(Enum):
     SZSE = "SZSE"           # Shenzhen Stock Exchange
     SGE = "SGE"             # Shanghai Gold Exchange
     WXE = "WXE"             # Wuxi Steel Exchange
+    CFETS = "CFETS"         # China Foreign Exchange Trade System
 
     # Global
     SMART = "SMART"         # Smart Router for US stocks
+    NYSE = "NYSE"           # New York Stock Exchnage
+    NASDAQ = "NASDAQ"       # Nasdaq Exchange
     NYMEX = "NYMEX"         # New York Mercantile Exchange
     COMEX = "COMEX"         # a division of theNew York Mercantile Exchange
     GLOBEX = "GLOBEX"       # Globex of CME
@@ -119,6 +123,7 @@ class Exchange(Enum):
     TOCOM = "TOCOM"         # Tokyo Commodity Exchange
     EUNX = "EUNX"           # Euronext Exchange
     KRX = "KRX"             # Korean Exchange
+    AMEX = "AMEX"           # NESE American
 
     OANDA = "OANDA"         # oanda.com
 

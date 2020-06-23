@@ -131,6 +131,9 @@ class PortfolioTestingEngine(BackTestingEngine):
         :return:
         """
         self.output('comine_df')
+        if len(self.bar_df_dict) == 0:
+            self.output(f'无加载任何数据,请检查bar文件路径配置')
+
         self.bar_df = pd.concat(self.bar_df_dict, axis=0).swaplevel(0, 1).sort_index()
         self.bar_df_dict.clear()
 

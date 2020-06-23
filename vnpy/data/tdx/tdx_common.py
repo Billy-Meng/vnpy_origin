@@ -27,6 +27,8 @@ TDX_FUTURE_CONFIG = 'tdx_future_config.json'
 #    } }
 TDX_STOCK_CONFIG = 'tdx_stock_config.pkb2'
 
+TDX_PROXY_CONFIG = 'tdx_proxy_config.json'
+
 
 @lru_cache()
 def get_tdx_market_code(code):
@@ -93,7 +95,6 @@ def get_future_contracts():
 def save_future_contracts(future_contracts_dict: dict):
     """保存期货合约信息"""
     save_cache_json(future_contracts_dict, 'future_contracts.json')
-
 
 def get_cache_config(config_file_name):
     """获取本地缓存的配置地址信息"""

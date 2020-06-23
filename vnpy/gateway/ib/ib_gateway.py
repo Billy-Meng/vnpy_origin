@@ -53,19 +53,21 @@ from vnpy.trader.constant import (
 )
 from vnpy.trader.utility import get_file_path
 
-
+# 委托方式映射
 ORDERTYPE_VT2IB = {
-    OrderType.LIMIT: "LMT", 
-    OrderType.MARKET: "MKT",
-    OrderType.STOP: "STP"
+    OrderType.LIMIT: "LMT",    # 限价单
+    OrderType.MARKET: "MKT",   # 市场价
+    OrderType.STOP: "STP"      # 停止价
 }
 ORDERTYPE_IB2VT = {v: k for k, v in ORDERTYPE_VT2IB.items()}
 
+# 买卖方向映射
 DIRECTION_VT2IB = {Direction.LONG: "BUY", Direction.SHORT: "SELL"}
 DIRECTION_IB2VT = {v: k for k, v in DIRECTION_VT2IB.items()}
 DIRECTION_IB2VT["BOT"] = Direction.LONG
 DIRECTION_IB2VT["SLD"] = Direction.SHORT
 
+# 交易所映射
 EXCHANGE_VT2IB = {
     Exchange.SMART: "SMART",
     Exchange.NYMEX: "NYMEX",
@@ -75,10 +77,13 @@ EXCHANGE_VT2IB = {
     Exchange.ICE: "ICE",
     Exchange.SEHK: "SEHK",
     Exchange.HKFE: "HKFE",
-    Exchange.CFE: "CFE"
+    Exchange.CFE: "CFE",
+    Exchange.NYSE: "NYSE",
+    Exchange.NASDAQ: "NASDAQ"
 }
 EXCHANGE_IB2VT = {v: k for k, v in EXCHANGE_VT2IB.items()}
 
+# 状态映射
 STATUS_IB2VT = {
     "ApiPending": Status.SUBMITTING,
     "PendingSubmit": Status.SUBMITTING,
@@ -90,6 +95,7 @@ STATUS_IB2VT = {
     "Inactive": Status.REJECTED,
 }
 
+# 品种类型映射
 PRODUCT_IB2VT = {
     "STK": Product.EQUITY,
     "CASH": Product.FOREX,
@@ -99,14 +105,17 @@ PRODUCT_IB2VT = {
     "FOT": Product.OPTION
 }
 
+# 期权映射
 OPTION_VT2IB = {OptionType.CALL: "CALL", OptionType.PUT: "PUT"}
 
+# 币种映射
 CURRENCY_VT2IB = {
     Currency.USD: "USD",
     Currency.CNY: "CNY",
     Currency.HKD: "HKD",
 }
 
+# tick字段映射
 TICKFIELD_IB2VT = {
     0: "bid_volume_1",
     1: "bid_price_1",
@@ -121,6 +130,7 @@ TICKFIELD_IB2VT = {
     14: "open_price",
 }
 
+# 账号字段映射
 ACCOUNTFIELD_IB2VT = {
     "NetLiquidationByCurrency": "balance",
     "NetLiquidation": "balance",
@@ -129,12 +139,14 @@ ACCOUNTFIELD_IB2VT = {
     "MaintMarginReq": "margin",
 }
 
+# 时间周期映射
 INTERVAL_VT2IB = {
     Interval.MINUTE: "1 min",
     Interval.HOUR: "1 hour",
     Interval.DAILY: "1 day",
 }
 
+# 合约连接符
 JOIN_SYMBOL = "-"
 
 
@@ -150,9 +162,9 @@ class IbGateway(BaseGateway):
 
     exchanges = list(EXCHANGE_VT2IB.keys())
 
-    def __init__(self, event_engine):
+    def __init__(self, event_engine, gateway_name='IB'):
         """"""
-        super().__init__(event_engine, "IB")
+        super().__init__(event_engine, gateway_name)
 
         self.api = IbApi(self)
 
@@ -483,13 +495,14 @@ class IbApi(EWrapper):
             self.gateway.write_log(msg)
             return
 
-        ib_size = contract.multiplier
-        if not ib_size:
+        try:
+            ib_size = int(contract.multiplier)
+        except ValueError:
             ib_size = 1
         price = averageCost / ib_size
 
         pos = PositionData(
-            symbol=contract.conId,
+            symbol=generate_symbol(contract),
             exchange=exchange,
             direction=Direction.NET,
             volume=position,
@@ -807,7 +820,7 @@ class IbClient(EClient):
 
 
 def generate_ib_contract(symbol: str, exchange: Exchange) -> Optional[Contract]:
-    """"""
+    """生成ib合约"""
     try:
         fields = symbol.split(JOIN_SYMBOL)
 
@@ -831,7 +844,7 @@ def generate_ib_contract(symbol: str, exchange: Exchange) -> Optional[Contract]:
 
 
 def generate_symbol(ib_contract: Contract) -> str:
-    """"""
+    """生成合约代码"""
     fields = [ib_contract.symbol]
 
     if ib_contract.secType in ["FUT", "OPT", "FOP"]:

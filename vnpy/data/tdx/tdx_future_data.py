@@ -91,17 +91,21 @@ def get_tdx_marketid(symbol):
 class TdxFutureData(object):
 
     # ----------------------------------------------------------------------
-    def __init__(self, strategy=None, best_ip={}):
+    def __init__(self, strategy=None, best_ip={}, proxy_ip="", proxy_port=0):
         """
         构造函数
         :param strategy: 上层策略，主要用与使用write_log（）
         """
+        self.proxy_ip = proxy_ip
+        self.proxy_port = proxy_port
         self.api = None
         self.connection_status = False  # 连接状态
         self.best_ip = best_ip
         self.symbol_exchange_dict = {}  # tdx合约与vn交易所的字典
         self.symbol_market_dict = copy.copy(INIT_TDX_MARKET_MAP)  # tdx合约与tdx市场的字典
         self.strategy = strategy
+
+        # 所有期货合约的本地缓存
         self.future_contracts = get_future_contracts()
 
     def write_log(self, content):
@@ -128,24 +132,43 @@ class TdxFutureData(object):
                 self.write_log(u'开始连接通达信行情服务器')
                 self.api = TdxExHq_API(heartbeat=True, auto_retry=True, raise_exception=True)
 
+                exclude_ips = []
                 # 选取最佳服务器
                 if is_reconnect or len(self.best_ip) == 0:
                     self.best_ip = get_cache_json(TDX_FUTURE_CONFIG)
-                    last_datetime_str = self.best_ip.get('datetime', None)
-                    if last_datetime_str:
-                        try:
-                            last_datetime = datetime.strptime(last_datetime_str, '%Y-%m-%d %H:%M:%S')
-                            if (datetime.now() - last_datetime).total_seconds() > 60 * 60 * 2:
-                                self.best_ip = {}
-                        except Exception as ex: # noqa
-                            self.best_ip = {}
-                    else:
+
+                    if is_reconnect:
+                        if is_reconnect:
+                            exclude_ips.append(self.best_ip.get('ip'))
                         self.best_ip = {}
+                    else:
+                        # 超时的话，重新选择
+                        last_datetime_str = self.best_ip.get('datetime', None)
+                        if last_datetime_str:
+                            try:
+                                last_datetime = datetime.strptime(last_datetime_str, '%Y-%m-%d %H:%M:%S')
+                                if (datetime.now() - last_datetime).total_seconds() > 60 * 60 * 2:
+                                    self.best_ip = {}
+                            except Exception as ex: # noqa
+                                self.best_ip = {}
+                        else:
+                            self.best_ip = {}
 
                 if len(self.best_ip) == 0:
-                    self.best_ip = self.select_best_ip()
+                    self.best_ip = self.select_best_ip(exclude_ips)
+                    self.write_log(f'选取服务器:{self.best_ip}')
+                else:
+                    self.write_log(f'使用缓存服务器:{self.best_ip}')
 
-                self.api.connect(self.best_ip['ip'], self.best_ip['port'])
+                # 如果配置proxy5，使用vnpy项目下的pytdx
+                if len(self.proxy_ip) > 0 and self.proxy_port > 0:
+                    self.write_log(f'使用proxy5代理 {self.proxy_ip}:{self.proxy_port}')
+                    self.api.connect(ip=self.best_ip['ip'], port=self.best_ip['port'],
+                                     proxy_ip=self.proxy_ip, proxy_port=self.proxy_port)
+                else:
+                    # 使用pip install pytdx
+                    self.api.connect(ip=self.best_ip['ip'], port=self.best_ip['port'])
+
                 # 尝试获取市场合约统计
                 c = self.api.get_instrument_count()
                 if c < 10:
@@ -176,7 +199,7 @@ class TdxFutureData(object):
         apix = TdxExHq_API()
         __time1 = datetime.now()
         try:
-            with apix.connect(ip, port):
+            with apix.connect(ip=ip, port=port, proxy_ip=self.proxy_ip, proxy_port=self.proxy_port):
                 if apix.get_instrument_count() > 10000:
                     _timestamp = datetime.now() - __time1
                     self.write_log(f'服务器{ip}:{port},耗时:{_timestamp}')
@@ -189,14 +212,14 @@ class TdxFutureData(object):
             return timedelta(9, 9, 0)
 
     # ----------------------------------------------------------------------
-    def select_best_ip(self):
+    def select_best_ip(self, exclude_ips=[]):
         """
         选择行情服务器
         :return:
         """
         self.write_log(u'选择通达信行情服务器')
 
-        data_future = [self.ping(x['ip'], x['port']) for x in TDX_FUTURE_HOSTS]
+        data_future = [self.ping(x['ip'], x['port']) for x in TDX_FUTURE_HOSTS if x['ip'] not in exclude_ips]
 
         best_future_ip = TDX_FUTURE_HOSTS[data_future.index(min(data_future))]
 
@@ -240,7 +263,6 @@ class TdxFutureData(object):
             if str(tdx_market_id) in Tdx_Vn_Exchange_Map:
                 self.symbol_exchange_dict.update({tdx_symbol: Tdx_Vn_Exchange_Map.get(str(tdx_market_id))})
                 self.symbol_market_dict.update({tdx_symbol: tdx_market_id})
-
 
     # ----------------------------------------------------------------------
     def get_bars(self,
@@ -378,7 +400,7 @@ class TdxFutureData(object):
                         add_bar.low_price = float(row['low'])
                         add_bar.close_price = float(row['close'])
                         add_bar.volume = float(row['volume'])
-                        add_bar.openInterest = float(row['open_interest'])
+                        add_bar.open_interest = float(row['open_interest'])
                     except Exception as ex:
                         self.write_error(
                             'error when convert bar:{},ex:{},t:{}'.format(row, str(ex), traceback.format_exc()))
@@ -469,25 +491,35 @@ class TdxFutureData(object):
         index = 0
         count = 100
         results = []
-        while (True):
-            print(u'查询{}下：{}~{}个合约'.format(exchange, index, index + count))
-            result = self.api.get_instrument_quote_list(int(market_id), 3, index, count)
-            results.extend(result)
-            index += count
-            if len(result) < count:
-                break
-        return results
+        try:
+            while (True):
+                print(u'查询{}下：{}~{}个合约'.format(exchange, index, index + count))
+                result = self.api.get_instrument_quote_list(int(market_id), 3, index, count)
+                results.extend(result)
+                index += count
+                if len(result) < count:
+                    break
+            return results
+        except Exception as ex:
+            print(f'接口查询异常:{str(ex)}')
+            self.connect(is_reconnect=True)
+            return results
 
     def get_mi_contracts2(self):
         """ 获取主力合约"""
         self.connect()
         contracts = []
         for exchange in Vn_Tdx_Exchange_Map.keys():
+            self.write_log(f'查询{exchange.value}')
             contracts.extend(self.get_mi_contracts_from_exchange(exchange))
+
+        # 合约的持仓、主力合约清单发生变化，需要更新
+        save_future_contracts(self.future_contracts)
 
         return contracts
 
     def get_mi_contracts_from_exchange(self, exchange):
+        """获取主力合约"""
         contracts = self.get_contracts(exchange)
 
         if len(contracts) == 0:
@@ -503,16 +535,70 @@ class TdxFutureData(object):
             code = contract.get('code')
             if code[-2:] in ['L9', 'L8', 'L0', 'L1', 'L2', 'L3', '50'] or \
                     (exchange == Exchange.CFFEX and code[-3:] in ['300', '500']):
+                #self.write_log(f'过滤:{exchange.value}:{code}')
                 continue
             short_symbol = get_underlying_symbol(code).upper()
             contract_list = short_contract_dict.get(short_symbol, [])
             contract_list.append(contract)
             short_contract_dict.update({short_symbol: contract_list})
 
+        # { 短合约: [合约的最新quote行情] }
         for k, v in short_contract_dict.items():
-            sorted_list = sorted(v, key=lambda c: c['ZongLiang'])
+            if len(v) == 0:
+                self.write_error(f'{k}合约对应的所有合约为空')
+                continue
 
-            mi_contracts.append(sorted_list[-1])
+            # 缓存的期货合约配置
+            cache_info = self.future_contracts.get(k, {})
+            # 缓存的所有当前合约清单
+            cache_symbols = cache_info.get('symbols', [])
+            new_symbols = sorted([c.get('code') for c in v])
+
+            # 检查交易所是否一致
+            cache_exchange = cache_info.get('exchange', '')
+            if len(cache_exchange) > 0 and cache_exchange != exchange.value:
+                if not (cache_exchange == 'INE' and exchange == Exchange.SHFE):
+                    continue
+
+            # 判断前置条件1：缓存的清单数量，
+            if len(cache_symbols) > 0:
+                if len(new_symbols) < len(cache_symbols) * 0.8:
+                    self.write_error(f'查询的期货合约{new_symbols} 总数小于 缓存 {cache_symbols} 的80%数量，不做处理')
+                    continue
+
+            # 判断前置条件2：
+            cache_mi_symbol = cache_info.get('full_symbol')
+            # 之前的主力合约不在当前所有合约清单中
+            if cache_mi_symbol and cache_mi_symbol not in new_symbols:
+                # 之前的主力合约，必须小于所有的合约
+                if not all([cache_mi_symbol<symbol for symbol in new_symbols]):
+                    self.write_error(f'前期主力合约{cache_mi_symbol}不在当前合约清单{new_symbols}中，又不是早期合约,不做处理')
+                    continue
+
+            # 判断前置条件3
+            cache_oi = cache_info.get('open_interesting', 0)
+            # 根据总量排序
+            sorted_list = sorted(v, key=lambda c: c['ZongLiang'])
+            select_data = sorted_list[-1]
+            new_mi_symbol = select_data.get('code')
+            new_oi = select_data.get('ZongLiang', 0)
+
+            if new_oi <= 0:
+                self.write_error(f'{new_mi_symbol}合约总量为0， 不做处理')
+                continue
+
+            if 0 < new_oi < cache_oi / 50 and new_mi_symbol != cache_mi_symbol:
+                self.write_error(f"新合约{new_mi_symbol}总量:{select_data.get('ZongLiang', 0)} 不到旧合约{cache_mi_symbol}持仓总量:{cache_oi}的一半，不处理")
+                continue
+
+            cache_info.update({'open_interesting': new_oi})
+            if len(new_symbols) > 0:
+                cache_info.update({'symbols': new_symbols})
+
+            self.future_contracts.update({k: cache_info})
+            # 更新
+            mi_contracts.append(select_data)
+
 
         return mi_contracts
 
@@ -534,6 +620,8 @@ class TdxFutureData(object):
             # 查询的是指数合约
             symbol = symbol.replace('99', 'L9')
             tdx_index_symbol = symbol
+        elif symbol.endswith('L9'):
+            tdx_index_symbol = symbol
         else:
             # 查询的是普通合约
             tdx_index_symbol = get_underlying_symbol(symbol).upper() + 'L9'
@@ -543,8 +631,8 @@ class TdxFutureData(object):
         q_size = QSIZE * 5
         # 每秒 2个， 10小时
         max_data_size = 1000000
-
-        self.write_log(u'开始下载{}当日分笔数据'.format(symbol))
+        market_id = INIT_TDX_MARKET_MAP.get(tdx_index_symbol, 0)
+        self.write_log(u'开始下载{}=>{}, market_id={} 当日分笔数据'.format(symbol,tdx_index_symbol, market_id))
 
         try:
             _datas = []
@@ -552,7 +640,7 @@ class TdxFutureData(object):
 
             while True:
                 _res = self.api.get_transaction_data(
-                    market=self.symbol_market_dict.get(tdx_index_symbol, 0),
+                    market=market_id,
                     code=symbol,
                     start=_pos,
                     count=q_size)
@@ -666,6 +754,8 @@ class TdxFutureData(object):
         if '99' in symbol:
             # 查询的是指数合约
             symbol = symbol.replace('99', 'L9')
+            tdx_index_symbol = symbol
+        elif symbol.endswith('L9'):
             tdx_index_symbol = symbol
         else:
             # 查询的是普通合约

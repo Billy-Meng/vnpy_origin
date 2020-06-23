@@ -106,6 +106,7 @@ class BackTestingEngine(object):
         self.fix_commission = {}  # 每手固定手续费
         self.size = {}  # 合约大小，默认为1
         self.price_tick = {}  # 价格最小变动
+        self.volume_tick = {}  # 合约委托单最小单位
         self.margin_rate = {}  # 回测合约的保证金比率
         self.price_dict = {}  # 登记vt_symbol对应的最新价
         self.contract_dict = {}  # 登记vt_symbol得对应合约信息
@@ -161,7 +162,7 @@ class BackTestingEngine(object):
         self.net_capital = self.init_capital  # 实时资金净值（每日根据capital和持仓浮盈计算）
         self.max_capital = self.init_capital  # 资金最高净值
         self.max_net_capital = self.init_capital
-        self.avaliable = self.init_capital
+        self.available = self.init_capital
 
         self.max_pnl = 0  # 最高盈利
         self.min_pnl = 0  # 最大亏损
@@ -256,7 +257,7 @@ class BackTestingEngine(object):
         if self.net_capital == 0.0:
             self.percent = 0.0
 
-        return self.net_capital, self.avaliable, self.percent, self.percent_limit
+        return self.net_capital, self.available, self.percent, self.percent_limit
 
     def set_test_start_date(self, start_date: str = '20100416', init_days: int = 10):
         """设置回测的启动日期"""
@@ -289,7 +290,7 @@ class BackTestingEngine(object):
         self.net_capital = capital  # 实时资金净值（每日根据capital和持仓浮盈计算）
         self.max_capital = capital  # 资金最高净值
         self.max_net_capital = capital
-        self.avaliable = capital
+        self.available = capital
         self.init_capital = capital
 
     def set_margin_rate(self, vt_symbol: str, margin_rate: float):
@@ -345,8 +346,15 @@ class BackTestingEngine(object):
     def get_price_tick(self, vt_symbol: str):
         return self.price_tick.get(vt_symbol, 1)
 
+    def set_volume_tick(self, vt_symbol: str, volume_tick: float):
+        """设置委托单最小单位"""
+        self.volume_tick.update({vt_symbol: volume_tick})
+
+    def get_volume_tick(self, vt_symbol: str):
+        return self.volume_tick.get(vt_symbol, 1)
+
     def set_contract(self, symbol: str, exchange: Exchange, product: Product, name: str, size: int,
-                     price_tick: float, margin_rate: float = 0.1):
+                     price_tick: float, volume_tick: float = 1, margin_rate: float = 0.1):
         """设置合约信息"""
         vt_symbol = '.'.join([symbol, exchange.value])
         if vt_symbol not in self.contract_dict:
@@ -364,6 +372,7 @@ class BackTestingEngine(object):
             self.set_size(vt_symbol, size)
             self.set_margin_rate(vt_symbol, margin_rate)
             self.set_price_tick(vt_symbol, price_tick)
+            self.set_volume_tick(vt_symbol, volume_tick)
             self.symbol_exchange_dict.update({symbol: exchange})
 
     @lru_cache()
@@ -528,7 +537,8 @@ class BackTestingEngine(object):
         for symbol, symbol_data in data_dict.items():
             self.write_log(u'配置{}数据:{}'.format(symbol, symbol_data))
             self.set_price_tick(symbol, symbol_data.get('price_tick', 1))
-
+            volume_tick = symbol_data.get('min_volume', symbol_data.get('volume_tick', 1))
+            self.set_volume_tick(symbol, volume_tick)
             self.set_slippage(symbol, symbol_data.get('slippage', 0))
 
             self.set_size(symbol, symbol_data.get('symbol_size', 10))
@@ -544,6 +554,7 @@ class BackTestingEngine(object):
                 product=Product(symbol_data.get('product', "期货")),
                 size=symbol_data.get('symbol_size', 10),
                 price_tick=symbol_data.get('price_tick', 1),
+                volume_tick=volume_tick,
                 margin_rate=margin_rate
             )
 
@@ -1786,7 +1797,7 @@ class BackTestingEngine(object):
                                 occupy_short_money_dict.get(underly_symbol, 0))
 
         # 可用资金 = 当前净值 - 占用保证金
-        self.avaliable = self.net_capital - occupy_money
+        self.available = self.net_capital - occupy_money
         # 当前保证金占比
         self.percent = round(float(occupy_money * 100 / self.net_capital), 2)
         # 更新最大保证金占比
@@ -1840,7 +1851,7 @@ class BackTestingEngine(object):
             self.write_log(msg)
 
         # 重新计算一次avaliable
-        self.avaliable = self.net_capital - occupy_money
+        self.available = self.net_capital - occupy_money
         self.percent = round(float(occupy_money * 100 / self.net_capital), 2)
 
     def saving_daily_data(self, d, c, m, commission, benchmark=0):

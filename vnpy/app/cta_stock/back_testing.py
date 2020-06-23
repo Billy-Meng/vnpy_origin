@@ -164,7 +164,7 @@ class BackTestingEngine(object):
         self.net_capital = self.init_capital  # 实时资金净值（每日根据capital和持仓浮盈计算）
         self.max_capital = self.init_capital  # 资金最高净值
         self.max_net_capital = self.init_capital
-        self.avaliable = self.init_capital
+        self.available = self.init_capital
 
         self.max_pnl = 0  # 最高盈利
         self.min_pnl = 0  # 最大亏损
@@ -261,7 +261,7 @@ class BackTestingEngine(object):
         if self.net_capital == 0.0:
             self.percent = 0.0
 
-        return self.net_capital, self.avaliable, self.percent, self.percent_limit
+        return self.net_capital, self.available, self.percent, self.percent_limit
 
     def set_test_start_date(self, start_date: str = '20100416', init_days: int = 10):
         """设置回测的启动日期"""
@@ -294,7 +294,7 @@ class BackTestingEngine(object):
         self.net_capital = capital  # 实时资金净值（每日根据capital和持仓浮盈计算）
         self.max_capital = capital  # 资金最高净值
         self.max_net_capital = capital
-        self.avaliable = capital
+        self.available = capital
         self.init_capital = capital
 
     def set_margin_rate(self, vt_symbol: str, margin_rate: float):
@@ -1544,7 +1544,7 @@ class BackTestingEngine(object):
                 holding_cost = holding_cost + cur_holding_cost
 
         # 可用资金 = 当前净值 - 占用保证金
-        self.avaliable = self.net_capital - holding_cost
+        self.available = self.net_capital - holding_cost
         # 当前成本占比
         self.percent = round(float(holding_cost * 100 / self.net_capital), 2)
         # 更新最大成本占比
@@ -1595,7 +1595,7 @@ class BackTestingEngine(object):
             self.write_log(msg)
 
         # 重新计算一次avaliable
-        self.avaliable = self.net_capital - holding_cost
+        self.available = self.net_capital - holding_cost
         self.percent = round(float(holding_cost * 100 / self.net_capital), 2)
 
     def saving_daily_data(self, d, c, m, commission, benchmark=0):
@@ -1627,7 +1627,7 @@ class BackTestingEngine(object):
             # 计算每个策略实例的持仓盈亏
             strategy_pnl.update({longpos.strategy_name: strategy_pnl.get(longpos.strategy_name, 0) + holding_profit})
 
-            positionMsg += "{},long,p={},v={},m={};".format(symbol, longpos.price, longpos.volume, holding_profit)
+            positionMsg += "\n[{},long,p={},v={},m={}]".format(symbol, longpos.price, longpos.volume, round(holding_profit,2))
 
         data['net'] = c + today_holding_profit  # 当日净值（含持仓盈亏）
         data['rate'] = (c + today_holding_profit) / self.init_capital
