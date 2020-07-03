@@ -565,7 +565,7 @@ class CtaStockTemplate(CtaTemplate):
         """初始化Policy"""
         self.write_log(u'init_policy(),初始化执行逻辑')
         self.policy.load()
-        self.write_log('{}'.format(json.dumps(self.policy.to_json(),indent=2, ensure_ascii=True)))
+        self.write_log('{}'.format(json.dumps(self.policy.to_json(),indent=2, ensure_ascii=False)))
 
     def init_position(self):
         """
@@ -637,7 +637,7 @@ class CtaStockTemplate(CtaTemplate):
 
         return pos
 
-    def compare_pos(self):
+    def compare_pos(self,auto_balance=False):
         """比较仓位"""
         for vt_symbol, position in self.positions.items():
             name = self.cta_engine.get_name(vt_symbol)
@@ -752,13 +752,13 @@ class CtaStockTemplate(CtaTemplate):
             if len(grid.order_ids) > 0:
                 self.write_log(f'剩余委托单号:{grid.order_ids}')
 
+            """
             # 网格的所有委托单已经执行完毕
             if grid.volume <= grid.traded_volume:
                 grid.order_status = False
                 if grid.volume < grid.traded_volume:
                     self.write_error(f'{order.vt_symbol} 已成交总量:{grid.traded_volume}超出{grid.volume}, 更新=>{grid.traded_volume}')
                     grid.volume = grid.traded_volume
-                grid.traded_volume = 0
 
                 # 卖出完毕（sell）
                 if order.direction != Direction.LONG:
@@ -774,10 +774,11 @@ class CtaStockTemplate(CtaTemplate):
                 # 开仓完毕( buy)
                 else:
                     grid.open_status = True
+                    grid.traded_volume = 0
                     grid.open_time = self.cur_datetime
                     self.write_log(f'买入{order.vt_symbol}完毕,总量:{grid.volume},最后一笔委托价:{order.price}'
                                    + f',成交:{order.volume}')
-
+            """
             self.gt.save()
 
         # 在策略得活动订单中，移除
@@ -872,6 +873,7 @@ class CtaStockTemplate(CtaTemplate):
             return
 
         remove_gids = []
+        changed = False
         # 多单网格逐一止损/止盈检查：
         long_grids = self.gt.get_opened_grids(direction=Direction.LONG)
         for lg in long_grids:
@@ -896,7 +898,7 @@ class CtaStockTemplate(CtaTemplate):
                                       lg.close_price,
                                       lg.open_price,
                                       lg.volume))
-
+                changed = True
                 if lg.traded_volume > 0:
                     lg.volume -= lg.traded_volume
                     lg.traded_volume = 0
@@ -910,6 +912,7 @@ class CtaStockTemplate(CtaTemplate):
                 lg.order_status = True
                 lg.close_status = True
                 self.write_log(f'{lg.vt_symbol}[{cn_name}] 数量:{lg.volume}，准备卖出')
+
                 continue
 
             # 止损
@@ -925,7 +928,7 @@ class CtaStockTemplate(CtaTemplate):
                                       lg.stop_price,
                                       lg.open_price,
                                       lg.volume))
-
+                changed = True
                 if lg.traded_volume > 0:
                     lg.volume -= lg.traded_volume
                     lg.traded_volume = 0
@@ -940,8 +943,9 @@ class CtaStockTemplate(CtaTemplate):
                 lg.close_status = True
                 self.write_log(f'{lg.vt_symbol}[{cn_name}] 数量:{lg.volume}，准备卖出')
 
-        if len(remove_gids) > 0:
-            self.gt.remove_grids_by_ids(direction=Direction.LONG, ids=remove_gids)
+        if changed:
+            if len(remove_gids) > 0:
+                self.gt.remove_grids_by_ids(direction=Direction.LONG, ids=remove_gids)
             self.gt.save()
 
     def tns_excute_sell_grids(self, vt_symbol=None):
@@ -993,7 +997,7 @@ class CtaStockTemplate(CtaTemplate):
             vt_symbol=ordering_grid.vt_symbol,
             direction=Direction.NET)
         if acc_symbol_pos is None:
-            self.write_error(u'当前{}持仓查询不到'.format(ordering_grid.vt_symbol))
+            self.write_error(f'{self.strategy_name}当前{ordering_grid.vt_symbol}持仓查询不到, 无法执行卖出')
             return
 
         vt_symbol = ordering_grid.vt_symbol
@@ -1038,10 +1042,10 @@ class CtaStockTemplate(CtaTemplate):
             order_time=self.cur_datetime,
             grid=ordering_grid)
         if vt_orderids is None or len(vt_orderids) == 0:
-            self.write_error(f'委托卖出失败，{vt_symbol} 委托价:{sell_price} 数量:{sell_volume}')
+            self.write_error(f'{vt_symbol} 委托卖出失败，委托价:{sell_price} 数量:{sell_volume}')
             return
         else:
-            self.write_log(f'已委托卖出，{sell_volume},委托价:{sell_price}, 数量:{sell_volume}')
+            self.write_log(f'{vt_symbol} 已委托卖出，{sell_volume},委托价:{sell_price}, 数量:{sell_volume}')
 
 
     def tns_finish_sell_grid(self, grid):
@@ -1177,7 +1181,7 @@ class CtaStockTemplate(CtaTemplate):
             self.write_error(f'委托买入失败，{vt_symbol} 委托价:{buy_price} 数量:{buy_volume}')
             return
         else:
-            self.write_error(f'{vt_orderids},已委托买入，{vt_symbol} 委托价:{buy_price} 数量:{buy_volume}')
+            self.write_log(f'{self.strategy_name}, {vt_orderids},已委托买入，{vt_symbol} 委托价:{buy_price} 数量:{buy_volume}')
 
     def tns_finish_buy_grid(self, grid):
         """
@@ -1185,7 +1189,7 @@ class CtaStockTemplate(CtaTemplate):
         :return:
         """
         self.write_log(u'事务完成买入网格:{},计划数量:{}，计划价格:{}，实际数量:{}'
-                         .format(grid.type, grid.volume, grid.openPrice, grid.traded_volume))
+                         .format(grid.type, grid.volume, grid.open_price, grid.traded_volume))
         if grid.volume != grid.traded_volume:
             grid.volume = grid.traded_volume
         grid.traded_volume = 0
@@ -1276,15 +1280,15 @@ class CtaStockTemplate(CtaTemplate):
             name = self.cta_engine.get_name(grid.vt_symbol)
 
             if not grid.open_status and grid.order_status:
-                opening_info += f'网格{grid.type},买入状态:{name}[{grid.vt_symbol}], [已买入:{grid.traded_volume} => 目标:{grid.volume}, 委托时间:{grid.order_time}\n'
+                opening_info += f'网格{grid.type},买入状态:{name}[{grid.vt_symbol}], 买入价:{grid.open_price} [已买入:{grid.traded_volume} => 目标:{grid.volume}, 委托时间:{grid.order_time}\n'
                 continue
 
             if grid.open_status and not grid.close_status:
-                holding_info += f'网格{grid.type},持有状态:{name}[{grid.vt_symbol}],[数量:{grid.volume}, 开仓时间:{grid.open_time}]\n'
+                holding_info += f'网格{grid.type},持有状态:{name}[{grid.vt_symbol}],买入价:{grid.open_price} [数量:{grid.volume}, 开仓时间:{grid.open_time}]\n'
                 continue
 
             if grid.open_status and grid.close_status:
-                closing_info += f'网格{grid.type},卖出状态:{name}[{grid.vt_symbol}], [已卖出:{grid.traded_volume} => 目标:{grid.volume}, 委托时间:{grid.order_time}\n'
+                closing_info += f'网格{grid.type},卖出状态:{name}[{grid.vt_symbol}],卖出价:{grid.close_price} [已卖出:{grid.traded_volume} => 目标:{grid.volume}, 委托时间:{grid.order_time}\n'
 
         if len(opening_info) > 0:
             self.write_log(opening_info)

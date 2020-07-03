@@ -114,8 +114,15 @@ class CtaEngine(BaseEngine):
         :param event_engine: 事件引擎
         """
         super().__init__(main_engine, event_engine, APP_NAME)
-
+        # 增强策略引擎得特殊参数配置
+        #  "accountid" : "xxxx",  资金账号，一般用于推送消息时附带
+        #  "strategy_group": "cta_strategy_pro", # 当前实例名。多个实例时，区分开
+        #  "trade_2_wx": true  # 是否交易记录转发至微信通知
+        # "event_log: false    # 是否转发日志到event bus，显示在图形界面
+        # "snapshot2file": false # 是否保存切片到文件
         self.engine_config = {}
+        # 是否激活 write_log写入event bus(比较耗资源）
+        self.event_log = False
 
         self.strategy_setting = {}  # strategy_name: dict
         self.strategy_data = {}  # strategy_name: dict
@@ -812,8 +819,8 @@ class CtaEngine(BaseEngine):
         """查询价格最小跳动"""
         contract = self.main_engine.get_contract(vt_symbol)
         if contract is None:
-            self.write_error(f'查询不到{vt_symbol}合约信息，缺省使用0.1作为价格跳动')
-            return 0.1
+            self.write_error(f'查询不到{vt_symbol}合约信息，缺省使用1作为价格跳动')
+            return 1
 
         return contract.pricetick
 
@@ -1313,12 +1320,13 @@ class CtaEngine(BaseEngine):
                 self.write_log(f'{strategy_name}返回得K线切片数据为空')
                 return
 
-            # 剩下工作：保存本地文件/数据库
-            snapshot_folder = get_folder_path(f'data/snapshots/{strategy_name}')
-            snapshot_file = snapshot_folder.joinpath('{}.pkb2'.format(datetime.now().strftime('%Y%m%d_%H%M%S')))
-            with bz2.BZ2File(str(snapshot_file), 'wb') as f:
-                pickle.dump(snapshot, f)
-                self.write_log(u'切片保存成功:{}'.format(str(snapshot_file)))
+            if self.engine_config.get('snapshot2file', False):
+                # 剩下工作：保存本地文件/数据库
+                snapshot_folder = get_folder_path(f'data/snapshots/{strategy_name}')
+                snapshot_file = snapshot_folder.joinpath('{}.pkb2'.format(datetime.now().strftime('%Y%m%d_%H%M%S')))
+                with bz2.BZ2File(str(snapshot_file), 'wb') as f:
+                    pickle.dump(snapshot, f)
+                    self.write_log(u'切片保存成功:{}'.format(str(snapshot_file)))
 
             # 通过事件方式，传导到account_recorder
             snapshot.update({
@@ -1498,7 +1506,7 @@ class CtaEngine(BaseEngine):
                         spd_vt_symbol = pos.get('vt_symbol', None)
                         if spd_vt_symbol is not None and spd_vt_symbol.endswith('SPD'):
                             spd_symbol, spd_exchange = extract_vt_symbol(spd_vt_symbol)
-                            spd_setting = self.main_engine.get_all_custom_contracts().get(spd_symbol, None)
+                            spd_setting = self.main_engine.get_all_custom_contracts(rtn_setting=True).get(spd_symbol, None)
 
                             if spd_setting is None:
                                 self.write_error(u'获取不到:{}得设置信息，检查自定义合约配置文件'.format(spd_symbol))
@@ -1511,13 +1519,13 @@ class CtaEngine(BaseEngine):
 
                             leg1_pos = {}
                             leg1_pos.update({'symbol': spd_setting.get('leg1_symbol')})
-                            leg1_pos.update({'vt_symbol': spd_setting.get('leg1_symbol')})
+                            leg1_pos.update({'vt_symbol': '{}.{}'.format(spd_setting.get('leg1_symbol'), spd_setting.get('leg1_exchange'))})
                             leg1_pos.update({'direction': leg1_direction})
                             leg1_pos.update({'volume': spd_setting.get('leg1_ratio', 1) * spd_volume})
 
                             leg2_pos = {}
                             leg2_pos.update({'symbol': spd_setting.get('leg2_symbol')})
-                            leg2_pos.update({'vt_symbol': spd_setting.get('leg2_symbol')})
+                            leg2_pos.update({'vt_symbol': '{}.{}'.format(spd_setting.get('leg2_symbol'), spd_setting.get('leg2_exchange'))})
                             leg2_pos.update({'direction': leg2_direction})
                             leg2_pos.update({'volume': spd_setting.get('leg2_ratio', 1) * spd_volume})
 
@@ -1649,7 +1657,7 @@ class CtaEngine(BaseEngine):
                 continue
             if holding.exchange == Exchange.SPD:
                 continue
-            if '&' in holding.vt_symbol and (holding.vt_symbol.startswith('SP') or holding.vt_symbol.startswith('STG')):
+            if '&' in holding.vt_symbol and (holding.vt_symbol.startswith('SP') or holding.vt_symbol.startswith('STG') or holding.vt_symbol.startswith('PRT')):
                 continue
 
             compare_pos[vt_symbol] = OrderedDict(
@@ -1672,7 +1680,7 @@ class CtaEngine(BaseEngine):
                 vt_symbols.add(vt_symbol)
                 symbol_pos = compare_pos.get(vt_symbol, None)
                 if symbol_pos is None:
-                    self.write_log(u'账号持仓信息获取不到{}，创建一个'.format(vt_symbol))
+                    # self.write_log(u'账号持仓信息获取不到{}，创建一个'.format(vt_symbol))
                     symbol_pos = OrderedDict(
                         {
                             "账号空单": 0,
@@ -1700,9 +1708,8 @@ class CtaEngine(BaseEngine):
         compare_info = ''
         for vt_symbol in sorted(vt_symbols):
             # 发送不一致得结果
-            symbol_pos = compare_pos.pop(vt_symbol, None)
-            if symbol_pos is None:
-                continue
+            symbol_pos = compare_pos.pop(vt_symbol, {})
+
             d_long = {
                 'account_id': self.engine_config.get('accountid', '-'),
                 'vt_symbol': vt_symbol,
@@ -1716,21 +1723,21 @@ class CtaEngine(BaseEngine):
                 'strategy_list': symbol_pos.get('空单策略', [])}
 
             # 多空都一致
-            if round(symbol_pos['账号空单'], 7) == round(symbol_pos['策略空单'], 7) and \
-                    round(symbol_pos['账号多单'], 7) == round(symbol_pos['策略多单'], 7):
+            if round(symbol_pos.get('账号空单',0), 7) == round(symbol_pos.get('策略空单',0), 7) and \
+                    round(symbol_pos.get('账号多单',0), 7) == round(symbol_pos.get('策略多单',0), 7):
                 msg = u'{}多空都一致.{}\n'.format(vt_symbol, json.dumps(symbol_pos, indent=2, ensure_ascii=False))
                 self.write_log(msg)
                 compare_info += msg
             else:
                 pos_compare_result += '\n{}: '.format(vt_symbol)
                 # 判断是多单不一致？
-                diff_long_volume = round(symbol_pos['账号多单'], 7) - round(symbol_pos['策略多单'], 7)
+                diff_long_volume = round(symbol_pos.get('账号多单',0), 7) - round(symbol_pos.get('策略多单',0), 7)
                 if diff_long_volume != 0:
                     msg = '{}多单[账号({}), 策略{},共({})], ' \
                         .format(vt_symbol,
-                                symbol_pos['账号多单'],
-                                symbol_pos['多单策略'],
-                                symbol_pos['策略多单'])
+                                symbol_pos.get('账号多单'),
+                                symbol_pos.get('多单策略'),
+                                symbol_pos.get('策略多单'))
 
                     pos_compare_result += msg
                     self.write_error(u'{}不一致:{}'.format(vt_symbol, msg))
@@ -1739,14 +1746,14 @@ class CtaEngine(BaseEngine):
                         self.balance_pos(vt_symbol, Direction.LONG, diff_long_volume)
 
                 # 判断是空单不一致:
-                diff_short_volume = round(symbol_pos['账号空单'], 7) - round(symbol_pos['策略空单'], 7)
+                diff_short_volume = round(symbol_pos.get('账号空单',0), 7) - round(symbol_pos.get('策略空单',0), 7)
 
                 if diff_short_volume != 0:
                     msg = '{}空单[账号({}), 策略{},共({})], ' \
                         .format(vt_symbol,
-                                symbol_pos['账号空单'],
-                                symbol_pos['空单策略'],
-                                symbol_pos['策略空单'])
+                                symbol_pos.get('账号空单'),
+                                symbol_pos.get('空单策略'),
+                                symbol_pos.get('策略空单'))
                     pos_compare_result += msg
                     self.write_error(u'{}不一致:{}'.format(vt_symbol, msg))
                     compare_info += u'{}不一致:{}\n'.format(vt_symbol, msg)
@@ -1841,6 +1848,8 @@ class CtaEngine(BaseEngine):
         """
         # 读取引擎得配置
         self.engine_config = load_json(self.engine_filename)
+        # 是否产生event log 日志（一般GUI界面才产生，而且比好消耗资源)
+        self.event_log = self.engine_config.get('event_log', False)
 
         # 读取策略得配置
         self.strategy_setting = load_json(self.setting_filename)
@@ -1913,12 +1922,13 @@ class CtaEngine(BaseEngine):
         """
         Create cta engine log event.
         """
-        # 推送至全局CTA_LOG Event
-        log = LogData(msg=f"{strategy_name}: {msg}" if strategy_name else msg,
-                      gateway_name="CtaStrategy",
-                      level=level)
-        event = Event(type=EVENT_CTA_LOG, data=log)
-        self.event_engine.put(event)
+        if self.event_log:
+            # 推送至全局CTA_LOG Event
+            log = LogData(msg=f"{strategy_name}: {msg}" if strategy_name else msg,
+                          gateway_name="CtaStrategy",
+                          level=level)
+            event = Event(type=EVENT_CTA_LOG, data=log)
+            self.event_engine.put(event)
 
         # 保存单独的策略日志
         if strategy_name:

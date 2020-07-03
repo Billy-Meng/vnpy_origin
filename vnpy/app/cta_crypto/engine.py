@@ -859,7 +859,8 @@ class CtaEngine(BaseEngine):
             vt_symbol: str,
             days: int,
             interval: Interval,
-            callback: Callable[[BarData], None]
+            callback: Callable[[BarData], None],
+            interval_num: int = 1
     ):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
@@ -875,6 +876,7 @@ class CtaEngine(BaseEngine):
                 symbol=symbol,
                 exchange=exchange,
                 interval=interval,
+                interval_num=interval_num,
                 start=start,
                 end=end
             )

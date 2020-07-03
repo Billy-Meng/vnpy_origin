@@ -384,6 +384,7 @@ class CtaTemplate(ABC):
             days: int,
             interval: Interval = Interval.MINUTE,
             callback: Callable = None,
+            interval_num: int = 1
     ):
         """
         Load historical bar data for initializing strategy.
@@ -391,7 +392,7 @@ class CtaTemplate(ABC):
         if not callback:
             callback = self.on_bar
 
-        self.cta_engine.load_bar(self.vt_symbol, days, interval, callback)
+        self.cta_engine.load_bar(self.vt_symbol, days, interval, callback, interval_num)
 
     def load_tick(self, days: int):
         """
@@ -1059,7 +1060,7 @@ class CtaProTemplate(CtaTemplate):
     def save_tns(self, tns_data):
         """
         保存多空事务记录=》csv文件,便于后续分析
-        :param tns_data:
+        :param tns_data: {"datetime":xxx, "direction":"long"或者"short", "price":xxx}
         :return:
         """
         if self.backtesting:
@@ -1770,6 +1771,7 @@ class CtaProFutureTemplate(CtaProTemplate):
             if self.activate_today_lock:
                 self.write_log(u'昨仓多单:{},没有今仓,满足条件,直接平昨仓'.format(grid_pos.long_yd))
 
+
             sell_price = self.cta_engine.get_price(sell_symbol)
             if sell_price is None:
                 self.write_error(f'暂时不能获取{sell_symbol}价格，不能平仓')
@@ -1780,12 +1782,16 @@ class CtaProFutureTemplate(CtaProTemplate):
                 grid.volume -= grid.traded_volume
                 grid.traded_volume = 0
 
+            if grid_pos.long_pos <grid.volume:
+                self.write_error(f'账号{sell_symbol}多单持仓:{grid_pos.long_pos}不满足平仓:{grid.volume}要求:')
+                return False
+
             vt_orderids = self.sell(price=sell_price,
-                                    volume=grid.volume,
-                                    vt_symbol=sell_symbol,
-                                    order_type=self.order_type,
-                                    order_time=self.cur_datetime,
-                                    grid=grid)
+                                volume=grid.volume,
+                                vt_symbol=sell_symbol,
+                                order_type=self.order_type,
+                                order_time=self.cur_datetime,
+                                grid=grid)
             if len(vt_orderids) == 0:
                 self.write_error(u'多单平仓委托失败')
                 return False
@@ -1869,6 +1875,10 @@ class CtaProFutureTemplate(CtaProTemplate):
             if grid.traded_volume > 0:
                 grid.volume -= grid.traded_volume
                 grid.traded_volume = 0
+
+            if grid_pos.short_pos < grid.volume:
+                self.write_error(f'账号{cover_symbol}多单持仓:{grid_pos.short_pos}不满足平仓:{grid.volume}要求:')
+                return False
 
             vt_orderids = self.cover(price=cover_price,
                                      volume=grid.volume,
@@ -1997,7 +2007,7 @@ class CtaProFutureTemplate(CtaProTemplate):
         target_long_grid = None
         remove_long_grid_ids = []
         for g in sorted(locked_long_grids, key=lambda grid: grid.volume):
-            if g.orderStatus or len(g.orderRef) > 0:
+            if g.order_status or len(g.orderRef) > 0:
                 continue
             if target_long_grid is None:
                 target_long_grid = g
@@ -2133,7 +2143,7 @@ class CtaProFutureTemplate(CtaProTemplate):
             vt_symbol = g.snapshot.get('mi_symbol', self.vt_symbol)
             volume = g.volume - g.traded_volume
             locked_long_dict.update({vt_symbol: locked_long_dict.get(vt_symbol, 0) + volume})
-            if g.orderStatus or g.order_ids:
+            if g.order_status or g.order_ids:
                 self.write_log(u'当前对锁格:{}存在委托,不进行解锁'.format(g.to_json()))
                 return
 
@@ -2150,7 +2160,7 @@ class CtaProFutureTemplate(CtaProTemplate):
             vt_symbol = g.snapshot.get('mi_symbol', self.vt_symbol)
             volume = g.volume - g.traded_volume
             locked_short_dict.update({vt_symbol: locked_short_dict.get(vt_symbol, 0) + volume})
-            if g.orderStatus or g.order_ids:
+            if g.order_status or g.order_ids:
                 self.write_log(u'当前对锁格:{}存在委托,不进行解锁'.format(g.to_json()))
                 return
 
@@ -2238,7 +2248,7 @@ class CtaProFutureTemplate(CtaProTemplate):
         for g in long_grids:
             # 满足离场条件，或者碰到止损价格
             if g.stop_price > 0 and g.stop_price > self.cur_99_price \
-                    and g.openStatus and not g.orderStatus:
+                    and g.open_status and not g.order_status:
                 dist_record = dict()
                 dist_record['datetime'] = self.cur_datetime
                 dist_record['symbol'] = self.idx_symbol
@@ -2262,7 +2272,7 @@ class CtaProFutureTemplate(CtaProTemplate):
         short_grids = self.gt.get_opened_grids_without_types(direction=Direction.SHORT, types=[LOCK_GRID])
         for g in short_grids:
             if g.stop_price > 0 and g.stop_price < self.cur_99_price \
-                    and g.openStatus and not g.orderStatus:
+                    and g.open_status and not g.order_status:
                 dist_record = dict()
                 dist_record['datetime'] = self.cur_datetime
                 dist_record['symbol'] = self.idx_symbol

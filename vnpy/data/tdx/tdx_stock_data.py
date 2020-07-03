@@ -28,9 +28,11 @@ from vnpy.data.tdx.tdx_common import (
     PERIOD_MAPPING,
     get_tdx_market_code,
     get_cache_config,
+    get_cache_json,
     save_cache_config,
     get_stock_type,
-    TDX_STOCK_CONFIG)
+    TDX_STOCK_CONFIG,
+    TDX_PROXY_CONFIG)
 
 # 每个周期包含多少分钟
 NUM_MINUTE_MAPPING = {}
@@ -64,16 +66,28 @@ RQ_TDX_STOCK_MARKET_MAP = {v: k for k, v in TDX_RQ_STOCK_MARKET_MAP.items()}
 
 class TdxStockData(object):
 
-    def __init__(self, strategy=None):
+    def __init__(self, strategy=None, proxy_ip="", proxy_port=0):
         """
         构造函数
         :param strategy: 上层策略，主要用与使用write_log（）
         """
-        self.api = None
+        self.strategy = strategy
 
+        self.proxy_ip = proxy_ip
+        self.proxy_port = proxy_port
+
+        if self.proxy_port == 0 and len(self.proxy_ip)==0:
+            proxy_config = get_cache_json(TDX_PROXY_CONFIG)
+            proxy_ip = proxy_config.get('proxy_ip', '')
+            proxy_port = proxy_config.get('proxy_port', 0)
+            if len(proxy_ip) > 0 and proxy_port > 0:
+                self.proxy_ip = proxy_ip
+                self.proxy_port = proxy_port
+                self.write_log(f'使用vnpy/data/tdx/{TDX_PROXY_CONFIG}的proxy:{proxy_ip}:{proxy_port}')
+
+        self.api = None
         self.connection_status = False  # 连接状态
 
-        self.strategy = strategy
         self.best_ip = None
         self.symbol_market_dict = {}  # tdx合约与tdx市场的字典
 
@@ -116,7 +130,7 @@ class TdxStockData(object):
 
                 if len(self.best_ip) == 0:
                     from pytdx.util.best_ip import select_best_ip
-                    self.best_ip = select_best_ip()
+                    self.best_ip = select_best_ip(_type='socket', proxy_ip=self.proxy_ip, proxy_port=self.proxy_port)
                     self.config.update({'best_ip': self.best_ip})
                     save_cache_config(self.config, TDX_STOCK_CONFIG)
 
@@ -282,7 +296,8 @@ class TdxStockData(object):
                 axis=1)
             data = data.rename(
                 index=str,
-                columns={'amount': 'volume'})
+                columns={'vol': 'volume'})
+
             if len(data) == 0:
                 print('{} Handling {}, len2={}..., continue'.format(
                     str(datetime.now()), tdx_code, len(data)))
@@ -452,16 +467,16 @@ class TdxStockData(object):
                 if is_today:
                     # 获取当前交易日得交易记录
                     _res = self.api.get_transaction_data(
-                        market=self.symbol_market_dict[symbol],
-                        code=symbol,
+                        market=self.symbol_market_dict[tdx_code],
+                        code=tdx_code,
                         start=_pos,
                         count=q_size)
                 else:
                     # 获取历史交易记录
                     _res = self.api.get_history_transaction_data(
-                        market=self.symbol_market_dict[symbol],
+                        market=self.symbol_market_dict[tdx_code],
                         date=trading_date,
-                        code=symbol,
+                        code=tdx_code,
                         start=_pos,
                         count=q_size)
                 last_dt = None

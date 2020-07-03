@@ -109,8 +109,15 @@ class CtaEngine(BaseEngine):
         """
         super().__init__(main_engine, event_engine, APP_NAME)
 
+        # 股票引擎得配置，包括
+        #  "accountid" : "xxxx",  资金账号，一般用于推送消息时附带
+        #  "strategy_group": "cta_strategy_pro", # 当前实例名。多个实例时，区分开
+        #  "trade_2_wx": true  # 是否交易记录转发至微信通知
+        # "event_log: false    # 是否转发日志到event bus，显示在图形界面
+        # "snapshot2file": false # 是否保存切片到文件
         self.engine_config = {}
-
+        # 是否激活 write_log写入event bus(比较耗资源）
+        self.event_log = False
         self.strategy_setting = {}  # strategy_name: dict
         self.strategy_data = {}  # strategy_name: dict
 
@@ -222,8 +229,8 @@ class CtaEngine(BaseEngine):
                 # 每5分钟检查一次
                 if dt.minute % 10 == 0:
                     # 比对仓位，使用上述获取得持仓信息，不用重复获取
-                    #self.compare_pos(strategy_pos_list=copy(all_strategy_pos))
-                    pass
+                    self.compare_pos(strategy_pos_list=copy(all_strategy_pos))
+
 
                 # 推送到事件
                 self.put_all_strategy_pos_event(all_strategy_pos)
@@ -1301,12 +1308,13 @@ class CtaEngine(BaseEngine):
                 self.write_log(f'{strategy_name}返回得K线切片数据为空')
                 return
 
-            # 剩下工作：保存本地文件/数据库
-            snapshot_folder = get_folder_path(f'data/snapshots/{strategy_name}')
-            snapshot_file = snapshot_folder.joinpath('{}.pkb2'.format(datetime.now().strftime('%Y%m%d_%H%M%S')))
-            with bz2.BZ2File(str(snapshot_file), 'wb') as f:
-                pickle.dump(snapshot, f)
-                self.write_log(u'切片保存成功:{}'.format(str(snapshot_file)))
+            if self.engine_config.get('snapshot2file', False):
+                # 剩下工作：保存本地文件/数据库
+                snapshot_folder = get_folder_path(f'data/snapshots/{strategy_name}')
+                snapshot_file = snapshot_folder.joinpath('{}.pkb2'.format(datetime.now().strftime('%Y%m%d_%H%M%S')))
+                with bz2.BZ2File(str(snapshot_file), 'wb') as f:
+                    pickle.dump(snapshot, f)
+                    self.write_log(u'切片保存成功:{}'.format(str(snapshot_file)))
 
             # 通过事件方式，传导到account_recorder
             snapshot.update({
@@ -1681,8 +1689,13 @@ class CtaEngine(BaseEngine):
         Load setting file.
         """
         # 读取引擎得配置
+        #  "accountid" : "xxxx",  资金账号，一般用于推送消息时附带
+        #  "strategy_group": "cta_strategy_pro", # 当前实例名。多个实例时，区分开
+        #  "trade_2_wx": true  # 是否交易记录转发至微信通知
+        # "event_log: false    # 是否转发日志到event bus，显示在图形界面
         self.engine_config = load_json(self.engine_filename)
-
+        # 是否产生event log 日志（一般GUI界面才产生，而且比好消耗资源)
+        self.event_log = self.engine_config.get('event_log', False)
         # 读取策略得配置
         self.strategy_setting = load_json(self.setting_filename)
 
@@ -1754,12 +1767,13 @@ class CtaEngine(BaseEngine):
         """
         Create cta engine log event.
         """
-        # 推送至全局CTA_LOG Event
-        log = LogData(msg=f"{strategy_name}: {msg}" if strategy_name else msg,
-                      gateway_name="CtaStrategy",
-                      level=level)
-        event = Event(type=EVENT_CTA_LOG, data=log)
-        self.event_engine.put(event)
+        if self.event_log:
+            # 推送至全局CTA_LOG Event
+            log = LogData(msg=f"{strategy_name}: {msg}" if strategy_name else msg,
+                          gateway_name="CtaStrategy",
+                          level=level)
+            event = Event(type=EVENT_CTA_LOG, data=log)
+            self.event_engine.put(event)
 
         # 保存单独的策略日志
         if strategy_name:

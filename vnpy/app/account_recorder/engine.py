@@ -519,6 +519,8 @@ class AccountRecorder(BaseEngine):
         data = event.data
         dt = data.get('datetime')
 
+        #  db.today_strategy_pos.createIndex({'account_id':1,'strategy_group':1,'strategy_name':1,'date':1},{'name':'accountid_strategy_group_strategy_name_date'})
+
         account_id = data.get('accountid')
         fld = {
             'account_id': account_id,

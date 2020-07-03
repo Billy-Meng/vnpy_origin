@@ -888,7 +888,7 @@ class CtaGridTrade(CtaComponent):
         data[u'dn_grids'] = dn_grids
 
         with open(grid_json_file, 'w', encoding='utf8') as f:
-            json_data = json.dumps(data, indent=4, ensure_ascii=True)
+            json_data = json.dumps(data, indent=4, ensure_ascii=False)
             f.write(json_data)
 
         self.write_log(u'GrideTrade保存文件{}完成'.format(grid_json_file))
@@ -915,7 +915,7 @@ class CtaGridTrade(CtaComponent):
             self.write_log(u'{}不存在，新建保存保存'.format(grid_json_file))
             try:
                 with open(grid_json_file, 'w') as f:
-                    json_data = json.dumps(data, indent=4, ensure_ascii=True)
+                    json_data = json.dumps(data, indent=4, ensure_ascii=False)
                     f.write(json_data)
             except Exception as ex:
                 self.write_log(u'写入网格文件{}异常:{}'.format(grid_json_file, str(ex)))

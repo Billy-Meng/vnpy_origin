@@ -1,5 +1,5 @@
 # encoding: UTF-8
-
+from __future__ import unicode_literals
 import os
 import json
 from datetime import datetime
@@ -103,7 +103,7 @@ class CtaPolicy(CtaComponent):
             json_data = self.to_json()
             json_data['save_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             with open(json_file, 'w') as f:
-                data = json.dumps(json_data, indent=4)
+                data = json.dumps(json_data, indent=4, ensure_ascii=False)
                 f.write(data)
 
         except IOError as ex:

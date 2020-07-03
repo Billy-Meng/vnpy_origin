@@ -14,6 +14,7 @@ from queue import Empty
 from threading import Thread, Condition
 from typing import Optional
 import shelve
+import chardet
 
 from ibapi import comm
 from ibapi.client import EClient
@@ -79,7 +80,8 @@ EXCHANGE_VT2IB = {
     Exchange.HKFE: "HKFE",
     Exchange.CFE: "CFE",
     Exchange.NYSE: "NYSE",
-    Exchange.NASDAQ: "NASDAQ"
+    Exchange.NASDAQ: "NASDAQ",
+    Exchange.AMEX: "AMEX"
 }
 EXCHANGE_IB2VT = {v: k for k, v in EXCHANGE_VT2IB.items()}
 
@@ -176,7 +178,7 @@ class IbGateway(BaseGateway):
         port = setting["TWS端口"]
         clientid = setting["客户号"]
         account = setting["交易账户"]
-
+        self.write_log(f'开始连接{account}')
         self.api.connect(host, port, clientid, account)
 
     def close(self):
@@ -184,11 +186,13 @@ class IbGateway(BaseGateway):
         Close gateway connection.
         """
         self.api.close()
+        self.write_log(f'{self.gateway_name}断开')
 
     def subscribe(self, req: SubscribeRequest):
         """
         Subscribe tick data update.
         """
+        self.write_log(f'订阅行情:{req.__dict__}')
         self.api.subscribe(req)
 
     def send_order(self, req: OrderRequest):
@@ -623,6 +627,7 @@ class IbApi(EWrapper):
         Connect to TWS.
         """
         if self.status:
+            self.gateway.write_log(f'已连接，不再重连')
             return
 
         self.clientid = clientid
@@ -728,10 +733,12 @@ class IbApi(EWrapper):
 
     def query_history(self, req: HistoryRequest):
         """"""
+        self.gateway.write_log(f'查询历史数据:{req.__dict__}')
         self.history_req = req
 
         self.reqid += 1
 
+        # 转换为ib的合约
         ib_contract = generate_ib_contract(req.symbol, req.exchange)
 
         if req.end:
@@ -822,21 +829,26 @@ class IbClient(EClient):
 def generate_ib_contract(symbol: str, exchange: Exchange) -> Optional[Contract]:
     """生成ib合约"""
     try:
-        fields = symbol.split(JOIN_SYMBOL)
-
         ib_contract = Contract()
-        ib_contract.exchange = EXCHANGE_VT2IB[exchange]
-        ib_contract.secType = fields[-1]
-        ib_contract.currency = fields[-2]
-        ib_contract.symbol = fields[0]
+        if JOIN_SYMBOL in symbol:
+            fields = symbol.split(JOIN_SYMBOL)
+            ib_contract.exchange = EXCHANGE_VT2IB[exchange]
+            ib_contract.secType = fields[-1]
+            ib_contract.currency = fields[-2]
+            ib_contract.symbol = fields[0]
 
-        if ib_contract.secType in ["FUT", "OPT", "FOP"]:
-            ib_contract.lastTradeDateOrContractMonth = fields[1]
+            if ib_contract.secType in ["FUT", "OPT", "FOP"]:
+                ib_contract.lastTradeDateOrContractMonth = fields[1]
 
-        if ib_contract.secType in ["OPT", "FOP"]:
-            ib_contract.right = fields[2]
-            ib_contract.strike = float(fields[3])
-            ib_contract.multiplier = int(fields[4])
+            if ib_contract.secType in ["OPT", "FOP"]:
+                ib_contract.right = fields[2]
+                ib_contract.strike = float(fields[3])
+                ib_contract.multiplier = int(fields[4])
+        else:
+            ib_contract.symbol = symbol
+            ib_contract.exchange = EXCHANGE_VT2IB[exchange]
+            ib_contract.secType = "STK"
+
     except IndexError:
         ib_contract = None
 

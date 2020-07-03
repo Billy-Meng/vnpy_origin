@@ -89,7 +89,7 @@ def get_tdx_marketid(symbol):
 
 
 class TdxFutureData(object):
-
+    exclude_ips = []
     # ----------------------------------------------------------------------
     def __init__(self, strategy=None, best_ip={}, proxy_ip="", proxy_port=0):
         """
@@ -132,14 +132,15 @@ class TdxFutureData(object):
                 self.write_log(u'开始连接通达信行情服务器')
                 self.api = TdxExHq_API(heartbeat=True, auto_retry=True, raise_exception=True)
 
-                exclude_ips = []
                 # 选取最佳服务器
                 if is_reconnect or len(self.best_ip) == 0:
                     self.best_ip = get_cache_json(TDX_FUTURE_CONFIG)
 
                     if is_reconnect:
                         if is_reconnect:
-                            exclude_ips.append(self.best_ip.get('ip'))
+                            selected_ip = self.best_ip.get('ip')
+                            if selected_ip not in self.exclude_ips:
+                                self.exclude_ips.append(selected_ip)
                         self.best_ip = {}
                     else:
                         # 超时的话，重新选择
@@ -149,13 +150,14 @@ class TdxFutureData(object):
                                 last_datetime = datetime.strptime(last_datetime_str, '%Y-%m-%d %H:%M:%S')
                                 if (datetime.now() - last_datetime).total_seconds() > 60 * 60 * 2:
                                     self.best_ip = {}
+                                    self.exclude_ips = []
                             except Exception as ex: # noqa
                                 self.best_ip = {}
                         else:
                             self.best_ip = {}
 
                 if len(self.best_ip) == 0:
-                    self.best_ip = self.select_best_ip(exclude_ips)
+                    self.best_ip = self.select_best_ip(self.exclude_ips)
                     self.write_log(f'选取服务器:{self.best_ip}')
                 else:
                     self.write_log(f'使用缓存服务器:{self.best_ip}')
@@ -182,7 +184,13 @@ class TdxFutureData(object):
                     # 更新 symbol_exchange_dict , symbol_market_dict
                     #    self.qryInstrument()
         except Exception as ex:
-            self.write_log(u'连接服务器tdx异常:{},{}'.format(str(ex), traceback.format_exc()))
+            ip = self.best_ip.get('ip', '')
+            self.write_log(u'连接服务器tdx:{} 异常:{},{}'.format(ip,str(ex), traceback.format_exc()))
+            if ip not in self.exclude_ips:
+                self.write_log(f'添加{ip}到异常列表中')
+                self.exclude_ips.append(ip)
+            self.best_ip = {}
+
             return
 
     # ----------------------------------------------------------------------
@@ -218,7 +226,8 @@ class TdxFutureData(object):
         :return:
         """
         self.write_log(u'选择通达信行情服务器')
-
+        if len(exclude_ips) > 0:
+            self.write_log(f'排除IP:{self.exclude_ips}')
         data_future = [self.ping(x['ip'], x['port']) for x in TDX_FUTURE_HOSTS if x['ip'] not in exclude_ips]
 
         best_future_ip = TDX_FUTURE_HOSTS[data_future.index(min(data_future))]
@@ -226,6 +235,8 @@ class TdxFutureData(object):
         self.write_log(u'选取 {}:{}'.format(best_future_ip['ip'], best_future_ip['port']))
         # print(u'选取 {}:{}'.format(best_future_ip['ip'], best_future_ip['port']))
         best_future_ip.update({'datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S')})
+        # 写入排除列表
+        best_future_ip.update({'exclude_ips': exclude_ips})
         save_cache_json(best_future_ip, TDX_FUTURE_CONFIG)
         return best_future_ip
 
@@ -870,7 +881,7 @@ class TdxFutureData(object):
                 '{},{},{},{},{}'.format(tdx_market_id, full_symbol, underlying_symbol, mi_symbol, vn_exchange))
             if underlying_symbol in self.future_contracts:
                 info = self.future_contracts.get(underlying_symbol)
-                if mi_symbol > info.get('mi_symbol'):
+                if mi_symbol > info.get('mi_symbol', ''):
                     self.write_log(u'主力合约变化:{} =>{}'.format(info.get('mi_symbol'), mi_symbol))
                     info.update({'mi_symbol': mi_symbol, 'full_symbol': full_symbol})
                     self.future_contracts.update({underlying_symbol: info})
