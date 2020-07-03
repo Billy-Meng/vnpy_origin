@@ -180,13 +180,12 @@ class PositionData(BaseData):
 
     symbol: str
     exchange: Exchange
-    direction: Direction
-
-    volume: float = 0
-    frozen: float = 0
-    price: float = 0
-    pnl: float = 0
-    yd_volume: float = 0
+    direction: Direction                # 交易方向
+    volume: float = 0                   # 今仓数量
+    frozen: float = 0                   # 冻结数量
+    price: float = 0                    # 开仓均价
+    pnl: float = 0                      # 持仓盈亏
+    yd_volume: float = 0                # 昨仓数量
 
     def __post_init__(self):
         """"""
@@ -202,10 +201,10 @@ class AccountData(BaseData):
     """
 
     accountid: str                      #账户ID
-
     balance: float = 0                  #今日总资金
     pre_balance: float = 0              #上个交易日总资金(币圈交易所为人民币计价总资金)
     available: float = 0                #可用资金
+    equity: float = 0                   #账户权益
     percent: float = 0                  #资金使用率
     frozen: float = 0                   #冻结资金
     commission: float = 0               #手续费

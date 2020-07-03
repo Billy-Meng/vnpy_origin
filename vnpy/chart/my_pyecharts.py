@@ -8,6 +8,10 @@ from pyecharts import options as opts
 from pyecharts.globals import ThemeType, SymbolType
 from pyecharts.charts import Bar, Kline, Line, Grid, EffectScatter, Tab
 
+# 忽略警告信息
+import warnings
+warnings.filterwarnings("ignore")
+
 class MyPyecharts():
 
     kline_chart = None
@@ -19,11 +23,12 @@ class MyPyecharts():
         self.grid = grid
         self.grid_quantity = grid_quantity
         self.chart_id = chart_id
+        self.bar_data_datetime = list(self.bar_data.index.strftime("%Y-%m-%d %H:%M"))
 
     def kline(self):
         """"""
         kline = Kline(init_opts=opts.InitOpts(width="1400px", height="800px"))
-        kline.add_xaxis(xaxis_data=list(self.bar_data.index))
+        kline.add_xaxis(xaxis_data=self.bar_data_datetime)
         kline.add_yaxis(
             series_name=f"{self.bar_data.symbol[0]}",
             yaxis_index = 0,
@@ -248,7 +253,7 @@ class MyPyecharts():
         # Buy，深红色向上箭头
         trade_buy = (
             EffectScatter()
-            .add_xaxis(xaxis_data = list(self.trade_data[(self.trade_data.direction == "多") & (self.trade_data.offset == "开")].index))
+            .add_xaxis(xaxis_data = list(self.trade_data[(self.trade_data.direction == "多") & (self.trade_data.offset == "开")].index.strftime("%Y-%m-%d %H:%M")))
             .add_yaxis(
                 series_name = "Buy", 
                 y_axis = self.trade_data[(self.trade_data.direction == "多") & (self.trade_data.offset == "开")].trade_price.values.tolist(),
@@ -264,7 +269,7 @@ class MyPyecharts():
         # Sell，深红色向下箭头
         trade_sell = (
             EffectScatter()
-            .add_xaxis(xaxis_data = list(self.trade_data[(self.trade_data.direction == "空") & (self.trade_data.offset == "平")].index))
+            .add_xaxis(xaxis_data = list(self.trade_data[(self.trade_data.direction == "空") & (self.trade_data.offset == "平")].index.strftime("%Y-%m-%d %H:%M")))
             .add_yaxis(
                 series_name = "Sell", 
                 y_axis = self.trade_data[(self.trade_data.direction == "空") & (self.trade_data.offset == "平")].trade_price.values.tolist(),
@@ -280,7 +285,7 @@ class MyPyecharts():
         # Short，深绿色向下箭头
         trade_short = (
             EffectScatter()
-            .add_xaxis(xaxis_data = list(self.trade_data[(self.trade_data.direction == "空") & (self.trade_data.offset == "开")].index))
+            .add_xaxis(xaxis_data = list(self.trade_data[(self.trade_data.direction == "空") & (self.trade_data.offset == "开")].index.strftime("%Y-%m-%d %H:%M")))
             .add_yaxis(
                 series_name = "Short", 
                 y_axis = self.trade_data[(self.trade_data.direction == "空") & (self.trade_data.offset == "开")].trade_price.values.tolist(),
@@ -296,7 +301,7 @@ class MyPyecharts():
         # Cover，深绿色向上箭头
         trade_cover = (
             EffectScatter()
-            .add_xaxis(xaxis_data = list(self.trade_data[(self.trade_data.direction == "多") & (self.trade_data.offset == "平")].index))
+            .add_xaxis(xaxis_data = list(self.trade_data[(self.trade_data.direction == "多") & (self.trade_data.offset == "平")].index.strftime("%Y-%m-%d %H:%M")))
             .add_yaxis(
                 series_name = "Cover", 
                 y_axis = self.trade_data[(self.trade_data.direction == "多") & (self.trade_data.offset == "平")].trade_price.values.tolist(),
@@ -329,7 +334,7 @@ class MyPyecharts():
 
         balance_line = (
             Line()
-            .add_xaxis(xaxis_data = list(bar_data.index))
+            .add_xaxis(xaxis_data = self.bar_data_datetime)
             .add_yaxis(
                 series_name = "Balance",
                 y_axis = bar_data.balance.apply(lambda x: round(x, 2)).values.tolist(),
@@ -348,7 +353,7 @@ class MyPyecharts():
 
         SMA_line = (
             Line()
-            .add_xaxis(xaxis_data=list(self.bar_data.index))
+            .add_xaxis(xaxis_data=self.bar_data_datetime)
             .set_global_opts(xaxis_opts=opts.AxisOpts(type_="category"))
         )
 
@@ -373,7 +378,7 @@ class MyPyecharts():
 
         EMA_line = (
             Line()
-            .add_xaxis(xaxis_data=list(self.bar_data.index))
+            .add_xaxis(xaxis_data=self.bar_data_datetime)
             .set_global_opts(xaxis_opts=opts.AxisOpts(type_="category"))
         )
 
@@ -400,7 +405,7 @@ class MyPyecharts():
 
         BOLL_line = (
             Line()
-            .add_xaxis(xaxis_data=list(self.bar_data.index)) 
+            .add_xaxis(xaxis_data=self.bar_data_datetime) 
             .add_yaxis(
                 series_name = "boll_up",
                 y_axis = boll_up.tolist(),
@@ -446,7 +451,7 @@ class MyPyecharts():
         # MACD快慢线
         macd_line = (
             Line()
-            .add_xaxis(xaxis_data=list(self.bar_data.index))
+            .add_xaxis(xaxis_data=self.bar_data_datetime)
             .add_yaxis(
                 series_name="DIF",
                 y_axis=macd_dif.tolist(),
@@ -491,7 +496,7 @@ class MyPyecharts():
         # MACD柱状线
         macd_bar = (
             Bar()
-            .add_xaxis(xaxis_data = list(self.bar_data.index))
+            .add_xaxis(xaxis_data = self.bar_data_datetime)
             .add_yaxis(
                 series_name = "MACD",
                 y_axis = macd_bar.tolist(),

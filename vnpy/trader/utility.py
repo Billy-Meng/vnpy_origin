@@ -627,6 +627,383 @@ class BarGenerator:
 
         return bar_data_df
 
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    # 对数价格K线合成
+    def update_tick_log(self, tick: TickData) -> None:
+        """
+        Update new tick data into generator.
+        """
+        new_minute = False
+
+        # Filter tick data with 0 last price
+        if not tick.last_price:
+            return
+
+        # Filter tick data with older timestamp
+        if self.last_tick and tick.datetime < self.last_tick.datetime:
+            return
+
+        if not self.bar:
+            new_minute = True
+        
+        # 官方版本合成方式。从每分钟的00秒开始，到本分钟59秒，合成一分钟bar，bar的时间戳为合成起始时间。Bug:会丢失交易所休市时最后一两个推送的Tick数据。
+        elif self.bar.datetime.minute != tick.datetime.minute:
+        
+        # 从每分钟的50秒开始，到下一分钟的49秒，合成一分钟bar
+        # elif tick.datetime.second >= 50 and self.last_tick.datetime.second < 50:
+
+        # 从每分钟的01秒开始，到下一分钟的00秒，合成一分钟bar，bar的时间戳为合成结束时间。Bug:会丢失交易所休市时最后一分钟bar数据。
+        # elif tick.datetime.second >= 1 and self.last_tick.datetime.second < 1:
+
+            self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)
+            self.on_bar(self.bar)
+
+            new_minute = True
+
+        if new_minute:
+            # Tick对数价格
+            log_tick = np.log(tick.last_price)
+
+            self.bar = BarData(
+                symbol=tick.symbol,
+                exchange=tick.exchange,
+                interval=Interval.MINUTE,
+                datetime=tick.datetime,
+                gateway_name=tick.gateway_name,
+                open_price=log_tick,
+                high_price=log_tick,
+                low_price=log_tick,
+                close_price=log_tick,
+                open_interest=tick.open_interest
+            )
+        else:
+            # Tick对数价格
+            log_tick = np.log(tick.last_price)
+            
+            self.bar.high_price = max(self.bar.high_price, log_tick)
+            self.bar.low_price = min(self.bar.low_price, log_tick)
+            self.bar.close_price = tick.last_price
+            self.bar.open_interest = tick.open_interest
+            self.bar.datetime = tick.datetime
+
+        if self.last_tick:
+            volume_change = tick.volume - self.last_tick.volume
+            self.bar.volume += max(volume_change, 0)
+
+        self.last_tick = tick
+
+    def update_second_bar_log(self, tick: TickData):
+        """
+        Update new tick data into second generator.
+        """
+        # 待合成的second_bar仅限 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60秒钟 K线
+        if self.second_window not in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]:
+            return
+
+        # Filter tick data with 0 last price
+        if not tick.last_price:
+            return
+
+        # Filter tick data with older timestamp
+        if self.last_tick and tick.datetime < self.last_tick.datetime:
+            return
+
+
+        new_second_bar = False
+        
+        if not self.second_bar:
+            new_second_bar = True
+
+        elif (tick.datetime.second in self.second_bar_range) and (tick.datetime.second != self.last_tick.datetime.second):
+            bar_second = (tick.datetime - timedelta(seconds=self.second_window)).second
+            self.second_bar.datetime = self.second_bar.datetime.replace(second=bar_second, microsecond=0)
+            self.on_second_bar(self.second_bar)
+            new_second_bar = True
+
+        if new_second_bar:
+            # Tick对数价格
+            log_tick = np.log(tick.last_price)
+
+            self.second_bar = BarData(
+                symbol=tick.symbol,
+                exchange=tick.exchange,
+                interval=f"{self.second_window}s",
+                datetime=tick.datetime,
+                gateway_name=tick.gateway_name,
+                open_price=log_tick,
+                high_price=log_tick,
+                low_price=log_tick,
+                close_price=log_tick,
+                open_interest=tick.open_interest
+            )
+        else:
+            # Tick对数价格
+            log_tick = np.log(tick.last_price)
+
+            self.second_bar.high_price = max(self.second_bar.high_price, log_tick)
+            self.second_bar.low_price = min(self.second_bar.low_price, log_tick)
+            self.second_bar.close_price = log_tick
+            self.second_bar.open_interest = tick.open_interest
+            self.second_bar.datetime = tick.datetime
+
+        if self.last_tick:
+            volume_change = tick.volume - self.last_tick.volume
+            self.second_bar.volume += max(volume_change, 0)
+
+        # Cache last tick object
+        self.last_tick = tick
+
+    def update_1_minute_bar_log(self, second_bar: BarData) -> None:
+        """
+        将Tick合成或数据接口加载的X秒钟second_bar，合成1分钟bar,并回调on_bar。
+        """
+        if self.second_window == 60:
+            new_minute = True
+
+            dt = second_bar.datetime.replace(second=0, microsecond=0)
+            self.second_window_bar = BarData(
+                    symbol=second_bar.symbol,
+                    exchange=second_bar.exchange,
+                    interval=Interval.MINUTE,
+                    datetime=dt,
+                    gateway_name=second_bar.gateway_name,
+                    open_price=np.log(second_bar.open_price),
+                    high_price=np.log(second_bar.high_price),
+                    low_price=np.log(second_bar.low_price),
+                    close_price=np.log(second_bar.close_price),
+                    volume=second_bar.volume,
+                    open_interest=second_bar.open_interest
+                )
+
+        else:
+            # If not inited, creaate second window bar object
+            if not self.second_window_bar:
+                # Generate timestamp for bar data
+                dt = second_bar.datetime.replace(second=0, microsecond=0)
+
+                self.second_window_bar = BarData(
+                    symbol=second_bar.symbol,
+                    exchange=second_bar.exchange,
+                    interval=Interval.MINUTE,
+                    datetime=dt,
+                    gateway_name=second_bar.gateway_name,
+                    open_price=np.log(second_bar.open_price),
+                    high_price=np.log(second_bar.high_price),
+                    low_price=np.log(second_bar.low_price)
+                )
+
+            # Otherwise, update high/low price into window bar
+            else:
+                self.second_window_bar.high_price = max(self.second_window_bar.high_price, np.log(second_bar.high_price))
+                self.second_window_bar.low_price  = min(self.second_window_bar.low_price, np.log(second_bar.low_price))
+
+            # Update close price/volume into window bar
+            self.second_window_bar.close_price = np.log(second_bar.close_price)
+            self.second_window_bar.volume += int(second_bar.volume)
+            self.second_window_bar.open_interest = second_bar.open_interest
+
+            new_minute = False
+
+            # 传入的second_bar已经走完一分钟，则启动 on_bar
+            if (second_bar.datetime + timedelta(seconds=self.second_window)).second == 0:
+                new_minute = True
+
+        if new_minute:
+            self.on_bar(self.second_window_bar)
+            self.second_window_bar = None
+
+    def update_bar_log(self, bar: BarData) -> None:
+        """
+        Update 1 minute bar into generator
+        """
+        # If not inited, creaate window bar object
+        if not self.window_bar:
+            # Generate timestamp for bar data
+            if self.interval == Interval.MINUTE:
+                dt = bar.datetime.replace(second=0, microsecond=0)
+
+            elif self.interval == Interval.HOUR:
+                dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
+
+            elif self.interval == Interval.DAILY:
+                dt = bar.datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            self.window_bar = BarData(
+                symbol=bar.symbol,
+                exchange=bar.exchange,
+                interval=self.interval,
+                datetime=dt,
+                gateway_name=bar.gateway_name,
+                open_price=np.log(bar.open_price),
+                high_price=np.log(bar.high_price),
+                low_price=np.log(bar.low_price)
+            )
+
+        # Otherwise, update high/low price into window bar
+        else:
+            self.window_bar.high_price = max(self.window_bar.high_price, np.log(bar.high_price))
+            self.window_bar.low_price = min(self.window_bar.low_price, np.log(bar.low_price))
+
+        # Update close price/volume into window bar
+        self.window_bar.close_price = np.log(bar.close_price)
+        self.window_bar.volume += int(bar.volume)
+        self.window_bar.open_interest = bar.open_interest
+
+
+        # Check if window bar completed
+        finished = False
+
+        # X分钟K线合成
+        if self.interval == Interval.MINUTE:
+            # *****************************************************************************************************
+            # 官方版本合成方式。整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
+            if not (bar.datetime.minute + 1) % self.window:
+                finished = True            
+            # *****************************************************************************************************
+            # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
+            # if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+            #     if self.window == 1:
+            #             finished = True
+                
+            #     else:
+            #         self.interval_count += 1
+            #         if not self.interval_count % self.window:
+            #             finished = True
+            #             self.interval_count = 0
+            # *****************************************************************************************************
+            
+        # X小时K线合成，计数切分法进行N小时K线合成，可以合成任意小时K线
+        elif self.interval == Interval.HOUR:
+            if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
+                # 1-hour bar
+                if self.window == 1:
+                    finished = True
+                # x-hour bar
+                else:
+                    self.interval_count += 1
+
+                    if not self.interval_count % self.window:
+                        finished = True
+                        self.interval_count = 0
+
+        # 日K线合成
+        elif self.interval == Interval.DAILY:
+            # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
+            if self.last_bar and bar.datetime.date() != ArrayManager().TrueDate(bar):
+                finished = True
+
+            # 针对每天开盘和收盘为同一天的日K线合成
+            # if self.last_bar and bar.datetime.day != self.last_bar.datetime.day:
+            #     finished = True
+
+        if finished:
+            self.on_window_bar(self.window_bar)
+            self.window_bar = None
+
+        # Cache last bar object
+        self.last_bar = bar
+
+    def generate_bar_log(self, bar: BarData) -> None:
+        """
+        通过一分钟的Bar，生成各级别周期Bar，并缓存在列表中
+        """
+        # If not inited, creaate window bar object
+        if not self.window_bar:
+            # Generate timestamp for bar data
+            if self.interval == Interval.MINUTE:
+                dt = bar.datetime.replace(second=0, microsecond=0)
+
+            elif self.interval == Interval.HOUR:
+                dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
+
+            elif self.interval == Interval.DAILY:
+                dt = bar.datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            self.window_bar = BarData(
+                symbol=bar.symbol,
+                exchange=bar.exchange,
+                interval=self.interval,
+                datetime=dt,
+                gateway_name=bar.gateway_name,
+                open_price=np.log(bar.open_price),
+                high_price=np.log(bar.high_price),
+                low_price=np.log(bar.low_price)
+            )
+
+        # Otherwise, update high/low price into window bar
+        else:
+            self.window_bar.high_price = max(self.window_bar.high_price, np.log(bar.high_price))
+            self.window_bar.low_price = min(self.window_bar.low_price, np.log(bar.low_price))
+
+        # Update close price/volume into window bar
+        self.window_bar.close_price = np.log(bar.close_price)
+        self.window_bar.volume += int(bar.volume)
+        self.window_bar.open_interest = bar.open_interest
+
+
+        # Check if window bar completed
+        finished = False
+
+        # X分钟K线合成
+        if self.interval == Interval.MINUTE:
+            # *****************************************************************************************************
+            # 官方版本合成方式。整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
+            if not (bar.datetime.minute + 1) % self.window:
+                finished = True            
+            # *****************************************************************************************************
+            # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
+            # if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+            #     if self.window == 1:
+            #             finished = True
+                
+            #     else:
+            #         self.interval_count += 1
+            #         if not self.interval_count % self.window:
+            #             finished = True
+            #             self.interval_count = 0
+            # *****************************************************************************************************
+            
+        # X小时K线合成，计数切分法进行N小时K线合成，可以合成任意小时K线
+        elif self.interval == Interval.HOUR:
+            if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
+                # 1-hour bar
+                if self.window == 1:
+                    finished = True
+                # x-hour bar
+                else:
+                    self.interval_count += 1
+
+                    if not self.interval_count % self.window:
+                        finished = True
+                        self.interval_count = 0
+
+        # 日K线合成
+        elif self.interval == Interval.DAILY:
+            # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
+            if self.last_bar and bar.datetime.date() != ArrayManager().TrueDate(bar):
+                finished = True
+
+            # 针对每天开盘和收盘为同一天的日K线合成
+            # if self.last_bar and bar.datetime.day != self.last_bar.datetime.day:
+            #     finished = True
+
+        if finished:
+            self.bar_data_list.append(self.window_bar)
+            self.window_bar = None
+
+        # Cache last bar object
+        self.last_bar = bar
+
+    def get_bar_data_df_log(self):
+        bar_data = [bar.__dict__ for bar in self.bar_data_list]
+        bar_data_df = pd.DataFrame(bar_data)
+        bar_data_df = bar_data_df.set_index("datetime")
+        bar_data_df = bar_data_df[["symbol", "open_price", "high_price", "low_price", "close_price", "volume", "open_interest"]]
+        bar_data_df[["open_price", "high_price", "low_price", "close_price"]].applymap(np.log)
+
+        return bar_data_df_log
+
     def generate(self) -> None:
         """
         Generate the bar data and call callback immediately.
@@ -1141,7 +1518,7 @@ class ArrayManager(object):
         Ultimate Oscillator. 终极波动指标：UOS是一种多方位功能的指标，除了趋势确认及超买超卖方面的作用之外，它的“突破”讯号不仅可以提供最适当的交易时机之外，更可以进一步加强指标的可靠度。
         """
         if log:
-            result = talib.WILLR(np.log(self.high), np.log(self.low), np.log(self.close))
+            result = talib.ULTOSC(np.log(self.high), np.log(self.low), np.log(self.close))
         else:
             result = talib.ULTOSC(self.high, self.low, self.close)
 
@@ -1167,7 +1544,7 @@ class ArrayManager(object):
 
     def donchian(self, n: int, array: bool = False, log: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
         """
-        Donchian Channel. 唐奇安通道
+        Donchian Channel. 唐奇安通道，以N周期内的最高价和最低价作为通道上下轨
         """
         if log:
             up = talib.MAX(np.log(self.high), n)
@@ -1175,6 +1552,22 @@ class ArrayManager(object):
         else:
             up = talib.MAX(self.high, n)
             down = talib.MIN(self.low, n)
+
+        if array:
+            return up, down
+        return up[-1], down[-1]
+
+    def donchian_close(self, n: int, array: bool = False, log: bool = False) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
+        """
+        Donchian Channel. 唐奇安通道变种，以N周期内的收盘价最高最低点作为通道上下轨
+        """
+        if log:
+            close = np.log(self.close)
+            up = talib.MAX(close, n)
+            down = talib.MIN(close, n)
+        else:
+            up = talib.MAX(self.close, n)
+            down = talib.MIN(self.close, n)
 
         if array:
             return up, down
@@ -1842,7 +2235,7 @@ class ArrayManager(object):
 
     def CDLPIERCING(self, array: bool = False) -> Union[float, np.ndarray]:
         """
-        Piercing Pattern 刺透形态：两日K线模式，下跌趋势中，第一日阴线，第二日收盘价低于前一日最低价， 收盘价处在第一日实体上部，预示着底部反转。
+        Piercing Pattern 刺透形态：两日K线模式，下跌趋势中，第一日阴线，第二日开盘价低于前一日最低价， 收盘价处在第一日实体上部，预示着底部反转。
         """
         result = talib.CDLPIERCING(self.open, self.high, self.low, self.close)
         if array:
@@ -1975,6 +2368,9 @@ class ArrayManager(object):
             return result
         return result[-1]
 
+    def candle_pattern_recognition(self):
+        pass
+
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #
     # Math Operators 数学运算
@@ -2079,13 +2475,17 @@ class ArrayManager(object):
 
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #
-    # 丰富 Talib 库指标
-    def bias(self, n: int, array: bool = False, matype = 0) -> Union[float, np.ndarray]:
+    # 丰富技术指标
+    def bias(self, n: int, array: bool = False, log: bool = False, matype = 0) -> Union[float, np.ndarray]:
         """
         BIAS. 乖离率指标 (乖离率=[(当日收盘价-N日平均价)/N日平均价]*100%)
         乖离率（BIAS）简称Y值也叫偏离率，是反映一定时期内股价与其移动平均数偏离程度的指标。
         """
-        MA_array = talib.MA(self.close, timeperiod=n, matype=matype)
+        if log:
+            MA_array = talib.MA(np.log(self.close), timeperiod=n, matype=matype)
+        else:
+            MA_array = talib.MA(self.close, timeperiod=n, matype=matype)
+        
         result = ((self.close - MA_array) / MA_array) * 100
         if array:
             return result
@@ -2101,11 +2501,124 @@ class ArrayManager(object):
         当日J值 = 3当日K值 - 2当日D值。            
         若无前一日K 值与D值，则可分别用50来代替。
         """
-        k_value, d_value = talib.STOCH(self.high, self.low, self.close, fastk_period=fastk_period, slowk_period=slowk_period, slowk_matype=matype, slowd_period=slowd_period, slowd_matype=matype)
-        j_value = 3 * k_value - 2 * d_value
+        df = pd.DataFrame({"high":self.high, "low":self.low})
+        hv = df.high.rolling(fastk_period).max().values
+        lv = df.low.rolling(fastk_period).min().values
+        rsv = np.where(hv == lv, 0, (self.close - lv) / (hv - lv) * 100)
+        k = talib.MA(rsv, timeperiod=slowk_period, matype=matype)
+        d = talib.MA(k, timeperiod=slowd_period, matype=matype)
+
+        # k, d = talib.STOCH(self.high, self.low, self.close, fastk_period=fastk_period, slowk_period=slowk_period, slowk_matype=matype, slowd_period=slowd_period, slowd_matype=matype)
+        
+        j = 3 * k - 2 * d
+
         if array:
-            return k_value, d_value, j_value
-        return k_value[-1], d_value[-1], j_value[-1]
+            return k, d, j
+        return k[-1], d[-1], j[-1]
+
+    def c_sub_o(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        (Close - Open)差价序列（区分阴阳的K线实体大小）
+        """
+        if log:
+            result = np.log(self.close) - np.log(self.open)
+        else:
+            result = self.close - self.open
+
+        if array:
+            return result
+        return result[-1]
+
+    def rise_fall(self,array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        K线上涨或下跌标记，1为上涨，-1为下跌。
+        """
+        if log:
+            result =  np.where(np.log(self.close) >= np.log(self.open), 1, -1)
+        else:
+            result = np.where(self.close >= self.open, 1, -1)
+
+        if array:
+            return result
+        return result[-1]
+
+    def abs_c_sub_o(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        (Close - Open)的绝对值差价序列（K线实体大小）
+        """
+        if log:
+            result = abs(np.log(self.close) - np.log(self.open))
+        else:
+            result = abs(self.close - self.open)
+
+        if array:
+            return result
+        return result[-1]
+
+    def min_o_or_c(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        取 Open 或 Close 中较小值的价格序列（K线实体下沿价格）
+        """
+        if log:
+            result = np.where(self.c_sub_o < 0, np.log(self.close), np.log(self.open))
+        else:
+            result = np.where(self.c_sub_o < 0, self.close, self.open)
+
+        if array:
+            return result
+        return result[-1]
+
+    def max_o_or_c(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        取 Open 或 Close 中较大值的价格序列（K线实体上沿价格）
+        """
+        if log:
+            result = np.where(self.c_sub_o > 0, np.log(self.close), np.log(self.open))
+        else:
+            result = np.where(self.c_sub_o > 0, self.close, self.open)
+
+        if array:
+            return result
+        return result[-1]
+
+    def lower_edge_high(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        在指定序列长度中， Open 或 Close 中较小值与最低点的距离，所构成的差价序列（K线实体下沿距离最低点的高度）
+        """
+        if log:
+            result = self.min_o_or_c(array=True, log=True)[-n:] - np.log(min(self.low[-n:]))
+        else:
+            result = self.min_o_or_c(array=True)[-n:] - min(self.low[-n:])
+
+        if array:
+            return result
+        return result[-1]
+
+    def upper_edge_high(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        在指定序列长度中， Open 或 Close 中较大值与最低点的距离，所构成的差价序列（K线实体上沿距离最低点的高度）
+        """
+        if log:
+            result = self.max_o_or_c(array=True, log=True)[-n:] - np.log(min(self.low[-n:]))
+        else:
+            result = self.max_o_or_c(array=True)[-n:] - min(self.low[-n:])
+
+        if array:
+            return result
+        return result[-1]
+
+    def median_point_high(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        在指定序列长度中， Open与Close的中间点距离最低价的高度（K线实体的中间点距离最低点的高度）
+        """
+        if log:
+            result = (self.min_o_or_c(array=True, log=True)[-n:] - np.log(min(self.low[-n:]))) + self.abs_c_sub_o(array=True, log=True)[-n:] * 0.5
+        else:
+            result = self.min_o_or_c(array=True)[-n:] - min(self.low[-n:]) + self.abs_c_sub_o(array=True)[-n:] * 0.5
+
+        if array:
+            return result
+        return result[-1]
 
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #

@@ -543,8 +543,8 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "average_drawdown": "%平均回撤",
         "lw_drawdown": "%线性加权回撤",
         "average_square_drawdown": "%均方回撤",
-        "max_drawdown_duration": "最长回撤天数",
-        "max_drawdown_range": "最长回撤区间",
+        "max_drawdown_duration": "最大回撤天数",
+        "max_drawdown_range": "最大回撤区间",
 
         "daily_return": "日均收益率",
         "return_std": "收益标准差",
@@ -557,9 +557,10 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "R_squared": "R平方",
         "tail_ratio": "尾部比率",
 
-        "total_net_pnl": "总盈亏",
-        "total_commission": "总手续费",
-        "total_slippage": "总滑点费",
+        "total_pnl": "交易总盈亏",
+        "total_net_pnl": "交易净盈亏",
+        "total_commission": "交易手续费",
+        "total_slippage": "交易滑点费",
         "total_trade_count": "总成交数量",
         "total_trade": "总交易笔数",
 
@@ -567,6 +568,7 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "daily_commission": "日均手续费",
         "daily_slippage": "日均滑点费",
         "daily_trade_count": "日均交易笔数",
+        "daily_trade_max": "单日最多交易笔数",
 
         "max_profit": "单笔最大盈利",
         "max_loss": "单笔最大亏损",
@@ -579,14 +581,49 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "average_commission": "平均每笔手续费",
         "average_slippage": "平均每笔滑点费",
         "trade_duration": "平均持仓小时",
+        "trade_duration_max": "最长持仓小时",
 
         "total_profit": "盈利总金额",
-        "profit_mean": "盈利交易均值",
-        "profit_duration": "盈利持仓小时",
-
         "total_loss": "亏损总金额",
+        "profit_mean": "盈利交易均值",
         "loss_mean": "亏损交易均值",
-        "loss_duration": "亏损持仓小时"
+        "profit_duration": "盈利持仓小时",
+        "loss_duration": "亏损持仓小时",
+        "profit_duration_max": "盈利最长持仓",
+        "loss_duration_max": "亏损最长持仓",
+
+        "long_rate_of_win": "多头胜率",
+        "short_rate_of_win": "空头胜率",
+
+        "long_profit_loss_ratio": "多头盈亏比",
+        "short_profit_loss_ratio": "空头盈亏比",
+
+        "long_total_trade": "多头交易笔数",
+        "short_total_trade": "空头交易笔数",
+
+        "long_profit_times": "多头盈利笔数",
+        "short_profit_times": "空头盈利笔数",
+
+        "long_loss_times": "多头亏损笔数",
+        "short_loss_times": "空头亏损笔数",
+
+        "long_total_profit": "多头盈利总金额",
+        "short_total_profit": "空头盈利总金额",
+
+        "long_total_loss": "多头亏损总金额",
+        "short_total_loss": "空头亏损总金额",
+
+        "long_total_net_pnl": "多头交易净盈亏",
+        "short_total_net_pnl": "空头交易净盈亏",
+
+        "long_trade_mean": "多头平均每笔净盈亏",
+        "short_trade_mean": "空头平均每笔净盈亏",
+
+        "long_trade_duration": "多头平均持仓小时",
+        "short_trade_duration": "空头平均持仓小时",
+
+        "long_trade_duration_max": "多头最长持仓小时",
+        "short_trade_duration_max": "空头最长持仓小时",
     }
 
     def __init__(self):
@@ -621,56 +658,23 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
 
     def set_data(self, data: dict):
         """"""
-        data["capital"] = f"{data['capital']:,.2f}"
-        data["end_balance"] = f"{data['end_balance']:,.2f}"
 
-        data["total_return"] = f"{data['total_return']:,.2f}%"
-        data["annual_return"] = f"{data['annual_return']:,.2f}%"
-        data["cagr"] = f"{data['cagr']:,.2f}%"
-        data["annual_volatility"] = f"{data['annual_volatility']:,.2f}%"
-        data["max_drawdown"] = f"{data['max_drawdown']:,.2f}"
-        data["max_ddpercent"] = f"{data['max_ddpercent']:,.2f}%"
-        data["average_drawdown"] = f"{data['average_drawdown']:,.2f}%"
-        data["lw_drawdown"] = f"{data['lw_drawdown']:,.2f}%"
-        data["average_square_drawdown"] = f"{data['average_square_drawdown']:,.2f}%"
+        data["total_return"] = f"{data['total_return']}%"
+        data["annual_return"] = f"{data['annual_return']}%"
+        data["cagr"] = f"{data['cagr']}%"
+        data["annual_volatility"] = f"{data['annual_volatility']}%"
+        data["max_ddpercent"] = f"{data['max_ddpercent']}%"
+        data["average_drawdown"] = f"{data['average_drawdown']}%"
+        data["lw_drawdown"] = f"{data['lw_drawdown']}%"
+        data["average_square_drawdown"] = f"{data['average_square_drawdown']}%"
 
-        data["daily_return"] = f"{data['daily_return']:,.2f}%"
-        data["return_std"] = f"{data['return_std']:,.2f}%"
-        data["return_drawdown_ratio"] = f"{data['return_drawdown_ratio']:,.2f}"
-        data["sharpe_ratio"] = f"{data['sharpe_ratio']:,.2f}"
-        data["omega_ratio"] = f"{data['omega_ratio']:,.2f}"
-        data["calmar_ratio"] = f"{data['calmar_ratio']:,.2f}"
-        data["downside_risk"] = f"{data['downside_risk']:,.2f}"
-        data["sortino_ratio"] = f"{data['sortino_ratio']:,.2f}"
-        data["R_squared"] = f"{data['R_squared']:,.2f}"
-        data["tail_ratio"] = f"{data['tail_ratio']:,.2f}"
+        data["daily_return"] = f"{data['daily_return']}%"
+        data["return_std"] = f"{data['return_std']}%"
 
-        data["total_net_pnl"] = f"{data['total_net_pnl']:,.2f}"
-        data["total_commission"] = f"{data['total_commission']:,.2f}"
-        data["total_slippage"] = f"{data['total_slippage']:,.2f}"
+        data["rate_of_win"] = f"{data['rate_of_win']}%"
 
-        data["daily_net_pnl"] = f"{data['daily_net_pnl']:,.2f}"
-        data["daily_commission"] = f"{data['daily_commission']:,.2f}"
-        data["daily_slippage"] = f"{data['daily_slippage']:,.2f}"
-        data["daily_trade_count"] = f"{data['daily_trade_count']:,.2f}"
-
-        data["max_profit"] = f"{data['max_profit']:,.2f}"
-        data["max_loss"] = f"{data['max_loss']:,.2f}"
-        data["rate_of_win"] = f"{data['rate_of_win']:,.2f}%"
-        data["profit_loss_ratio"] = f"{data['profit_loss_ratio']:,.2f}"
-        
-        data["trade_mean"] = f"{data['trade_mean']:,.2f}"
-        data["average_commission"] = f"{data['average_commission']:,.2f}"
-        data["average_slippage"] = f"{data['average_slippage']:,.2f}"
-        data["trade_duration"] = f"{data['trade_duration']:,.2f}"
-
-        data["total_profit"] = f"{data['total_profit']:,.2f}"
-        data["profit_mean"] = f"{data['profit_mean']:,.2f}"
-        data["profit_duration"] = f"{data['profit_duration']:,.2f}"
-
-        data["total_loss"] = f"{data['total_loss']:,.2f}"
-        data["loss_mean"] = f"{data['loss_mean']:,.2f}"
-        data["loss_duration"] = f"{data['loss_duration']:,.2f}"
+        data["long_rate_of_win"] = f"{data['long_rate_of_win']}%"
+        data["short_rate_of_win"] = f"{data['short_rate_of_win']}%"
 
         for key, cell in self.cells.items():
             value = data.get(key, "")
@@ -776,19 +780,19 @@ class BacktesterChart(pg.GraphicsWindow):
         )
         self.nextRow()
 
-        self.drawdown_plot = self.addPlot(
-            title="净值回撤",
+        self.ddpercent_plot = self.addPlot(
+            title="净值回撤率",
             axisItems={"bottom": DateAxis(self.dates, orientation="bottom")}
         )
         self.nextRow()
 
         self.pnl_plot = self.addPlot(
-            title="每日盈亏",
+            title="每日净盈亏",
             axisItems={"bottom": DateAxis(self.dates, orientation="bottom")}
         )
         self.nextRow()
 
-        self.distribution_plot = self.addPlot(title="盈亏分布")
+        self.distribution_plot = self.addPlot(title="净盈亏分布")
 
         # Add curves and bars on plot widgets
         self.balance_curve = self.balance_plot.plot(
@@ -796,7 +800,7 @@ class BacktesterChart(pg.GraphicsWindow):
         )
 
         dd_color = "#303f9f"
-        self.drawdown_curve = self.drawdown_plot.plot(
+        self.ddpercent_curve = self.ddpercent_plot.plot(
             fillLevel=-0.3, brush=dd_color, pen=dd_color
         )
 
@@ -819,7 +823,7 @@ class BacktesterChart(pg.GraphicsWindow):
     def clear_data(self):
         """"""
         self.balance_curve.setData([], [])
-        self.drawdown_curve.setData([], [])
+        self.ddpercent_curve.setData([], [])
         self.profit_pnl_bar.setOpts(x=[], height=[])
         self.loss_pnl_bar.setOpts(x=[], height=[])
         self.distribution_curve.setData([], [])
@@ -835,9 +839,9 @@ class BacktesterChart(pg.GraphicsWindow):
         for n, date in enumerate(df.index):
             self.dates[n] = date
 
-        # Set data for curve of balance and drawdown
+        # Set data for curve of balance and ddpercent
         self.balance_curve.setData(df["balance"])
-        self.drawdown_curve.setData(df["drawdown"])
+        self.ddpercent_curve.setData(df["ddpercent"])
 
         # Set data for daily pnl bar
         profit_pnl_x = []
@@ -886,6 +890,11 @@ class OptimizationSettingEditor(QtWidgets.QDialog):
     DISPLAY_NAME_MAP = {
         "总收益率": "total_return",
         "夏普比率": "sharpe_ratio",
+        "索提诺比率": "sortino_ratio",
+        "%最大回撤": "max_ddpercent",
+        "%平均回撤": "average_drawdown",
+        "胜率": "rate_of_win",
+        "盈亏比": "profit_loss_ratio",
         "收益回撤比": "return_drawdown_ratio",
         "日均盈亏": "daily_net_pnl"
     }

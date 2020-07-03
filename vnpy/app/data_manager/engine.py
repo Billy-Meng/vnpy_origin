@@ -239,3 +239,48 @@ class ManagerEngine(BaseEngine):
             return(len(data))
 
         return 0
+
+
+    def download_bar_data_from_datasource(
+        self,
+        symbol: str,
+        exchange: Exchange,
+        interval: str,
+        start: datetime
+    ) -> int:
+        """
+        Query bar data from DataSource.
+        """
+        req = HistoryRequest(
+            symbol=symbol,
+            exchange=exchange,
+            # interval=Interval(interval),
+            interval=Interval.MINUTE,          # 设置默认下载数据均为一分钟K线数据
+            start=start,
+            end=datetime.now()
+        )
+
+        if SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
+            if not jqdata_client.inited:
+                jqdata_client.init()
+
+            data = jqdata_client.query_history(req)
+
+        # Otherwise use RQData to query data
+        elif SETTINGS["datasource.api"] == "rqdata":
+            if not rqdata_client.inited:
+                rqdata_client.init()
+
+            data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "jjdata":
+            if not jjdata_client.inited:
+                jjdata_client.init()
+
+            data = jjdata_client.query_history(req, interval)
+
+        if data:
+            database_manager.save_bar_data(data)
+            return(len(data))
+
+        return 0

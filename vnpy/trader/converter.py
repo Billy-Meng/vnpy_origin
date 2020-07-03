@@ -10,7 +10,7 @@ from .object import (
     PositionData,
     OrderRequest
 )
-from .constant import Direction, Offset, Exchange
+from .constant import Direction, Offset, Exchange, Status
 
 
 class OffsetConverter:

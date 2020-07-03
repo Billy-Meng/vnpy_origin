@@ -125,17 +125,12 @@ class JqdataClient(DataSourceApi):
         # 聚宽传入未来时间仍会生成数据，开高低收为最近收盘价，为避免冗余数据，调整为取当前时间
         now = datetime.now()
 
-        if end >= now:
-            end = now
-        elif end.year == now.year and end.month == now.month and end.day == now.day:
-            end = now
-
         df = jq.get_price(
             jq_symbol,
             frequency=jq_interval,
             fields=["open", "high", "low", "close", "volume"],
             start_date=start,
-            end_date=end,
+            end_date=now,
             fq=None,
             panel=True,
             skip_paused=True
