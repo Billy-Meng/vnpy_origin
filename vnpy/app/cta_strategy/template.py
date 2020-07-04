@@ -51,6 +51,8 @@ class CtaTemplate(ABC):
         self.variables.insert(1, "trading")
         self.variables.insert(2, "pos")
 
+        self.engine_type = self.get_engine_type()       # 初始化时获取策略引擎类型
+
         self.track_highest = 0           # 记录开仓后的最高点
         self.track_lowest  = 0           # 记录开仓后的最低点
         self.entry_minute  = 0           # 统计开仓后历时多少分钟
@@ -358,7 +360,7 @@ class CtaTemplate(ABC):
         
         注意要点：Tick级精细挂撤单的管理逻辑，无法通过K线来进行回测检验，因此需通过仿真交易（比如期货基于SimNow）进行充分的测试。
         """
-        active_orders = self.get_position_detail(tick.vt_symbol).active_orders
+        active_orders = self.get_position_detail().active_orders
 
         if active_orders:
             # 委托完成状态
@@ -414,7 +416,7 @@ class CtaTemplate(ABC):
         """
         获取合约信息。策略初始化时调用，动态赋值contract_data, gateway_name, symbol, pricetick, size, margin_rate
         """
-        if self.get_engine_type() == EngineType.LIVE:
+        if self.engine_type == EngineType.LIVE:
             self.contract_data = self.cta_engine.main_engine.get_contract(self.vt_symbol)
 
             if self.contract_data:                
@@ -444,7 +446,7 @@ class CtaTemplate(ABC):
 
     def get_account_data(self, account_id:str) -> None:
         """获取账户信息"""
-        if self.get_engine_type() == EngineType.LIVE:
+        if self.engine_type == EngineType.LIVE:
             if not account_id:
                 self.write_log("账号未填写，无法获取账户信息！")
                 return
@@ -476,7 +478,7 @@ class CtaTemplate(ABC):
             info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
             win32api.MessageBox(0, info_strategy + msg + info_time, "交易提醒", win32con.MB_ICONWARNING)
 
-        if self.inited and self.get_engine_type() == EngineType.LIVE:
+        if self.inited and self.engine_type == EngineType.LIVE:
             thread_popup = Thread(target=run_popup_warning, name="popup_warning", args=(msg,) )
             thread_popup.start()
 
@@ -498,7 +500,7 @@ class CtaTemplate(ABC):
 
                 requests.post(url, data=json.dumps(program), headers=headers)
 
-        if self.inited and self.get_engine_type() == EngineType.LIVE:
+        if self.inited and self.engine_type == EngineType.LIVE:
             thread_dingding = Thread(target=run_dingding, name="dingding", args=(msg, url) )
             thread_dingding.start()
 
@@ -531,7 +533,7 @@ class CtaTemplate(ABC):
 
     def save_trade_data_to_json(self, trade: TradeData):
         """实盘模式下实时记录成交信息至JSON文件。在 on_trade 中调用"""
-        if self.inited and self.get_engine_type() == EngineType.LIVE:
+        if self.inited and self.engine_type == EngineType.LIVE:
         
             # 判断.vntrader文件夹下是否存在Trade_Record文件夹，不存在则创建文件夹
             if not os.path.exists(get_file_path(f"成交记录信息/{datetime.now().date()}")):
@@ -543,13 +545,13 @@ class CtaTemplate(ABC):
             trade_["direction"] = trade_deepcopy.direction.value
             trade_["offset"] = trade_deepcopy.offset.value
             trade_["datetime"] = trade_deepcopy.datetime.isoformat()
-            temp_dict = {f'{trade_["datetime"]} {self.symbol} {self.__name__}':trade_}
+            temp_dict = {f'{trade_["datetime"]} {self.symbol} {self.__class__.__name__}':trade_}
             self.trade_data_dict.update(temp_dict)
-            save_json(f'成交记录信息/{datetime.now().date()}/{self.symbol}-{self.__name__}.json', self.trade_data_dict)
+            save_json(f"成交记录信息/{datetime.now().date()}/{self.symbol}-{self.__class__.__name__}.json", self.trade_data_dict)
 
     def calculate_balance(self, trade: TradeData) -> None:
         """回测模式下逐笔计算最新Balance，以便进行资金管理。在 on_trade 中调用"""
-        if self.inited and self.get_engine_type() == EngineType.BACKTESTING:
+        if self.inited and self.engine_type == EngineType.BACKTESTING:
             if trade.offset == Offset.OPEN:
                 self.trade_net_volume += trade.volume
                 self.open_cost_price = (trade.price * trade.volume + self.open_cost_price * (self.trade_net_volume - trade.volume)) / self.trade_net_volume
@@ -606,7 +608,7 @@ class CtaTemplate(ABC):
                 print("*" * 60)
                 print(f"策略净持仓量小于零！请检查平仓逻辑！错误平仓时间为：{trade.datetime}")
 
-        elif self.inited and self.get_engine_type() == EngineType.LIVE:
+        elif self.inited and self.engine_type == EngineType.LIVE:
             if trade.offset == Offset.OPEN:
                 self.trade_net_volume += trade.volume
                 self.open_cost_price = (trade.price * trade.volume + self.open_cost_price * (self.trade_net_volume - trade.volume)) / self.trade_net_volume
@@ -796,7 +798,7 @@ class TargetPosTemplate(CtaTemplate):
             else:
                 short_price = self.last_bar.close_price - self.tick_add
 
-        if self.get_engine_type() == EngineType.BACKTESTING:
+        if self.engine_type == EngineType.BACKTESTING:
             if pos_change > 0:
                 vt_orderids = self.buy(long_price, abs(pos_change))
             else:
