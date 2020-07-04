@@ -1073,15 +1073,15 @@ class BacktestingEngine:
 
             trades = self.get_all_trades()
             # 最后一笔成交为买开或卖平时，平多仓
-            if (trades[-1].__dict__.direction == Direction.LONG and trades[-1].__dict__.offset == Offset.OPEN) \
-                or (trades[-1].__dict__.direction == Direction.SHORT and (trades[-1].__dict__.offset == Offset.CLOSE
-                    or trades[-1].__dict__.offset == Offset.CLOSETODAY or trades[-1].__dict__.offset == Offset.CLOSEYESTERDAY)):
-                trade_pnl = (last_close_price - self.strategy.open_average_price) * last_trade_net_volume * self.size
+            if (trades[-1].direction == Direction.LONG and trades[-1].offset == Offset.OPEN) \
+                or (trades[-1].direction == Direction.SHORT and (trades[-1].offset == Offset.CLOSE
+                    or trades[-1].offset == Offset.CLOSETODAY or trades[-1].offset == Offset.CLOSEYESTERDAY)):
+                trade_pnl = (last_close_price - self.strategy.open_cost_price) * last_trade_net_volume * self.size
                 trade_type = "多头"
             
             # 最后一笔成交为卖开或买平时，平空仓
             else:
-                trade_pnl = (self.strategy.open_average_price - last_close_price) * last_trade_net_volume * self.size
+                trade_pnl = (self.strategy.open_cost_price - last_close_price) * last_trade_net_volume * self.size
                 trade_type = "空头"
 
             if self.rate_type == RateType.FIXED:        # 固定手续费模式

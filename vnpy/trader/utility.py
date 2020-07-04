@@ -2516,6 +2516,17 @@ class ArrayManager(object):
             return k, d, j
         return k[-1], d[-1], j[-1]
 
+    def ohlc_average(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """开高低收四个价格的平均价"""
+        if log:
+            result = (np.log(self.open) + np.log(self.high) + np.log(self.low) + np.log(self.close)) / 4
+        else:
+            result = (self.open + self.high + self.low + self.close) / 4
+
+        if array:
+            return result
+        return result[-1]
+
     def c_sub_o(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         (Close - Open)差价序列（区分阴阳的K线实体大小）
