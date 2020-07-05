@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Dict, Tuple, Union
 from decimal import Decimal
 from math import floor, ceil
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -512,7 +513,7 @@ class BarGenerator:
         # 日K线合成
         elif self.interval == Interval.DAILY:
             # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
-            if self.last_bar and bar.datetime.date() != ArrayManager().TrueDate(bar):
+            if self.last_bar and bar.datetime.date() != ArrayManager().RealDate(bar):
                 finished = True
 
             # 针对每天开盘和收盘为同一天的日K线合成
@@ -605,7 +606,7 @@ class BarGenerator:
         # 日K线合成
         elif self.interval == Interval.DAILY:
             # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
-            if self.last_bar and bar.datetime.date() != ArrayManager().TrueDate(bar):
+            if self.last_bar and bar.datetime.date() != ArrayManager().RealDate(bar):
                 finished = True
 
             # 针对每天开盘和收盘为同一天的日K线合成
@@ -890,7 +891,7 @@ class BarGenerator:
         # 日K线合成
         elif self.interval == Interval.DAILY:
             # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
-            if self.last_bar and bar.datetime.date() != ArrayManager().TrueDate(bar):
+            if self.last_bar and bar.datetime.date() != ArrayManager().RealDate(bar):
                 finished = True
 
             # 针对每天开盘和收盘为同一天的日K线合成
@@ -981,7 +982,7 @@ class BarGenerator:
         # 日K线合成
         elif self.interval == Interval.DAILY:
             # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
-            if self.last_bar and bar.datetime.date() != ArrayManager().TrueDate(bar):
+            if self.last_bar and bar.datetime.date() != ArrayManager().RealDate(bar):
                 finished = True
 
             # 针对每天开盘和收盘为同一天的日K线合成
@@ -1030,6 +1031,8 @@ class ArrayManager(object):
         self.count: int = 0
         self.size: int = size
         self.inited: bool = False
+        self.new_day: bool = False
+        self.last_bar: BarData = None
 
         self.open_array: np.ndarray = np.zeros(size)
         self.high_array: np.ndarray = np.zeros(size)
@@ -1037,6 +1040,8 @@ class ArrayManager(object):
         self.close_array: np.ndarray = np.zeros(size)
         self.volume_array: np.ndarray = np.zeros(size)
         self.open_interest_array: np.ndarray = np.zeros(size)
+
+        self.countif_dict = defaultdict(list)
 
     def update_bar(self, bar: BarData) -> None:
         """
@@ -1059,6 +1064,14 @@ class ArrayManager(object):
         self.close_array[-1] = bar.close_price
         self.volume_array[-1] = bar.volume
         self.open_interest_array[-1] = bar.open_interest
+
+        # if self.last_bar and self.last_bar.datetime.date() != bar.datetime.date():        # 按自然交易日时间划分
+        if self.last_bar and self.last_bar.datetime.date() != self.RealDate(bar):         # 针对夜盘开盘时间为次日开盘时间
+            self.new_day = True
+        else:
+            self.new_day = False
+
+        self.last_bar = bar
 
     @property
     def open(self) -> np.ndarray:
@@ -2516,6 +2529,15 @@ class ArrayManager(object):
             return k, d, j
         return k[-1], d[-1], j[-1]
 
+    def countif(self, condition: bool, con_key: str, n: int = 1) -> int:
+        """获取最近N周期满足给定条件的次数"""
+        self.countif_dict[con_key].append(condition * 1)
+
+        if len(self.countif_dict[con_key]) >= n:
+            return sum(self.countif_dict[con_key][-n:])
+        else:
+            return 0
+
     def ohlc_average(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """开高低收四个价格的平均价"""
         if log:
@@ -2633,27 +2655,6 @@ class ArrayManager(object):
 
     # ======================================================================================================================================================================================================== #
     # ======================================================================================================================================================================================================== #
-    # 参考TB函数及公式建立工具箱
-    def Highest(self, PriceArrray:"Array", Length:"周期"=5) -> "HighestValue":
-        """求最高"""
-        HighestValue = PriceArrray[-1]
-        for i in range(-2, -Length-1, -1):
-            if PriceArrray[i] > HighestValue:
-                HighestValue = PriceArrray[i]
-        return HighestValue
-        # PriceArrray = PriceArrray[-Length:]
-        # return np.max(PriceArrray)
-
-    def Lowest(self, PriceArrray:"Array", Length:"周期"=5) -> "LowestValue":
-        """求最低"""
-        LowestValue = PriceArrray[-1]
-        for i in range(-2, -Length-1, -1):
-            if PriceArrray[i] > LowestValue:
-                LowestValue = PriceArrray[i]
-        return LowestValue
-        # PriceArrray = PriceArrray[-Length:]
-        # return np.min(PriceArrray)
-
     def CrossOver(self, PriceArrray_1:"Array", Price_2:"Array or int") -> bool:
         """求是否上穿"""
         if isinstance(Price_2, int):
@@ -2680,7 +2681,7 @@ class ArrayManager(object):
             else:
                 return False
 
-    def TrueDate(self, data: Union[TickData, BarData]):
+    def RealDate(self, data: Union[TickData, BarData]):
         """"""
         day_offset = timedelta(days=0)
         if data.datetime.hour >= 18:
@@ -2699,6 +2700,232 @@ class ArrayManager(object):
         data.datetime = data.datetime + day_offset
         return data.datetime.date()
 
+# ======================================================================================================================================================================================================== #
+# ======================================================================================================================================================================================================== #
+
+class DayArrayManager(object):
+    """日线价格序列管理器"""
+
+    def __init__(self, size: int = 5):
+        """Constructor"""
+        self.count: int = 0
+        self.size: int = size
+        self.inited: bool = False
+        self.new_day: bool = False
+        self.last_bar: BarData = None
+
+        self.open_array: np.ndarray = np.zeros(size)
+        self.high_array: np.ndarray = np.zeros(size)
+        self.low_array: np.ndarray = np.zeros(size)
+        self.close_array: np.ndarray = np.zeros(size)
+        self.volume_array: np.ndarray = np.zeros(size)
+        self.open_interest_array: np.ndarray = np.zeros(size)
+
+    def update_bar(self, bar: BarData) -> None:
+        """
+        Update new bar data into array manager.
+        """
+        self.count += 1
+        if not self.inited and self.count >= self.size:
+            self.inited = True
+
+        # if self.last_bar and self.last_bar.datetime.date() != bar.datetime.date():        # 按自然交易日时间划分
+        if self.last_bar and self.last_bar.datetime.date() != self.RealDate(bar):         # 针对夜盘开盘时间为次日开盘时间
+            self.new_day = True
+
+            self.open_array[:-1] = self.open_array[1:]
+            self.high_array[:-1] = self.high_array[1:]
+            self.low_array[:-1] = self.low_array[1:]
+            self.close_array[:-1] = self.close_array[1:]
+            self.volume_array[:-1] = self.volume_array[1:]
+            self.open_interest_array[:-1] = self.open_interest_array[1:]
+
+            self.open_array[-1] = bar.open_price
+            self.high_array[-1] = bar.high_price
+            self.low_array[-1] = bar.low_price
+            self.close_array[-1] = bar.close_price
+            self.volume_array[-1] = bar.volume
+            self.open_interest_array[-1] = bar.open_interest
+
+        else:
+            self.new_day = False
+
+            self.high_array[-1] = max(self.high_array[-1], bar.high_price)
+            self.low_array[-1] = min(self.low_array[-1], bar.low_price)
+            self.close_array[-1] = bar.close_price
+            self.volume_array[-1] = int(self.volume_array[-1] + bar.volume)
+            self.open_interest_array[-1] = bar.open_interest
+
+        self.last_bar = bar
+
+    @property
+    def open(self) -> np.ndarray:
+        """
+        Get open price time series.
+        """
+        return self.open_array
+
+    @property
+    def high(self) -> np.ndarray:
+        """
+        Get high price time series.
+        """
+        return self.high_array
+
+    @property
+    def low(self) -> np.ndarray:
+        """
+        Get low price time series.
+        """
+        return self.low_array
+
+    @property
+    def close(self) -> np.ndarray:
+        """
+        Get close price time series.
+        """
+        return self.close_array
+
+    @property
+    def volume(self) -> np.ndarray:
+        """
+        Get trading volume time series.
+        """
+        return self.volume_array
+
+    @property
+    def open_interest(self) -> np.ndarray:
+        """
+        Get trading volume time series.
+        """
+        return self.open_interest_array
+
+    def RealDate(self, data: Union[TickData, BarData]):
+        """"""
+        day_offset = timedelta(days=0)
+        if data.datetime.hour >= 18:
+            if data.datetime.isoweekday() == 5:         # 周五晚上
+                day_offset = timedelta(days=3)
+            elif data.datetime.isoweekday() == 6:       # 周六晚上
+                day_offset = timedelta(days=2)
+            elif data.datetime.isoweekday() == 7:       # 周日晚上
+                day_offset = timedelta(days=1)
+
+        else:
+            if data.datetime.isoweekday() == 6:         # 周六
+                day_offset = timedelta(days=2)
+            elif data.datetime.isoweekday() == 7:       # 周日
+                day_offset = timedelta(days=1)
+        data.datetime = data.datetime + day_offset
+
+        return data.datetime.date()
+
+    def countif(self, condition: bool, con_key: str, n: int = 1) -> int:
+        """获取最近N周期满足给定条件的次数"""
+        self.countif_dict[con_key].append(condition * 1)
+
+        if len(self.countif_dict[con_key]) >= n:
+            return sum(self.countif_dict[con_key][-n:])
+        else:
+            return 0
+
+    # ======================================================================================================================================================================================================== #
+    # Overlap Studies 重叠研究指标
+    def sma(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        Simple moving average. 简单移动平均线
+        """
+        if log:
+            result = talib.SMA(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.SMA(self.close, timeperiod=n)
+
+        if array:
+            return result
+        return result[-1]
+
+    def ema(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        Exponential moving average.  指数移动平均线：趋向类指标，其构造原理是仍然对价格收盘价进行算术平均，并根据计算结果来进行分析，用于判断价格未来走势的变动趋势。
+        """
+        if log:
+            result = talib.EMA(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.EMA(self.close, timeperiod=n)
+
+        if array:
+            return result
+        return result[-1]
+
+    def ma(self, n: int, matype: int = 0, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        Moving average.  移动平均线：matype: 0=SMA(默认), 1=EMA(指数移动平均线), 2=WMA(加权移动平均线), 3=DEMA(双指数移动平均线), 4=TEMA(三重指数移动平均线), 5=TRIMA, 6=KAMA(考夫曼自适应移动平均线), 7=MAMA, 8=T3(三重指数移动平均线)
+        """
+        if log:
+            result = talib.MA(np.log(self.close), timeperiod=n, matype=matype)
+        else:
+            result = talib.MA(self.close, timeperiod=n, matype=matype)
+
+        if array:
+            return result
+        return result[-1]
+
+    def rsi(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        Relative Strenght Index (RSI). 相对强弱指数：通过比较一段时期内的平均收盘涨数和平均收盘跌数来分析市场买沽盘的意向和实力，从而作出未来市场的走势。
+        """
+        if log:
+            result = talib.RSI(np.log(self.close), timeperiod=n)
+        else:
+            result = talib.RSI(self.close, timeperiod=n)
+
+        if array:
+            return result
+        return result[-1]
+
+    def macd(self, fast_period: int, slow_period: int, signal_period: int, array: bool = False, log: bool = False) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[float, float, float]]:
+        """
+        Moving Average Convergence/Divergence. 平滑异同移动平均线：利用收盘价的短期（常用为12日）指数移动平均线与长期（常用为26日）指数移动平均线之间的聚合与分离状况，对买进、卖出时机作出研判的技术指标。
+        """
+        if log:
+            macd, signal, hist = talib.MACD(np.log(self.close), fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
+        else:
+            macd, signal, hist = talib.MACD(self.close, fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
+
+        if array:
+            return macd, signal, hist
+        return macd[-1], signal[-1], hist[-1]
+
+    # ======================================================================================================================================================================================================== #
+    # Volatility Indicator 波动率指标
+    def trange(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        TRANGE. 真实波动幅度 = max(当日最高价, 昨日收盘价) − min(当日最低价, 昨日收盘价)
+        """
+        if log:
+            result = talib.TRANGE(np.log(self.high), np.log(self.low), np.log(self.close))
+        else:
+            result = talib.TRANGE(self.high, self.low, self.close)
+
+        if array:
+            return result
+        return result[-1]
+
+    def atr(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """
+        Average True Range (ATR). 平均真实波动幅度：真实波动幅度的 N 日 指数移动平均数。
+        """
+        if log:
+            result = talib.ATR(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+        else:
+            result = talib.ATR(self.high, self.low, self.close, timeperiod=n)
+
+        if array:
+            return result
+        return result[-1]
+
+# ======================================================================================================================================================================================================== #
+# ======================================================================================================================================================================================================== #
 
 
 def virtual(func: Callable) -> Callable:

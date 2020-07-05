@@ -552,6 +552,16 @@ class CtaTemplate(ABC):
     def calculate_balance(self, trade: TradeData) -> None:
         """回测模式下逐笔计算最新Balance，以便进行资金管理。在 on_trade 中调用"""
         if self.inited and self.engine_type == EngineType.BACKTESTING:
+            if self.trade_net_volume > 500:
+                print("$" * 60)
+                print(f"trade_net_volume > 500！请检查开平仓逻辑！报错时间为：{trade.datetime}")
+                return
+
+            elif self.trade_net_volume < 0:
+                print("*" * 60)
+                print(f"trade_net_volume < 0！请检查开平仓逻辑！报错时间为：{trade.datetime}")
+                return
+
             if trade.offset == Offset.OPEN:
                 self.trade_net_volume += trade.volume
                 self.open_cost_price = (trade.price * trade.volume + self.open_cost_price * (self.trade_net_volume - trade.volume)) / self.trade_net_volume
@@ -603,10 +613,6 @@ class CtaTemplate(ABC):
                 self.trade_slippage = 0
                 self.net_pnl = 0
                 self.record_start_switch = True
-
-            elif self.trade_net_volume < 0:
-                print("*" * 60)
-                print(f"策略净持仓量小于零！请检查平仓逻辑！错误平仓时间为：{trade.datetime}")
 
         elif self.inited and self.engine_type == EngineType.LIVE:
             if trade.offset == Offset.OPEN:
