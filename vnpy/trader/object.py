@@ -204,7 +204,6 @@ class AccountData(BaseData):
     balance: float = 0                  #今日总资金
     pre_balance: float = 0              #上个交易日总资金(币圈交易所为人民币计价总资金)
     available: float = 0                #可用资金
-    equity: float = 0                   #账户权益
     percent: float = 0                  #资金使用率
     frozen: float = 0                   #冻结资金
     commission: float = 0               #手续费

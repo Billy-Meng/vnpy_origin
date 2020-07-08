@@ -413,7 +413,6 @@ class Mt5Gateway(BaseGateway):
         account = AccountData(
             accountid=data["name"],                 # 用户名
             balance=data["balance"],                # 账户结余
-            equity=data["equity"],                  # 账户权益
             position_profit=data["profit"],         # 账户当前利润
             commission=data["commission_blocked"],  # 账户当前锁定手续费金额
             frozen=data["margin"],                  # 冻结保证金
@@ -423,6 +422,7 @@ class Mt5Gateway(BaseGateway):
             time=str(datetime.now().time()),
             gateway_name=self.gateway_name
         )
+        account.equity = data["equity"]             # 账户权益
         self.on_account(account)
 
     def on_position_info(self, packet: dict) -> None:
@@ -444,6 +444,9 @@ class Mt5Gateway(BaseGateway):
                 position.volume = -d["volume"]
 
             position.price = d["price"]
+            position.cost_price = d["cost_price"]
+            position.sl_price = d["sl_price"]
+            position.tp_price = d["tp_price"]
             position.pnl = d["current_profit"]
 
             positions[position.symbol] = position

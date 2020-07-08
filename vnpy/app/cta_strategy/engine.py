@@ -25,7 +25,8 @@ from vnpy.trader.event import (
     EVENT_TICK,
     EVENT_ORDER,
     EVENT_TRADE,
-    EVENT_POSITION
+    EVENT_POSITION,
+    EVENT_ACCOUNT
 )
 from vnpy.trader.constant import (
     Direction,
@@ -126,6 +127,7 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_ORDER, self.process_order_event)
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
+        self.event_engine.register(EVENT_ACCOUNT, self.process_account_event)
 
     def init_rqdata(self):
         """
@@ -246,6 +248,26 @@ class CtaEngine(BaseEngine):
         position = event.data
 
         self.offset_converter.update_position(position)
+
+        holding = self.offset_converter.get_position_holding(position.vt_symbol)
+
+        strategies = self.symbol_strategy_map[position.vt_symbol]
+        if not strategies:
+            return
+
+        for strategy in strategies:
+            self.call_strategy_func(strategy, strategy.on_position, holding)
+
+    def process_account_event(self, event: Event):
+        """"""
+        account = event.data
+
+        strategies = list(self.strategies.values())
+        if not strategies:
+            return
+
+        for strategy in strategies:
+            strategy.on_account(account)
 
     def check_stop_order(self, tick: TickData):
         """"""
@@ -445,6 +467,30 @@ class CtaEngine(BaseEngine):
 
         return [stop_orderid]
 
+    def send_market_order(
+        self,
+        strategy: CtaTemplate,
+        contract: ContractData,
+        direction: Direction,
+        offset: Offset,
+        price: float,
+        volume: float,
+        lock: bool
+    ):
+        """
+        Send a limit order to server.
+        """
+        return self.send_server_order(
+            strategy,
+            contract,
+            direction,
+            offset,
+            price,
+            volume,
+            OrderType.MARKET,
+            lock
+        )
+
     def cancel_server_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
         Cancel existing order by vt_orderid.
@@ -487,7 +533,8 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         stop: bool,
-        lock: bool
+        lock: bool,
+        market: bool
     ):
         """
         """
@@ -505,6 +552,8 @@ class CtaEngine(BaseEngine):
                 return self.send_server_stop_order(strategy, contract, direction, offset, price, volume, lock)
             else:
                 return self.send_local_stop_order(strategy, direction, offset, price, volume, lock)
+        elif market:
+            return self.send_market_order(strategy, contract, direction, offset, price, volume, lock)
         else:
             return self.send_limit_order(strategy, contract, direction, offset, price, volume, lock)
 
@@ -969,32 +1018,3 @@ class CtaEngine(BaseEngine):
             subject = "CTA策略引擎"
 
         self.main_engine.send_email(subject, msg)
-
-
-    def get_position_detail(self, vt_symbol: str) -> "PositionHolding":    
-        """
-        查询long_pos,short_pos(持仓)，long_pnl,short_pnl(盈亏)，active_orders(未成交字典)
-        返回PositionHolding类数据
-        """
-        try:
-            return self.offset_converter.get_position_holding(vt_symbol)
-        except:
-            self.write_log(f"当前获取持仓信息为：{self.offset_converter.get_position_holding(vt_symbol)},等待获取持仓信息")
-            position_detail = OrderedDict()
-            position_detail.active_orders = {}
-
-            position_detail.long_pos = 0
-            position_detail.long_pnl = 0
-            position_detail.long_price = 0
-            position_detail.long_yd = 0
-            position_detail.long_td = 0
-            position_detail.long_pos_frozen = 0
-
-            position_detail.short_pos = 0
-            position_detail.short_pnl = 0
-            position_detail.short_price = 0
-            position_detail.short_yd = 0
-            position_detail.short_td = 0
-            position_detail.short_pos_frozen = 0
-
-            return position_detail

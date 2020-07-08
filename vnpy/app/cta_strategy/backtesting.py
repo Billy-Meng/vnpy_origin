@@ -706,6 +706,12 @@ class BacktestingEngine:
             if not long_cross and not short_cross:
                 continue
 
+            if order.offset != Offset.OPEN and self.strategy.trade_net_volume  < order.volume:
+                self.active_limit_orders.pop(order.vt_orderid)
+                print("！" * 100)
+                print(f"cross_limit_order报错！平仓委托交易数量超过可平仓净头寸！当前净持仓量：{self.strategy.trade_net_volume}，问题委托信息：{order}")
+                continue
+
             # Push order udpate with status "all traded" (filled).
             order.traded = order.volume
             order.status = Status.ALLTRADED
@@ -783,12 +789,38 @@ class BacktestingEngine:
                 offset=stop_order.offset,
                 price=stop_order.price,
                 volume=stop_order.volume,
-                status=Status.ALLTRADED,
+                traded=0,
+                status=Status.NOTTRADED,
                 gateway_name=self.gateway_name,
                 datetime=self.datetime
             )
 
+            # 将状态更新前的委托推送到策略
+            self.strategy.on_stop_order(stop_order)
+            self.strategy.on_order(order)
+
+            if order.offset != Offset.OPEN and self.strategy.trade_net_volume  < order.volume:                
+                self.limit_orders[order.vt_orderid] = order
+                self.active_stop_orders.pop(stop_order.stop_orderid)
+                print("！" * 100)
+                print(f"cross_stop_order报错！平仓委托交易数量超过可平仓净头寸！当前净持仓量：{self.strategy.trade_net_volume}，问题委托信息：{order}")
+                continue
+
+            # Push order udpate with status "all traded" (filled).
+            order.traded = stop_order.volume
+            order.status = Status.ALLTRADED
             self.limit_orders[order.vt_orderid] = order
+
+            # Update stop order.
+            stop_order.vt_orderids.append(order.vt_orderid)
+            stop_order.status = StopOrderStatus.TRIGGERED
+
+            if stop_order.stop_orderid in self.active_stop_orders:
+                self.active_stop_orders.pop(stop_order.stop_orderid)
+
+            # Push update to strategy.
+            self.strategy.on_stop_order(stop_order)
+            self.strategy.on_order(order)
 
             # Create trade data.
             if long_cross:
@@ -814,17 +846,6 @@ class BacktestingEngine:
             )
 
             self.trades[trade.vt_tradeid] = trade
-
-            # Update stop order.
-            stop_order.vt_orderids.append(order.vt_orderid)
-            stop_order.status = StopOrderStatus.TRIGGERED
-
-            if stop_order.stop_orderid in self.active_stop_orders:
-                self.active_stop_orders.pop(stop_order.stop_orderid)
-
-            # Push update to strategy.
-            self.strategy.on_stop_order(stop_order)
-            self.strategy.on_order(order)
 
             self.strategy.pos += pos_change
             self.strategy.on_trade(trade)
@@ -856,7 +877,8 @@ class BacktestingEngine:
         price: float,
         volume: float,
         stop: bool,
-        lock: bool
+        lock: bool,
+        market: bool
     ):
         """"""
         price = round_to(price, self.pricetick)
@@ -1046,6 +1068,7 @@ class BacktestingEngine:
             trade_df["direction"] = trade_df.direction.apply(lambda x : x.value)
             trade_df["offset"] = trade_df.offset.apply(lambda x : x.value)
             trade_df["net_volume"] = self.strategy.trade_net_volume_list
+            trade_df["signal"] = self.strategy.signal_list
 
             self.trade_data_df = trade_df
 
@@ -1062,7 +1085,6 @@ class BacktestingEngine:
         trade_date_list = self.strategy.trade_date_list
         trade_start_time_list = self.strategy.trade_start_time_list
         trade_end_time_list = self.strategy.trade_end_time_list
-
 
         last_trade_net_volume = self.strategy.trade_net_volume_list[-1]
 
@@ -1342,6 +1364,7 @@ class BacktestingEngine:
             daily_slippage = total_slippage / total_days              # 日均滑点费
             daily_trade_count = total_trade / total_days              # 日均交易笔数
             daily_trade_max = int(trade_df[["trade_date", "symbol"]].groupby("trade_date").count().max())    # 单日最多交易笔数
+            trade_volume_max = self.trade_data_df.volume.max()        # 单次最大成交手数
 
             total_trade_count = daily_df["trade_count"].sum()         # 总共成交的委托数量
 
@@ -1418,6 +1441,7 @@ class BacktestingEngine:
             self.output(f"日均滑点费： \t{daily_slippage:,.2f}")
             self.output(f"日均交易笔数：\t{daily_trade_count:,.2f}")
             self.output(f"单日最多交易笔数：\t{daily_trade_max}")
+            self.output(f"单次最大成交手数：\t{trade_volume_max}")
 
             self.output(f"单笔最大盈利：\t{max_profit:,.2f}")
             self.output(f"单笔最大亏损：\t{max_loss:,.2f}")
@@ -1519,6 +1543,7 @@ class BacktestingEngine:
             "daily_slippage": round(daily_slippage,2),
             "daily_trade_count": round(daily_trade_count,2),
             "daily_trade_max": daily_trade_max,
+            "trade_volume_max": trade_volume_max,
             "max_profit": round(max_profit,2),
             "max_loss": round(max_loss,2),
             "profit_times": profit_times,
@@ -1620,6 +1645,7 @@ class BacktestingEngine:
                 "日均滑点费": f"{daily_slippage:.2f}",
                 "日均交易笔数": f"{daily_trade_count:.2f}",
                 "单日最多交易笔数": daily_trade_max,
+                "单次最大成交手数": trade_volume_max,
                 "单笔最大盈利": f"{max_profit:.2f}",
                 "单笔最大亏损": f"{max_loss:.2f}",
                 "交易盈利笔数": profit_times,

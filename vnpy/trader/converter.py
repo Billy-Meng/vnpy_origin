@@ -101,25 +101,25 @@ class PositionHolding:
 
         self.active_orders: Dict[str, OrderData] = {}
 
-        self.long_pos: float = 0
-        self.long_pnl: float = 0
-        self.long_price : float = 0
-        self.long_yd: float = 0
-        self.long_td: float = 0
+        self.long_pos: float = 0            # 多头头寸数量
+        self.long_pnl: float = 0            # 多头持仓盈亏
+        self.long_price : float = 0         # 多头持仓均价
+        self.long_yd: float = 0             # 多头昨仓数量
+        self.long_td: float = 0             # 多头今仓数量
 
-        self.short_pos: float = 0
-        self.short_pnl : float = 0
-        self.short_price : float = 0
-        self.short_yd: float = 0
-        self.short_td: float = 0
+        self.short_pos: float = 0           # 空头头寸数量
+        self.short_pnl : float = 0          # 空头持仓盈亏
+        self.short_price : float = 0        # 空头持仓均价
+        self.short_yd: float = 0            # 空头昨仓数量
+        self.short_td: float = 0            # 空头今仓数量
 
-        self.long_pos_frozen: float = 0
-        self.long_yd_frozen: float = 0
-        self.long_td_frozen: float = 0
+        self.long_pos_frozen: float = 0     # 多头冻结头寸数量
+        self.long_yd_frozen: float = 0      # 多头昨日冻结头寸
+        self.long_td_frozen: float = 0      # 多头今日冻结头寸
 
-        self.short_pos_frozen: float = 0
-        self.short_yd_frozen: float = 0
-        self.short_td_frozen: float = 0
+        self.short_pos_frozen: float = 0    # 空头冻结头寸数量
+        self.short_yd_frozen: float = 0     # 空头昨日冻结头寸
+        self.short_td_frozen: float = 0     # 空头今日冻结头寸
 
     def update_position(self, position: PositionData) -> None:
         """"""

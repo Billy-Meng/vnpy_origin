@@ -24,6 +24,7 @@ SETTINGS: Dict[str, Any] = {
     "email.password": "",
     "email.sender": "",
     "email.receiver": "",
+    "dingding.url": "",
 
     "datasource.api": "",    
     "jqdata.username": "",

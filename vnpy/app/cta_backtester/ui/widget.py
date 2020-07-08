@@ -569,6 +569,7 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "daily_slippage": "日均滑点费",
         "daily_trade_count": "日均交易笔数",
         "daily_trade_max": "单日最多交易笔数",
+        "trade_volume_max": "单次最大成交手数",
 
         "max_profit": "单笔最大盈利",
         "max_loss": "单笔最大亏损",

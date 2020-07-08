@@ -2529,11 +2529,15 @@ class ArrayManager(object):
             return k, d, j
         return k[-1], d[-1], j[-1]
 
-    def countif(self, condition: bool, con_key: str, n: int = 1) -> int:
-        """获取最近N周期满足给定条件的次数"""
+    def countif(self, condition: bool, con_key: str, n: int = 1, size: int = 500) -> int:
+        """获取最近N周期满足给定条件的次数(con_key字符串必须全局唯一)"""
         self.countif_dict[con_key].append(condition * 1)
+        deque_len = len(self.countif_dict[con_key])
 
-        if len(self.countif_dict[con_key]) >= n:
+        if deque_len > size:
+            self.countif_dict[con_key].pop(0)
+
+        if deque_len >= n:
             return sum(self.countif_dict[con_key][-n:])
         else:
             return 0
@@ -2820,11 +2824,15 @@ class DayArrayManager(object):
 
         return data.datetime.date()
 
-    def countif(self, condition: bool, con_key: str, n: int = 1) -> int:
-        """获取最近N周期满足给定条件的次数"""
+    def countif(self, condition: bool, con_key: str, n: int = 1, size: int = 500) -> int:
+        """获取最近N周期满足给定条件的次数(con_key字符串必须全局唯一)"""
         self.countif_dict[con_key].append(condition * 1)
+        deque_len = len(self.countif_dict[con_key])
+        
+        if deque_len > size:
+            self.countif_dict[con_key].pop(0)
 
-        if len(self.countif_dict[con_key]) >= n:
+        if deque_len >= n:
             return sum(self.countif_dict[con_key][-n:])
         else:
             return 0
