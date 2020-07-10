@@ -2886,7 +2886,7 @@ class DayArrayManager(object):
         Average True Range (ATR). 平均真实波动幅度：真实波动幅度的 N 日 指数移动平均数。
         """
         if log:
-            result = talib.ATR(np.log(self.high[:-1]), np.log(self.low[:-1]), np.log(self.close[:-1]) timeperiod=n)
+            result = talib.ATR(np.log(self.high[:-1]), np.log(self.low[:-1]), np.log(self.close[:-1]), timeperiod=n)
         else:
             result = talib.ATR(self.high[:-1], self.low[:-1], self.close[:-1], timeperiod=n)
 
