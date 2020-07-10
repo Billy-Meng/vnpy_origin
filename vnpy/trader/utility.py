@@ -392,43 +392,42 @@ class BarGenerator:
         将Tick合成或数据接口加载的X秒钟second_bar，合成1分钟bar,并回调on_bar。
         """
         if self.second_window == 60:
-            new_minute = True
-            self.second_window_bar = second_bar
+            self.on_bar(second_bar)
+            return
 
+        # If not inited, creaate second window bar object
+        if not self.second_window_bar:
+            # Generate timestamp for bar data
+            dt = second_bar.datetime.replace(second=0, microsecond=0)
+
+            self.second_window_bar = BarData(
+                symbol=second_bar.symbol,
+                exchange=second_bar.exchange,
+                interval=Interval.MINUTE,
+                datetime=dt,
+                gateway_name=second_bar.gateway_name,
+                open_price=second_bar.open_price,
+                high_price=second_bar.high_price,
+                low_price=second_bar.low_price
+            )
+
+        # Otherwise, update high/low price into window bar
         else:
-            # If not inited, creaate second window bar object
-            if not self.second_window_bar:
-                # Generate timestamp for bar data
-                dt = second_bar.datetime.replace(second=0, microsecond=0)
+            self.second_window_bar.high_price = max(
+                self.second_window_bar.high_price, second_bar.high_price)
+            self.second_window_bar.low_price = min(
+                self.second_window_bar.low_price, second_bar.low_price)
 
-                self.second_window_bar = BarData(
-                    symbol=second_bar.symbol,
-                    exchange=second_bar.exchange,
-                    interval=Interval.MINUTE,
-                    datetime=dt,
-                    gateway_name=second_bar.gateway_name,
-                    open_price=second_bar.open_price,
-                    high_price=second_bar.high_price,
-                    low_price=second_bar.low_price
-                )
+        # Update close price/volume into window bar
+        self.second_window_bar.close_price = second_bar.close_price
+        self.second_window_bar.volume += int(second_bar.volume)
+        self.second_window_bar.open_interest = second_bar.open_interest
 
-            # Otherwise, update high/low price into window bar
-            else:
-                self.second_window_bar.high_price = max(
-                    self.second_window_bar.high_price, second_bar.high_price)
-                self.second_window_bar.low_price = min(
-                    self.second_window_bar.low_price, second_bar.low_price)
+        new_minute = False
 
-            # Update close price/volume into window bar
-            self.second_window_bar.close_price = second_bar.close_price
-            self.second_window_bar.volume += int(second_bar.volume)
-            self.second_window_bar.open_interest = second_bar.open_interest
-
-            new_minute = False
-
-            # 传入的second_bar已经走完一分钟，则启动 on_bar
-            if (second_bar.datetime + timedelta(seconds=self.second_window)).second == 0:
-                new_minute = True
+        # 传入的second_bar已经走完一分钟，则启动 on_bar
+        if (second_bar.datetime + timedelta(seconds=self.second_window)).second == 0:
+            new_minute = True
 
         if new_minute:
             self.on_bar(self.second_window_bar)
@@ -438,6 +437,10 @@ class BarGenerator:
         """
         Update 1 minute bar into generator
         """
+        if self.window == 1 and self.interval == Interval.MINUTE:
+            self.on_window_bar(bar)
+            return
+
         # If not inited, creaate window bar object
         if not self.window_bar:
             # Generate timestamp for bar data
@@ -818,6 +821,10 @@ class BarGenerator:
         """
         Update 1 minute bar into generator
         """
+        if self.window == 1 and self.interval == Interval.MINUTE:
+            self.on_window_bar(bar)
+            return
+            
         # If not inited, creaate window bar object
         if not self.window_bar:
             # Generate timestamp for bar data
@@ -2530,7 +2537,7 @@ class ArrayManager(object):
         return k[-1], d[-1], j[-1]
 
     def countif(self, condition: bool, con_key: str, n: int = 1, size: int = 500) -> int:
-        """获取最近N周期满足给定条件的次数(con_key字符串必须全局唯一)"""
+        """获取最近N周期满足给定条件的次数(每一次回调都需执行判断，con_key须唯一，可通过countif_dict调取)"""
         self.countif_dict[con_key].append(condition * 1)
         deque_len = len(self.countif_dict[con_key])
 
@@ -2542,126 +2549,9 @@ class ArrayManager(object):
         else:
             return 0
 
-    def ohlc_average(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """开高低收四个价格的平均价"""
-        if log:
-            result = (np.log(self.open) + np.log(self.high) + np.log(self.low) + np.log(self.close)) / 4
-        else:
-            result = (self.open + self.high + self.low + self.close) / 4
-
-        if array:
-            return result
-        return result[-1]
-
-    def c_sub_o(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """
-        (Close - Open)差价序列（区分阴阳的K线实体大小）
-        """
-        if log:
-            result = np.log(self.close) - np.log(self.open)
-        else:
-            result = self.close - self.open
-
-        if array:
-            return result
-        return result[-1]
-
-    def rise_fall(self,array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """
-        K线上涨或下跌标记，1为上涨，-1为下跌。
-        """
-        if log:
-            result =  np.where(np.log(self.close) >= np.log(self.open), 1, -1)
-        else:
-            result = np.where(self.close >= self.open, 1, -1)
-
-        if array:
-            return result
-        return result[-1]
-
-    def abs_c_sub_o(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """
-        (Close - Open)的绝对值差价序列（K线实体大小）
-        """
-        if log:
-            result = abs(np.log(self.close) - np.log(self.open))
-        else:
-            result = abs(self.close - self.open)
-
-        if array:
-            return result
-        return result[-1]
-
-    def min_o_or_c(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """
-        取 Open 或 Close 中较小值的价格序列（K线实体下沿价格）
-        """
-        if log:
-            result = np.where(self.c_sub_o < 0, np.log(self.close), np.log(self.open))
-        else:
-            result = np.where(self.c_sub_o < 0, self.close, self.open)
-
-        if array:
-            return result
-        return result[-1]
-
-    def max_o_or_c(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """
-        取 Open 或 Close 中较大值的价格序列（K线实体上沿价格）
-        """
-        if log:
-            result = np.where(self.c_sub_o > 0, np.log(self.close), np.log(self.open))
-        else:
-            result = np.where(self.c_sub_o > 0, self.close, self.open)
-
-        if array:
-            return result
-        return result[-1]
-
-    def lower_edge_high(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """
-        在指定序列长度中， Open 或 Close 中较小值与最低点的距离，所构成的差价序列（K线实体下沿距离最低点的高度）
-        """
-        if log:
-            result = self.min_o_or_c(array=True, log=True)[-n:] - np.log(min(self.low[-n:]))
-        else:
-            result = self.min_o_or_c(array=True)[-n:] - min(self.low[-n:])
-
-        if array:
-            return result
-        return result[-1]
-
-    def upper_edge_high(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """
-        在指定序列长度中， Open 或 Close 中较大值与最低点的距离，所构成的差价序列（K线实体上沿距离最低点的高度）
-        """
-        if log:
-            result = self.max_o_or_c(array=True, log=True)[-n:] - np.log(min(self.low[-n:]))
-        else:
-            result = self.max_o_or_c(array=True)[-n:] - min(self.low[-n:])
-
-        if array:
-            return result
-        return result[-1]
-
-    def median_point_high(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
-        """
-        在指定序列长度中， Open与Close的中间点距离最低价的高度（K线实体的中间点距离最低点的高度）
-        """
-        if log:
-            result = (self.min_o_or_c(array=True, log=True)[-n:] - np.log(min(self.low[-n:]))) + self.abs_c_sub_o(array=True, log=True)[-n:] * 0.5
-        else:
-            result = self.min_o_or_c(array=True)[-n:] - min(self.low[-n:]) + self.abs_c_sub_o(array=True)[-n:] * 0.5
-
-        if array:
-            return result
-        return result[-1]
-
-    # ======================================================================================================================================================================================================== #
-    # ======================================================================================================================================================================================================== #
-    def CrossOver(self, PriceArrray_1:"Array", Price_2:"Array or int") -> bool:
-        """求是否上穿"""
-        if isinstance(Price_2, int):
+    def CrossOver(self, PriceArrray_1: np.ndarray, Price_2:  Union[int, float, np.ndarray]) -> bool:
+        """判断是否上穿"""
+        if isinstance(Price_2, (int, float)):
             if PriceArrray_1[-2] < Price_2 and PriceArrray_1[-1] >= Price_2:
                 return True
             else:
@@ -2672,9 +2562,9 @@ class ArrayManager(object):
             else:
                 return False
 
-    def CrossUnder(self, PriceArrray_1:"Array", Price_2:"Array or int") -> bool:
-        """求是否下破"""
-        if isinstance(Price_2, int):
+    def CrossUnder(self, PriceArrray_1: np.ndarray, Price_2: Union[int, float, np.ndarray]) -> bool:
+        """判断是否下破"""
+        if isinstance(Price_2, (int, float)):
             if PriceArrray_1[-2] > Price_2 and PriceArrray_1[-1] <= Price_2:
                 return True
             else:
@@ -2703,6 +2593,91 @@ class ArrayManager(object):
                 day_offset = timedelta(days=1)
         data.datetime = data.datetime + day_offset
         return data.datetime.date()
+
+    
+    # ======================================================================================================================================================================================================== #
+    # ======================================================================================================================================================================================================== #
+    def ohlc_average(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+        """开高低收四个价格的平均价"""
+        if log:
+            result = (np.log(self.open) + np.log(self.high) + np.log(self.low) + np.log(self.close)) / 4
+        else:
+            result = (self.open + self.high + self.low + self.close) / 4
+
+        if array:
+            return result
+        return result[-1]
+
+    def c_sub_o(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        (Close - Open)差价序列（区分阴阳的K线实体大小）
+        """
+        result = self.close - self.open
+
+        if array:
+            return result
+        return result[-1]
+        
+    def abs_c_sub_o(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        (Close - Open)的绝对值差价序列（K线实体大小）
+        """
+        result = abs(self.close - self.open)
+
+        if array:
+            return result
+        return result[-1]
+
+    def min_o_or_c(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        取 Open 或 Close 中较小值的价格序列（K线实体下沿价格）
+        """
+        result = np.where(self.c_sub_o < 0, self.close, self.open)
+
+        if array:
+            return result
+        return result[-1]
+
+    def max_o_or_c(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        取 Open 或 Close 中较大值的价格序列（K线实体上沿价格）
+        """
+        result = np.where(self.c_sub_o > 0, self.close, self.open)
+
+        if array:
+            return result
+        return result[-1]
+
+    def lower_edge_high(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        在指定序列长度中， Open 或 Close 中较小值与最低点的距离，所构成的差价序列（K线实体下沿距离最低点的高度）
+        """
+        result = self.min_o_or_c(array=True)[-n:] - min(self.low[-n:])
+
+        if array:
+            return result
+        return result[-1]
+
+    def upper_edge_high(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        在指定序列长度中， Open 或 Close 中较大值与最低点的距离，所构成的差价序列（K线实体上沿距离最低点的高度）
+        """
+        result = self.max_o_or_c(array=True)[-n:] - min(self.low[-n:])
+
+        if array:
+            return result
+        return result[-1]
+
+    def median_point_high(self, n: int, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        在指定序列长度中， Open与Close的中间点距离最低价的高度（K线实体的中间点距离最低点的高度）
+        """
+        result = self.min_o_or_c(array=True)[-n:] - min(self.low[-n:]) + self.abs_c_sub_o(array=True)[-n:] * 0.5
+
+        if array:
+            return result
+        return result[-1]
+
 
 # ======================================================================================================================================================================================================== #
 # ======================================================================================================================================================================================================== #
@@ -2824,19 +2799,6 @@ class DayArrayManager(object):
 
         return data.datetime.date()
 
-    def countif(self, condition: bool, con_key: str, n: int = 1, size: int = 500) -> int:
-        """获取最近N周期满足给定条件的次数(con_key字符串必须全局唯一)"""
-        self.countif_dict[con_key].append(condition * 1)
-        deque_len = len(self.countif_dict[con_key])
-        
-        if deque_len > size:
-            self.countif_dict[con_key].pop(0)
-
-        if deque_len >= n:
-            return sum(self.countif_dict[con_key][-n:])
-        else:
-            return 0
-
     # ======================================================================================================================================================================================================== #
     # Overlap Studies 重叠研究指标
     def sma(self, n: int, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
@@ -2844,9 +2806,9 @@ class DayArrayManager(object):
         Simple moving average. 简单移动平均线
         """
         if log:
-            result = talib.SMA(np.log(self.close), timeperiod=n)
+            result = talib.SMA(np.log(self.close[:-1]), timeperiod=n)
         else:
-            result = talib.SMA(self.close, timeperiod=n)
+            result = talib.SMA(self.close[:-1], timeperiod=n)
 
         if array:
             return result
@@ -2857,9 +2819,9 @@ class DayArrayManager(object):
         Exponential moving average.  指数移动平均线：趋向类指标，其构造原理是仍然对价格收盘价进行算术平均，并根据计算结果来进行分析，用于判断价格未来走势的变动趋势。
         """
         if log:
-            result = talib.EMA(np.log(self.close), timeperiod=n)
+            result = talib.EMA(np.log(self.close[:-1]), timeperiod=n)
         else:
-            result = talib.EMA(self.close, timeperiod=n)
+            result = talib.EMA(self.close[:-1], timeperiod=n)
 
         if array:
             return result
@@ -2870,9 +2832,9 @@ class DayArrayManager(object):
         Moving average.  移动平均线：matype: 0=SMA(默认), 1=EMA(指数移动平均线), 2=WMA(加权移动平均线), 3=DEMA(双指数移动平均线), 4=TEMA(三重指数移动平均线), 5=TRIMA, 6=KAMA(考夫曼自适应移动平均线), 7=MAMA, 8=T3(三重指数移动平均线)
         """
         if log:
-            result = talib.MA(np.log(self.close), timeperiod=n, matype=matype)
+            result = talib.MA(np.log(self.close[:-1]), timeperiod=n, matype=matype)
         else:
-            result = talib.MA(self.close, timeperiod=n, matype=matype)
+            result = talib.MA(self.close[:-1], timeperiod=n, matype=matype)
 
         if array:
             return result
@@ -2883,9 +2845,9 @@ class DayArrayManager(object):
         Relative Strenght Index (RSI). 相对强弱指数：通过比较一段时期内的平均收盘涨数和平均收盘跌数来分析市场买沽盘的意向和实力，从而作出未来市场的走势。
         """
         if log:
-            result = talib.RSI(np.log(self.close), timeperiod=n)
+            result = talib.RSI(np.log(self.close[:-1]), timeperiod=n)
         else:
-            result = talib.RSI(self.close, timeperiod=n)
+            result = talib.RSI(self.close[:-1], timeperiod=n)
 
         if array:
             return result
@@ -2896,9 +2858,9 @@ class DayArrayManager(object):
         Moving Average Convergence/Divergence. 平滑异同移动平均线：利用收盘价的短期（常用为12日）指数移动平均线与长期（常用为26日）指数移动平均线之间的聚合与分离状况，对买进、卖出时机作出研判的技术指标。
         """
         if log:
-            macd, signal, hist = talib.MACD(np.log(self.close), fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
+            macd, signal, hist = talib.MACD(np.log(self.close[:-1]), fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
         else:
-            macd, signal, hist = talib.MACD(self.close, fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
+            macd, signal, hist = talib.MACD(self.close[:-1], fastperiod=fast_period, slowperiod=slow_period, signalperiod=signal_period)
 
         if array:
             return macd, signal, hist
@@ -2911,9 +2873,9 @@ class DayArrayManager(object):
         TRANGE. 真实波动幅度 = max(当日最高价, 昨日收盘价) − min(当日最低价, 昨日收盘价)
         """
         if log:
-            result = talib.TRANGE(np.log(self.high), np.log(self.low), np.log(self.close))
+            result = talib.TRANGE(np.log(self.high[:-1]), np.log(self.low[:-1]), np.log(self.close[:-1]))
         else:
-            result = talib.TRANGE(self.high, self.low, self.close)
+            result = talib.TRANGE(self.high[:-1], self.low[:-1], self.close[:-1])
 
         if array:
             return result
@@ -2924,9 +2886,9 @@ class DayArrayManager(object):
         Average True Range (ATR). 平均真实波动幅度：真实波动幅度的 N 日 指数移动平均数。
         """
         if log:
-            result = talib.ATR(np.log(self.high), np.log(self.low), np.log(self.close), timeperiod=n)
+            result = talib.ATR(np.log(self.high[:-1]), np.log(self.low[:-1]), np.log(self.close[:-1]) timeperiod=n)
         else:
-            result = talib.ATR(self.high, self.low, self.close, timeperiod=n)
+            result = talib.ATR(self.high[:-1], self.low[:-1], self.close[:-1], timeperiod=n)
 
         if array:
             return result

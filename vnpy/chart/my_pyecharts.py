@@ -319,6 +319,49 @@ class MyPyecharts():
         self.kline_chart.overlap(trade_short)
         self.kline_chart.overlap(trade_cover)
 
+    def overlap_net_pnl(self):
+        # 在K线图绘制累计净盈亏曲线(注：kline的datazoom_opts为单图形模式)
+
+        if self.grid == True:
+            print("grid应为False！")
+            return 
+
+        bar_data = pd.merge(self.bar_data, self.trade_data.net_pnl.cumsum(), how="outer", left_index=True, right_index=True)
+        bar_data["net_pnl"].fillna(method="ffill", inplace=True)
+        bar_data["net_pnl"].fillna(value=0, inplace=True)
+
+        self.kline_chart.extend_axis(yaxis = opts.AxisOpts(position="right"))
+
+        net_pnl_line = (
+            Line()
+            .add_xaxis(xaxis_data = self.bar_data_datetime)
+            .add_yaxis(
+                series_name = "Net_pnl",
+                y_axis = bar_data.net_pnl.apply(lambda x: round(x, 2)).values.tolist(),
+                yaxis_index = 1,
+                label_opts = opts.LabelOpts(is_show=False),
+                is_symbol_show = False,
+                linestyle_opts = opts.LineStyleOpts(width=3, opacity=0.5, type_="solid", color="#8A0000"),
+            ) 
+        )
+
+        signal_scatter = (
+            EffectScatter()
+            .add_xaxis(xaxis_data = list(self.trade_data.index.strftime("%Y-%m-%d %H:%M")))
+            .add_yaxis(
+                series_name = "Signal",
+                y_axis = self.trade_data.signal.values.tolist(),
+                yaxis_index = 1,
+                symbol_size = 5,
+                label_opts = opts.LabelOpts(is_show=False),
+                itemstyle_opts = opts.ItemStyleOpts(color="#0000FF", opacity=0.1),
+            ) 
+            .set_global_opts(legend_opts = opts.LegendOpts(is_show = False))
+        )
+
+        self.kline_chart.overlap(signal_scatter)
+        self.kline_chart.overlap(net_pnl_line)
+
     def overlap_balance(self, capital=100000):
         # 在K线图绘制收益曲线(注：kline的datazoom_opts为单图形模式)
 

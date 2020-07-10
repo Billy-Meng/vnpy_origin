@@ -256,7 +256,7 @@ class CtaEngine(BaseEngine):
             return
 
         for strategy in strategies:
-            self.call_strategy_func(strategy, strategy.on_position, holding)
+            strategy.on_position(holding)
 
     def process_account_event(self, event: Event):
         """"""

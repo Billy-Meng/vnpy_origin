@@ -3,8 +3,8 @@ import os
 from abc import ABC
 from copy import copy, deepcopy
 from typing import Any, Callable, Union
-from datetime import datetime, timedelta
-from threading import Thread, Timer
+from datetime import datetime, time, timedelta
+from threading import Thread
 
 import pandas as pd
 
@@ -56,7 +56,8 @@ class CtaTemplate(ABC):
         self.variables.insert(6, "exit_minute")
 
         self.engine_type = self.get_engine_type()       # 初始化时获取策略引擎类型
-        self.account_id = None
+        self.position = None
+        self.account = None
         self.balance = 0
 
         self.track_highest = 0           # 记录开仓后的最高点
@@ -64,9 +65,10 @@ class CtaTemplate(ABC):
         self.entry_minute  = 0           # 统计开仓后历时多少分钟
         self.exit_minute   = 0           # 统计平仓后历时多少分钟
 
-        self.last_long_cost_price = 0    # 实盘模式缓存最近多头持仓均价
-        self.last_short_cost_price = 0   # 实盘模式缓存最近空头持仓均价
-        self.trade_data_dict = {}        # 实盘模式缓存所有成交信息
+        self.long_cost = 0               # 实盘模式缓存最新多头持仓均价，回测模式缓存持仓均价
+        self.short_cost = 0              # 实盘模式缓存最新空头持仓均价，回测模式缓存持仓均价
+        self.last_long_cost = 0          # 实盘模式缓存上一次多头持仓均价
+        self.last_short_cost = 0         # 实盘模式缓存上一次空头持仓均价
         self.show_account_data = True    # 实盘模式初始化时显示账户信息日志
         self.show_holding_data = True    # 实盘模式初始化时显示持仓信息日志
         self.dingding_url_list = load_json("vt_setting.json")["dingding.url"].split(";")
@@ -82,8 +84,8 @@ class CtaTemplate(ABC):
         self.cover_trade_volume = 0    
         self.chase_interval = 10         # 拆单间隔:秒
 
-        self.signal = ""                 # 实盘和回测记录当笔交易的信号文本
-        self.signal_list = []            # 实盘和回测缓存每笔交易的信号文本
+        self.signal: float = 0           # 实盘和回测记录当笔交易的信号：1 buy, 2 short, 3 sell, 4 cover
+        self.signal_list = []            # 实盘和回测缓存每笔交易的信号
 
         self.trade_number = 0            # 回测时缓存当笔交易的序号
         self.trade_net_volume = 0        # 回测时缓存当笔交易的净持仓量
@@ -226,9 +228,13 @@ class CtaTemplate(ABC):
         """
         Callback of position update.
         """
-        if not self.last_long_cost_price or not self.last_short_cost_price:
-            self.last_long_cost_price = holding.long_price
-            self.last_short_cost_price = holding.short_price
+        self.position = holding
+        self.long_cost = holding.long_price
+        self.short_cost = holding.short_price
+
+        if not self.last_long_cost or not self.last_short_cost:
+            self.last_long_cost = holding.long_price
+            self.last_short_cost = holding.short_price
         
         if self.show_holding_data:
             self.write_log(f"【持仓信息】多头持仓数量：{holding.long_pos}，多头持仓均价：{holding.long_price}；空头持仓数量：{holding.short_pos}，空头持仓均价：{holding.short_price}")
@@ -238,18 +244,11 @@ class CtaTemplate(ABC):
         """
         Callback of account update.
         """
-        self.pre_balance = account.pre_balance             # 昨日净值
-        self.balance = account.balance                     # 当日净值
-        self.available = account.available                 # 可用资金
-        self.percent = account.percent                     # 资金使用率
-        self.account_margin = account.margin               # 占用保证金
-        self.account_frozen = account.frozen               # 冻结资金
-        self.account_commission = account.commission       # 手续费
-        self.close_profit = account.close_profit           # 平仓盈亏
-        self.position_profit = account.position_profit     # 持仓盈亏
+        self.account = account
+        self.balance = account.balance
 
         if self.show_account_data:
-            self.write_log(f"【账户信息】账号：{account.accountid}，账户净值：{self.balance}，可用资金：{self.available}")
+            self.write_log(f"【账户信息】账号：{account.accountid}，账户净值：{account.balance}，可用资金：{account.available}")
             self.show_account_data = False
 
     def buy(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False):
@@ -383,7 +382,7 @@ class CtaTemplate(ABC):
     # ========================================================================================================================================================================================= #
     # 自定义增强功能
 
-    def init_strategy(self):
+    def init_strategy_data(self):
         self.write_log("策略初始化")
         self.get_contract_data()               # 策略初始化时获取合约信息，动态赋值给 contract_data, gateway_name, symbol, pricetick, size
         self.product_trade_time()              # 策略初始化时获取品种的交易时间信息字典，动态赋值给 trade_time
@@ -400,7 +399,7 @@ class CtaTemplate(ABC):
         
         注意要点：Tick级精细挂撤单的管理逻辑，无法通过K线来进行回测检验，因此需通过仿真交易（比如期货基于SimNow）进行充分的测试。
         """
-        active_orders = self.self.cta_engine.offset_converter.get_position_holding(self.vt_symbol).active_orders
+        active_orders = self.cta_engine.offset_converter.get_position_holding(self.vt_symbol).active_orders
 
         if active_orders:
             # 委托完成状态
@@ -422,7 +421,7 @@ class CtaTemplate(ABC):
                         self.cancel_order(vt_orderid)
                         self.chase_short_trigger = True
             # 平仓追单
-            elif order.offset in (Offset.CLOSE, Offset.CLOSETODAY):
+            else:
                 if order.direction == Direction.SHORT:
                     self.sell_trade_volume = order.untraded
                     if (tick.datetime - order.datetime).seconds > self.chase_interval and self.sell_trade_volume > 0 and (not self.chase_sell_trigger) and vt_orderid:
@@ -539,23 +538,30 @@ class CtaTemplate(ABC):
             df["symbol"] = df["symbol"].apply(lambda x: x.upper())
             df = df.set_index("symbol")
             
-            self.trade_time = df.loc[product].to_dict()
-            if self.trade_time["night_trade"] == True:
-                night_time = f'夜盘【 {self.trade_time["night_start"]} ~ {self.trade_time["night_end"]} 】'
-            else:
-                night_time = "无夜盘。"
+            try:
+                self.trade_time = df.loc[product].to_dict()
+                if self.trade_time["night_trade"] == True:
+                    night_time = f'夜盘【 {self.trade_time["night_start"]} ~ {self.trade_time["night_end"]} 】'
+                else:
+                    night_time = "无夜盘。"
 
-            self.write_log(f'品种交易时间：日盘【 {self.trade_time["am_start"]} ~ {self.trade_time["pm_end"]} 】，{night_time}')
+                self.write_log(f'品种交易时间：日盘【 {self.trade_time["am_start"]} ~ {self.trade_time["pm_end"]} 】，{night_time}')
+
+            except KeyError:
+                self.write_log("找不到该品种交易时间")
 
         else:
             self.write_log("找不到该品种交易时间")
 
     def calculate_trade_result(self, trade: TradeData) -> None:
         """计算各项成交数据。在 on_trade 中调用"""
+        # 回测模式
         if self.inited and self.engine_type == EngineType.BACKTESTING:
             if trade.offset == Offset.OPEN:
                 self.trade_net_volume += abs(trade.volume)
                 self.open_cost_price = (trade.price * trade.volume + self.open_cost_price * (self.trade_net_volume - trade.volume)) / self.trade_net_volume
+                self.long_cost = self.open_cost_price       # 持仓均价，保持和实盘名称一致
+                self.short_cost = self.open_cost_price      # 持仓均价，保持和实盘名称一致
 
                 if self.rate_type == RateType.FIXED:        # 固定手续费模式
                     self.trade_commission += trade.volume * self.rate
@@ -605,6 +611,7 @@ class CtaTemplate(ABC):
                 self.net_pnl = 0
                 self.record_start_switch = True
 
+        # 实盘模式
         elif self.inited and self.engine_type == EngineType.LIVE:
             # 获取当前持仓信息
             holding = self.cta_engine.offset_converter.get_position_holding(self.vt_symbol)
@@ -621,8 +628,8 @@ class CtaTemplate(ABC):
 
             else:
                 if trade.direction == Direction.LONG:       # 买平，平空仓
-                    self.trade_pnl = (self.last_short_cost_price - trade.price) * trade.volume * self.size
-                    self.trade_commission = round((trade.volume * self.contract_data.open_commission + self.last_short_cost_price * trade.volume * self.size * self.contract_data.open_commission_ratio)
+                    self.trade_pnl = (self.last_short_cost - trade.price) * trade.volume * self.size
+                    self.trade_commission = round((trade.volume * self.contract_data.open_commission + self.last_short_cost * trade.volume * self.size * self.contract_data.open_commission_ratio)
                                             + (trade.volume * self.contract_data.close_commission + trade.price * trade.volume * self.size * self.contract_data.close_commission_ratio), 2)
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
 
@@ -631,8 +638,8 @@ class CtaTemplate(ABC):
                     self.dingding(msg)
 
                 elif trade.direction == Direction.SHORT:    # 卖平，平多仓
-                    self.trade_pnl = (trade.price - self.last_long_cost_price) * trade.volume * self.size
-                    self.trade_commission = round((trade.volume * self.contract_data.open_commission + self.last_long_cost_price * trade.volume * self.size * self.contract_data.open_commission_ratio)
+                    self.trade_pnl = (trade.price - self.last_long_cost) * trade.volume * self.size
+                    self.trade_commission = round((trade.volume * self.contract_data.open_commission + self.last_long_cost * trade.volume * self.size * self.contract_data.open_commission_ratio)
                                             + (trade.volume * self.contract_data.close_commission + trade.price * trade.volume * self.size * self.contract_data.close_commission_ratio), 2)
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
 
@@ -640,20 +647,24 @@ class CtaTemplate(ABC):
                     self.write_log(msg)
                     self.dingding(msg)
 
-            self.last_long_cost_price = holding.long_price
-            self.last_short_cost_price = holding.short_price
+            self.last_long_cost = holding.long_price
+            self.last_short_cost = holding.short_price
 
         # 将每次成交的信号文本保存，以便后期复查
         self.signal_list.append(self.signal)
-        self.signal = ""
+        self.signal = 0
 
     def save_trade_data_to_json(self, trade: TradeData):
         """实盘模式下实时记录成交信息至JSON文件。在 on_trade 中调用"""
         if self.inited and self.engine_type == EngineType.LIVE:
-        
-            # 判断.vntrader文件夹下是否存在Trade_Record文件夹，不存在则创建文件夹
-            if not os.path.exists(get_file_path(f"成交记录信息/{datetime.now().date()}")):
-                os.makedirs(get_file_path(f"成交记录信息/{datetime.now().date()}"))             # os.makedirs()创建多级目录
+            # 判断.vntrader文件夹下是否存在vt_trade_data_record文件夹，不存在则创建文件夹
+            file_path = get_file_path(f'vt_trade_data_record/{datetime.now().date().strftime("%Y%m%d")}')
+            file_name = file_path.joinpath(f"{self.symbol}-{self.__class__.__name__}.json")
+
+            if not os.path.exists(file_path):
+                os.makedirs(file_path)                       # os.makedirs()创建多级目录
+            else:
+                self.trade_data_dict = load_json(file_name)
 
             _trade = deepcopy(trade).__dict__
             _trade["exchange"] = _trade.exchange.value
@@ -664,10 +675,12 @@ class CtaTemplate(ABC):
             _trade["commission"] = self.trade_commission
             _trade["net_pnl"] = self.net_pnl
             _trade["signal"] = self.signal_list[-1]
+            _trade["symbol"] = self.symbol
+            _trade["strategy"] = self.__class__.__name__
 
-            temp_dict = {f'{_trade["datetime"]} {self.symbol} {self.__class__.__name__}':_trade}
+            temp_dict = {_trade["datetime"]:_trade}
             self.trade_data_dict.update(temp_dict)
-            save_json(f"成交记录信息/{datetime.now().date()}/{self.symbol}-{self.__class__.__name__}.json", self.trade_data_dict)
+            save_json(file_name, self.trade_data_dict)
 
     def record_price_and_status(self, bar: BarData):
         """记录和更新每一分钟策略定义的各类价格和状态"""
@@ -686,6 +699,34 @@ class CtaTemplate(ABC):
             self.track_lowest  = min(self.track_lowest, bar.low_price)
             self.entry_minute += 1
             self.exit_minute = 0
+
+    def empty_position(self, data: Union[BarData, TickData], exit_time: time = time(14, 58)):
+        """收盘前清仓"""
+        if isinstance(data, BarData):
+            if exit_time <= data.datetime.time() <= time(16, 00):
+
+                self.cancel_all()       # 撤销当前所有挂单
+                
+                if self.pos > 0:
+                    self.sell(data.close_price - 100 * self.pricetick, abs(self.pos))
+                    self.signal = 3.99
+
+                elif self.pos < 0:
+                    self.cover(data.close_price + 100 * self.pricetick, abs(self.pos))
+                    self.signal = 4.99
+
+        else:
+            if exit_time <= data.datetime.time() <= time(16, 00):
+
+                self.cancel_all()       # 撤销当前所有挂单
+
+                if self.pos > 0:
+                    self.sell(data.ask_price_1 - 100 * self.pricetick, abs(self.pos))
+                    self.signal = 3.99
+
+                elif self.pos < 0:
+                    self.cover(data.bid_price_1 + 100 * self.pricetick, abs(self.pos))
+                    self.signal = 4.99
       
 
 class CtaSignal(ABC):

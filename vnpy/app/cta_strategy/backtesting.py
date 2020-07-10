@@ -1056,7 +1056,7 @@ class BacktestingEngine:
     def get_trade_data_df(self):
         """提取成交记录，并生成 DataFrame"""
         trades = self.get_all_trades()
-            
+
         if trades:
             trade_list = [trade.__dict__ for trade in trades]
             trade_df = DataFrame(trade_list)
@@ -1069,11 +1069,15 @@ class BacktestingEngine:
             trade_df["offset"] = trade_df.offset.apply(lambda x : x.value)
             trade_df["net_volume"] = self.strategy.trade_net_volume_list
             trade_df["signal"] = self.strategy.signal_list
+            trade_df["strategy"] = self.strategy_class.__name__
 
             self.trade_data_df = trade_df
 
     def calculate_trade_result(self):
         """计算每笔交易盈亏"""
+        if not self.trades:
+            return
+
         trade_number_list = self.strategy.trade_number_list
         trade_type_list = self.strategy.trade_type_list
         trade_pnl_list = self.strategy.trade_pnl_list
@@ -1086,9 +1090,9 @@ class BacktestingEngine:
         trade_start_time_list = self.strategy.trade_start_time_list
         trade_end_time_list = self.strategy.trade_end_time_list
 
+        # 处理回测最后交易为未结清头寸的情况
         last_trade_net_volume = self.strategy.trade_net_volume_list[-1]
 
-        # 处理回测最后交易为未结清头寸的情况
         if last_trade_net_volume > 0:
             last_close_price = self.history_data[-1].close_price          # 获取回测期加载历史数据最后一根Bar的收盘价
             last_datetime = self.history_data[-1].datetime                # 获取回测期加载历史数据最后一根Bar的时间
@@ -1154,7 +1158,7 @@ class BacktestingEngine:
         self.trade_result_df = trade_result_df
 
     def calculate_statistics(self, trade_df: DataFrame = None, daily_df: DataFrame = None, capital = None, save_statistics = False, save_csv = False, save_chart = False, output=True):
-        """"""
+        """计算统计指标"""
         if self.symbol:
             self.output(f"开始计算 {self.symbol} {self.strategy_class.__name__} 统计指标")
         else:
@@ -1174,7 +1178,7 @@ class BacktestingEngine:
             trade_df["balance"] = trade_df["net_pnl"].cumsum() + capital
 
         # Check for init DataFrame
-        if trade_df is None or daily_df is None:
+        if not self.trades:
             # 没有成交记录则设置所有统计指标为0
             start_date = ""
             end_date = ""
@@ -1220,6 +1224,7 @@ class BacktestingEngine:
             daily_slippage = 0
             daily_trade_count = 0
             daily_trade_max = 0
+            trade_volume_max = 0
 
             max_profit = 0
             max_loss = 0
@@ -1350,12 +1355,12 @@ class BacktestingEngine:
             lw_drawdown = talib.LINEARREG(daily_df["ddpercent"], total_days)[-1]      # 百分比线性加权回撤：就是使用最小二乘法（OLS）对回撤曲线进行线性回归，从而得到一条回撤的趋势线。最小化误差平方和的方法有利于避免极端情况的影响，让我们把关注点更多集中在策略的整体风险水平上。一个好的策略，其回撤的回归直线的斜率应该尽可能的小。
             daily_df["ddpercent^2"] = daily_df["ddpercent"] * daily_df["ddpercent"]                             
             average_square_drawdown = - daily_df["ddpercent^2"].mean()                # 百分比均方回撤：每日百分比回撤的平方的期望值，采用这种计量方法的原因在于认为策略样本内回测属于小样本评估，属于有偏估算。
-            max_drawdown_end = daily_df["drawdown"].idxmin()
+            max_ddpercent_end = daily_df["ddpercent"].idxmin()
 
-            if isinstance(max_drawdown_end, date):
-                max_drawdown_start = daily_df["balance"][:max_drawdown_end].idxmax()
-                max_drawdown_duration = (max_drawdown_end - max_drawdown_start).days    # 最大回撤天数
-                max_drawdown_range = f"{max_drawdown_start}~{max_drawdown_end}"         # 最大回撤区间
+            if isinstance(max_ddpercent_end, date):
+                max_ddpercent_start = daily_df["balance"][:max_ddpercent_end].idxmax()
+                max_drawdown_duration = (max_ddpercent_end - max_ddpercent_start).days    # %最大回撤天数
+                max_drawdown_range = f"{max_ddpercent_start}~{max_ddpercent_end}"         # %最大回撤区间
             else:
                 max_drawdown_duration = 0
 
@@ -1364,7 +1369,7 @@ class BacktestingEngine:
             daily_slippage = total_slippage / total_days              # 日均滑点费
             daily_trade_count = total_trade / total_days              # 日均交易笔数
             daily_trade_max = int(trade_df[["trade_date", "symbol"]].groupby("trade_date").count().max())    # 单日最多交易笔数
-            trade_volume_max = self.trade_data_df.volume.max()        # 单次最大成交手数
+            trade_volume_max = self.trade_data_df.trade_volume.max()        # 单次最大成交手数
 
             total_trade_count = daily_df["trade_count"].sum()         # 总共成交的委托数量
 
@@ -1502,6 +1507,19 @@ class BacktestingEngine:
             self.output(f"空头最长持仓小时：\t{short_trade_duration_max:,.2f}")
 
             self.output("-" * 30)
+
+        signal_times = self.trade_data_df[["signal", "symbol"]].groupby(["signal"]).count().iterrows()
+        for ix, row in signal_times:
+            if row.name < 2:
+                self.output(f"开多 {row.name}： {row.symbol}")
+            elif row.name < 3:
+                self.output(f"开空 {row.name}： {row.symbol}")
+            elif row.name < 4:
+                self.output(f"平多 {row.name}： {row.symbol}")
+            elif row.name < 5:
+                self.output(f"平空 {row.name}： {row.symbol}")
+
+        self.output("-" * 30)
 
         statistics = {
             "start_date": start_date,
@@ -1697,6 +1715,16 @@ class BacktestingEngine:
                 
                 with open(filepath, "w+") as f:
                     [f.write(f"{key}  \t {value}\n") for key, value in statistics_cn.items()]
+                    f.write("\n\n")
+                    for ix, row in signal_times:
+                        if row.name < 2:
+                            f.write(f"开多 {row.name}    \t {row.symbol}\n")
+                        elif row.name < 3:
+                            f.write(f"开空 {row.name}    \t {row.symbol}\n")
+                        elif row.name < 4:
+                            f.write(f"平多 {row.name}    \t {row.symbol}\n")
+                        elif row.name < 5:
+                            f.write(f"平空 {row.name}    \t {row.symbol}\n")
 
                 if save_csv:
                     trade_df.to_csv(temp_path.joinpath(f"逐笔交易记录 {self.symbol} {self.strategy_class.__name__} [{start_date}~{end_date}].csv"))
@@ -1707,7 +1735,7 @@ class BacktestingEngine:
                 filepath  = temp_path.joinpath(filename)
                 
                 with open(filepath, "w+") as f:
-                    [f.write(f"{key}  \t {value}\n") for key, value in statistics_cn.items()]
+                    [f.write(f"{key}          \t {value}\n") for key, value in statistics_cn.items()]
 
                 if save_csv:
                     trade_df.to_csv(temp_path.joinpath(f"投资组合逐笔交易记录 [{start_date}~{end_date}].csv"))
@@ -1768,14 +1796,15 @@ class BacktestingEngine:
     # 单图模式，绘制蜡烛图和资金曲线，叠加主图技术指标
     def draw_kline_chart(self):
         trade_result_df = self.trade_result_df.set_index("start_time")
-        trade_data = merge(self.trade_data_df, trade_result_df.balance, how="left", left_index=True, right_index=True)
+        trade_data = merge(self.trade_data_df, trade_result_df[["net_pnl", "balance"]], how="left", left_index=True, right_index=True)
         
         kline_chart = MyPyecharts(bar_data=self.bar_data_df, trade_data=trade_data, grid=False, grid_quantity=0, chart_id=20)
         kline_chart.kline()
         kline_chart.overlap_trade()
-        kline_chart.overlap_balance(capital=self.capital)
-        kline_chart.overlap_sma([5, 10, 20, 60])
-        kline_chart.overlap_boll(timeperiod=14, nbdevup=2, nbdevdn=2, matype=0)
+        kline_chart.overlap_net_pnl()
+        # kline_chart.overlap_balance(capital=self.capital)
+        # kline_chart.overlap_sma([5, 10, 20, 60])
+        # kline_chart.overlap_boll(timeperiod=14, nbdevup=2, nbdevdn=2, matype=0)
         chart = kline_chart.grid_graph()
 
         return chart
@@ -1785,8 +1814,8 @@ class BacktestingEngine:
         grid_chart = MyPyecharts(bar_data=self.bar_data_df, trade_data=self.trade_data_df, grid=True, grid_quantity=1, chart_id=30)
         grid_chart.kline()
         grid_chart.overlap_trade()
-        grid_chart.overlap_sma([5, 10, 20, 60])
-        grid_chart.overlap_boll(timeperiod=14, nbdevup=2, nbdevdn=2, matype=0)
+        # grid_chart.overlap_sma([5, 10, 20, 60])
+        # grid_chart.overlap_boll(timeperiod=14, nbdevup=2, nbdevdn=2, matype=0)
         chart = grid_chart.grid_graph(grid_graph_1 = grid_chart.grid_macd(fastperiod=12, slowperiod=26, signalperiod=9, grid_index=1))
 
         return chart
