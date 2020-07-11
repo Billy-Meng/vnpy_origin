@@ -6,6 +6,8 @@ General utility functions.
 import json
 import logging
 import sys
+import requests
+import win32api, win32con
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Dict, Tuple, Union
@@ -229,6 +231,55 @@ def tradedays(start, end):
         start += timedelta(days=1)
 
     return counts
+
+def popup_warning(msg: str):
+    """ 弹窗消息通知 """
+    info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
+    win32api.MessageBox(0, msg + info_time, "交易提醒", win32con.MB_ICONWARNING)
+
+
+SETTINGS = load_json("vt_setting.json")
+
+def send_dingding(msg: str):
+    """ 钉钉机器人消息通知 """
+
+    info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
+    dingding_url_list = SETTINGS["dingding.url"].split(";")
+
+    program = {
+        "msgtype": "text",
+        "text": {"content": msg + info_time},
+        "at": {"isAtAll": true}
+    }
+
+    # program = {
+    #     "msgtype": "markdown",
+    #     "markdown": {
+    #         "title":"标题"",
+    #         "text": f"#### {msg} \n ###### {info_time}"
+    #     },
+    #     "at": {"isAtAll": true}
+    # }
+
+    headers = {'Content-Type': 'application/json'}
+
+    for url in dingding_url_list:
+        requests.post(url, data=json.dumps(program), headers=headers)
+
+def send_weixin(msg: str):
+    """通过FTQQ发送微信消息 http://sc.ftqq.com/3.version"""
+
+    info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
+    weixin_sckey_list = SETTINGS["weixin.sckey"].split(";")
+
+    program = {
+        "text": msg,
+        "desp": info_time
+    }
+
+    for sckey in weixin_sckey_list:
+        url = f"https://sc.ftqq.com/{sckey}.send"
+        requests.get(url, params=program)
 
 
 class BarGenerator:

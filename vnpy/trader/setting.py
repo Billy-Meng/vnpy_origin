@@ -25,6 +25,7 @@ SETTINGS: Dict[str, Any] = {
     "email.sender": "",
     "email.receiver": "",
     "dingding.url": "",
+    "weixin.sckey": "",
 
     "datasource.api": "",    
     "jqdata.username": "",

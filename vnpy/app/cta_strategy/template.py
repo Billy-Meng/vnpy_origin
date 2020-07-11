@@ -10,16 +10,9 @@ import pandas as pd
 
 from vnpy.trader.constant import Interval, Direction, Offset, RateType
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData, AccountData, ContractData
-from vnpy.trader.utility import virtual, get_file_path, save_json, load_json
+from vnpy.trader.utility import virtual, get_file_path, save_json, load_json, send_dingding, send_weixin, popup_warning
 
 from .base import StopOrder, EngineType
-
-# 弹窗提醒所需库
-import win32api, win32con
-
-# 钉钉通知所需库
-import urllib, requests
-import json
 
 class CtaTemplate(ABC):
     """"""
@@ -39,6 +32,7 @@ class CtaTemplate(ABC):
         self.cta_engine = cta_engine
         self.strategy_name = strategy_name
         self.vt_symbol = vt_symbol
+        self.symbol = self.vt_symbol.split(".")[0]
 
         self.inited = False
         self.trading = False
@@ -71,7 +65,8 @@ class CtaTemplate(ABC):
         self.last_short_cost = 0         # 实盘模式缓存上一次空头持仓均价
         self.show_account_data = True    # 实盘模式初始化时显示账户信息日志
         self.show_holding_data = True    # 实盘模式初始化时显示持仓信息日志
-        self.dingding_url_list = load_json("vt_setting.json")["dingding.url"].split(";")
+
+        self.symbol_strategy = f"【{self.symbol}】{self.__class__.__name__}"
 
         # 委托状态控制初始化     
         self.chase_long_trigger = False   
@@ -387,6 +382,89 @@ class CtaTemplate(ABC):
         self.get_contract_data()               # 策略初始化时获取合约信息，动态赋值给 contract_data, gateway_name, symbol, pricetick, size
         self.product_trade_time()              # 策略初始化时获取品种的交易时间信息字典，动态赋值给 trade_time
 
+    def popup(self, msg:str):
+        """ 弹窗消息通知 """
+        if self.inited and self.engine_type == EngineType.LIVE:
+            thread_popup = Thread(target=popup_warning, name="popup_warning", args=(self.symbol_strategy + "\n" + msg,) )
+            thread_popup.start()
+
+    def dingding(self, msg:str):
+        """ 钉钉机器人消息通知 """
+        if self.inited and self.engine_type == EngineType.LIVE:
+            thread_dingding = Thread(target=send_dingding, name="dingding", args=(self.symbol_strategy + "\n" + msg,))
+            thread_dingding.start()
+
+    def weixin(self, msg:str):
+        """ 通过FTQQ发送微信消息 http://sc.ftqq.com/3.version """
+        if self.inited and self.engine_type == EngineType.LIVE:
+            thread_weixin = Thread(target=send_weixin, name="weixin", args=(self.symbol_strategy + "\n" + msg,))
+            thread_weixin.start()
+
+    def get_contract_data(self) -> ContractData:
+        """
+        获取合约信息。策略初始化时调用，动态赋值contract_data, gateway_name, symbol, pricetick, size, margin_rate
+        """
+        if self.engine_type == EngineType.LIVE:
+            self.contract_data = self.cta_engine.main_engine.get_contract(self.vt_symbol)
+
+            if self.contract_data:                
+                self.gateway_name = self.contract_data.gateway_name      # 接口名称
+                self.symbol = self.contract_data.symbol                  # 合约代码
+                self.pricetick = self.contract_data.pricetick            # 最小变动价位
+                self.size = self.contract_data.size                      # 合约乘数
+                self.margin_ratio = self.contract_data.margin_ratio      # 保证金比率
+                self.commission = self.contract_data.open_commission + self.contract_data.close_commission                          # 手续费
+                self.commission_ratio = self.contract_data.open_commission_ratio + self.contract_data.close_commission_ratio        # 手续费率
+                self.close_commission_today = self.contract_data.close_commission_today                                             # 平今手续费
+                self.close_commission_today_ratio = self.contract_data.close_commission_today_ratio                                 # 平今手续费率
+                self.write_log((f"合约信息查询成功：Symbol【 {self.symbol} 】，Pricetick【 {self.pricetick} 】，Size【 {self.size} 】，" +
+                                f"保证金率【 {self.margin_ratio} 】，手续费【 {self.commission} 】，手续费率【 {self.commission_ratio} 】，" +
+                                f"平今手续费【 {self.close_commission_today} 】，平今手续费率【 {self.close_commission_today_ratio} 】"))
+
+        else:
+            # 回测模式记录合约信息
+            self.gateway_name = self.cta_engine.gateway_name      # 接口名称，回测的gateway_name为"BACKTESTING"
+            self.vt_symbol = self.cta_engine.vt_symbol            # 本地合约代码
+            self.symbol = self.cta_engine.symbol                  # 合约代码
+            self.pricetick = self.cta_engine.pricetick            # 最小变动价位
+            self.size = self.cta_engine.size                      # 合约乘数
+            self.rate_type = self.cta_engine.rate_type            # 手续费模式
+            self.rate = self.cta_engine.rate                      # 【单向】手续费/手续费率
+            self.slippage = self.cta_engine.slippage              # 【单向】滑点数
+            self.capital = self.cta_engine.capital                # 初始资金
+            self.balance = self.cta_engine.capital                # 初始化Balance
+
+    def product_trade_time(self) -> dict:
+        """获取品种的交易时间信息，包括字段：symbol, exchange, name, am_start, rest_start, rest_end, am_end, pm_start, pm_end, night_trade, night_start, night_end"""
+
+        filepath = get_file_path("期货品种交易时间.xlsx")
+
+        if filepath.exists():
+
+            for count, word in enumerate(self.vt_symbol):
+                if word.isdigit():
+                    break
+            product = self.vt_symbol[:count].upper()
+
+            df = pd.read_excel(filepath)
+            df["symbol"] = df["symbol"].apply(lambda x: x.upper())
+            df = df.set_index("symbol")
+            
+            try:
+                self.trade_time = df.loc[product].to_dict()
+                if self.trade_time["night_trade"] == True:
+                    night_time = f'夜盘【 {self.trade_time["night_start"]} ~ {self.trade_time["night_end"]} 】'
+                else:
+                    night_time = "无夜盘。"
+
+                self.write_log(f'品种交易时间：日盘【 {self.trade_time["am_start"]} ~ {self.trade_time["pm_end"]} 】，{night_time}')
+
+            except KeyError:
+                self.write_log("找不到该品种交易时间")
+
+        else:
+            self.write_log("找不到该品种交易时间")
+
     def tick_chase_trade(self, tick: TickData):
         """
         该方法用于在Tick级别进行追击成交，需在策略实例的on_tick函数中调用。委托挂撤单管理逻辑如下：
@@ -450,108 +528,6 @@ class CtaTemplate(ABC):
         elif self.chase_cover_trigger and order_finished:
             self.cover(tick.ask_price_1, self.cover_trade_volume)
             self.chase_cover_trigger = False
-
-    def get_contract_data(self) -> ContractData:
-        """
-        获取合约信息。策略初始化时调用，动态赋值contract_data, gateway_name, symbol, pricetick, size, margin_rate
-        """
-        if self.engine_type == EngineType.LIVE:
-            self.contract_data = self.cta_engine.main_engine.get_contract(self.vt_symbol)
-
-            if self.contract_data:                
-                self.gateway_name = self.contract_data.gateway_name      # 接口名称
-                self.symbol = self.contract_data.symbol                  # 合约代码
-                self.pricetick = self.contract_data.pricetick            # 最小变动价位
-                self.size = self.contract_data.size                      # 合约乘数
-                self.margin_ratio = self.contract_data.margin_ratio      # 保证金比率
-                self.commission = self.contract_data.open_commission + self.contract_data.close_commission                          # 手续费
-                self.commission_ratio = self.contract_data.open_commission_ratio + self.contract_data.close_commission_ratio        # 手续费率
-                self.close_commission_today = self.contract_data.close_commission_today                                             # 平今手续费
-                self.close_commission_today_ratio = self.contract_data.close_commission_today_ratio                                 # 平今手续费率
-                self.write_log((f"合约信息查询成功：Symbol【 {self.symbol} 】，Pricetick【 {self.pricetick} 】，Size【 {self.size} 】，" +
-                                f"保证金率【 {self.margin_ratio} 】，手续费【 {self.commission} 】，手续费率【 {self.commission_ratio} 】，" +
-                                f"平今手续费【 {self.close_commission_today} 】，平今手续费率【 {self.close_commission_today_ratio} 】"))
-
-        else:
-            # 回测模式记录合约信息
-            self.gateway_name = self.cta_engine.gateway_name      # 接口名称，回测的gateway_name为"BACKTESTING"
-            self.vt_symbol = self.cta_engine.vt_symbol            # 本地合约代码
-            self.symbol = self.cta_engine.symbol                  # 合约代码
-            self.pricetick = self.cta_engine.pricetick            # 最小变动价位
-            self.size = self.cta_engine.size                      # 合约乘数
-            self.rate_type = self.cta_engine.rate_type            # 手续费模式
-            self.rate = self.cta_engine.rate                      # 【单向】手续费/手续费率
-            self.slippage = self.cta_engine.slippage              # 【单向】滑点数
-            self.capital = self.cta_engine.capital                # 初始资金
-            self.balance = self.cta_engine.capital                # 初始化Balance
-
-    def popup_warning(self, msg:str):
-        """
-        弹窗消息通知
-        """
-        def run_popup_warning(msg:str):
-
-            info_strategy = f"【{self.symbol}】{self.__class__.__name__}\n"
-            info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
-            win32api.MessageBox(0, info_strategy + msg + info_time, "交易提醒", win32con.MB_ICONWARNING)
-
-        if self.inited and self.engine_type == EngineType.LIVE:
-            thread_popup = Thread(target=run_popup_warning, name="popup_warning", args=(msg,) )
-            thread_popup.start()
-
-    def dingding(self, msg:str):
-        """
-        钉钉机器人消息通知【记得修改URL】
-        """
-        def run_dingding(msg:str):
-            
-                info_strategy = f"【{self.symbol}】{self.__class__.__name__}\n"
-                info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
-
-                program = {
-                    "msgtype": "text",
-                    "text": {"content": info_strategy + msg + info_time},
-                }
-
-                headers = {'Content-Type': 'application/json'}
-
-                for url in self.dingding_url_list:
-                    requests.post(url, data=json.dumps(program), headers=headers)
-
-        if self.inited and self.engine_type == EngineType.LIVE:
-            thread_dingding = Thread(target=run_dingding, name="dingding", args=(msg,) )
-            thread_dingding.start()
-
-    def product_trade_time(self) -> dict:
-        """获取品种的交易时间信息，包括字段：symbol, exchange, name, am_start, rest_start, rest_end, am_end, pm_start, pm_end, night_trade, night_start, night_end"""
-
-        filepath = get_file_path("期货品种交易时间.xlsx")
-
-        if filepath.exists():
-
-            for count, word in enumerate(self.vt_symbol):
-                if word.isdigit():
-                    break
-            product = self.vt_symbol[:count].upper()
-
-            df = pd.read_excel(filepath)
-            df["symbol"] = df["symbol"].apply(lambda x: x.upper())
-            df = df.set_index("symbol")
-            
-            try:
-                self.trade_time = df.loc[product].to_dict()
-                if self.trade_time["night_trade"] == True:
-                    night_time = f'夜盘【 {self.trade_time["night_start"]} ~ {self.trade_time["night_end"]} 】'
-                else:
-                    night_time = "无夜盘。"
-
-                self.write_log(f'品种交易时间：日盘【 {self.trade_time["am_start"]} ~ {self.trade_time["pm_end"]} 】，{night_time}')
-
-            except KeyError:
-                self.write_log("找不到该品种交易时间")
-
-        else:
-            self.write_log("找不到该品种交易时间")
 
     def calculate_trade_result(self, trade: TradeData) -> None:
         """计算各项成交数据。在 on_trade 中调用"""
@@ -659,7 +635,7 @@ class CtaTemplate(ABC):
         if self.inited and self.engine_type == EngineType.LIVE:
             # 判断.vntrader文件夹下是否存在vt_trade_data_record文件夹，不存在则创建文件夹
             file_path = get_file_path(f'vt_trade_data_record/{datetime.now().date().strftime("%Y%m%d")}')
-            file_name = file_path.joinpath(f"{self.symbol}-{self.__class__.__name__}.json")
+            file_name = file_path.joinpath(f"{self.symbol_strategy}.json")
 
             if not os.path.exists(file_path):
                 os.makedirs(file_path)                       # os.makedirs()创建多级目录

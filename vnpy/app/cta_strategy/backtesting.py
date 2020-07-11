@@ -802,7 +802,7 @@ class BacktestingEngine:
             if order.offset != Offset.OPEN and self.strategy.trade_net_volume  < order.volume:                
                 self.limit_orders[order.vt_orderid] = order
                 self.active_stop_orders.pop(stop_order.stop_orderid)
-                print("！" * 100)
+                print("！" * 60)
                 print(f"cross_stop_order报错！平仓委托交易数量超过可平仓净头寸！当前净持仓量：{self.strategy.trade_net_volume}，问题委托信息：{order}")
                 continue
 
@@ -1237,14 +1237,17 @@ class BacktestingEngine:
             average_commission = 0
             average_slippage = 0
             trade_duration = 0
+            trade_duration_max = 0
 
             total_profit = 0
             profit_mean = 0
             profit_duration = 0
+            profit_duration_max = 0
 
             total_loss = 0
             loss_mean = 0
             loss_duration = 0
+            loss_duration_max = 0
 
             long_total_trade = 0
             long_profit_times = 0
@@ -1305,7 +1308,12 @@ class BacktestingEngine:
             long_total_trade = len(trade_df[trade_df["trade_type"] == "多头"])                                                     # 多头交易笔数
             long_profit_times = len(trade_df[(trade_df["trade_type"] == "多头") & (trade_df["net_pnl"] >= 0)])                     # 多头盈利笔数
             long_loss_times = len(trade_df[(trade_df["trade_type"] == "多头") & (trade_df["net_pnl"] < 0)])                        # 多头亏损笔数
-            long_rate_of_win = long_profit_times / (long_profit_times + long_loss_times) * 100                                     # 多头胜率
+
+            try:
+                long_rate_of_win = long_profit_times / (long_profit_times + long_loss_times) * 100                                 # 多头胜率
+            except ZeroDivisionError:
+                long_rate_of_win = 0
+
             long_total_profit = trade_df[(trade_df["trade_type"] == "多头") & (trade_df["net_pnl"] >= 0)].net_pnl.sum()            # 多头盈利总金额
             long_total_loss = trade_df[(trade_df["trade_type"] == "多头") & (trade_df["net_pnl"] < 0)].net_pnl.sum()               # 多头亏损总金额
             long_profit_loss_ratio = (long_total_profit/long_profit_times) / abs(long_total_loss / long_loss_times)                # 多头盈亏比
@@ -1317,7 +1325,12 @@ class BacktestingEngine:
             short_total_trade = len(trade_df[trade_df["trade_type"] == "空头"])                                                     # 空头交易笔数
             short_profit_times = len(trade_df[(trade_df["trade_type"] == "空头") & (trade_df["net_pnl"] >= 0)])                     # 空头盈利笔数
             short_loss_times = len(trade_df[(trade_df["trade_type"] == "空头") & (trade_df["net_pnl"] < 0)])                        # 空头亏损笔数
-            short_rate_of_win = short_profit_times / (short_profit_times + short_loss_times) * 100                                  # 空头胜率
+
+            try:
+                short_rate_of_win = short_profit_times / (short_profit_times + short_loss_times) * 100                              # 空头胜率
+            except ZeroDivisionError:
+                short_rate_of_win = 0
+
             short_total_profit = trade_df[(trade_df["trade_type"] == "空头") & (trade_df["net_pnl"] >= 0)].net_pnl.sum()            # 空头盈利总金额
             short_total_loss = trade_df[(trade_df["trade_type"] == "空头") & (trade_df["net_pnl"] < 0)].net_pnl.sum()               # 空头亏损总金额
             short_profit_loss_ratio = (short_total_profit/short_profit_times) / abs(short_total_loss / short_loss_times)            # 空头盈亏比
@@ -1399,7 +1412,7 @@ class BacktestingEngine:
 
         # Output
         if output:
-            self.output("-" * 30)
+            self.output("-" * 50)
 
             self.output(f"首个交易日：\t{start_date}")
             self.output(f"最后交易日：\t{end_date}")
@@ -1506,20 +1519,21 @@ class BacktestingEngine:
             self.output(f"多头最长持仓小时：\t{long_trade_duration_max:,.2f}")
             self.output(f"空头最长持仓小时：\t{short_trade_duration_max:,.2f}")
 
-            self.output("-" * 30)
+            self.output("-" * 50)
 
-        signal_times = self.trade_data_df[["signal", "symbol"]].groupby(["signal"]).count().iterrows()
-        for ix, row in signal_times:
-            if row.name < 2:
-                self.output(f"开多 {row.name}： {row.symbol}")
-            elif row.name < 3:
-                self.output(f"开空 {row.name}： {row.symbol}")
-            elif row.name < 4:
-                self.output(f"平多 {row.name}： {row.symbol}")
-            elif row.name < 5:
-                self.output(f"平空 {row.name}： {row.symbol}")
+        if self.trades:
+            signal_times = self.trade_data_df[["signal", "symbol"]].groupby(["signal"]).count().iterrows()
+            for ix, row in signal_times:
+                if row.name < 2:
+                    self.output(f"开多 {row.name}： {row.symbol}")
+                elif row.name < 3:
+                    self.output(f"开空 {row.name}： {row.symbol}")
+                elif row.name < 4:
+                    self.output(f"平多 {row.name}： {row.symbol}")
+                elif row.name < 5:
+                    self.output(f"平空 {row.name}： {row.symbol}")
 
-        self.output("-" * 30)
+            self.output("-" * 50)
 
         statistics = {
             "start_date": start_date,

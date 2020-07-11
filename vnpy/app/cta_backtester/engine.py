@@ -80,12 +80,13 @@ class BacktesterEngine(BaseEngine):
         Load strategy class from source code.
         """
         app_path = Path(__file__).parent.parent
-        path1 = app_path.joinpath("cta_strategy", "strategies")
-        self.load_strategy_class_from_folder(
-            path1, "vnpy.app.cta_strategy.strategies")
+        path1 = Path.cwd().joinpath("strategies")
+        self.load_strategy_class_from_folder(path1, "strategies")
 
-        path2 = Path.cwd().joinpath("strategies")
-        self.load_strategy_class_from_folder(path2, "strategies")
+        path2 = app_path.joinpath("cta_strategy", "strategies")
+        self.load_strategy_class_from_folder(
+            path2, "vnpy.app.cta_strategy.strategies")
+
 
     def load_strategy_class_from_folder(self, path: Path, module_name: str = ""):
         """
