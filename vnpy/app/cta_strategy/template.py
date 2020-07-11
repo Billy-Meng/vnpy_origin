@@ -66,6 +66,10 @@ class CtaTemplate(ABC):
         self.show_account_data = True    # 实盘模式初始化时显示账户信息日志
         self.show_holding_data = True    # 实盘模式初始化时显示持仓信息日志
 
+        self.signal: float = 0           # 实盘和回测记录当笔交易的信号：1 buy, 2 short, 3 sell, 4 cover
+        self.signal_list = []            # 实盘和回测缓存每笔交易的信号
+        self.trade_data_dict = {}        # 实盘模式缓存成交数据
+
         self.symbol_strategy = f"【{self.symbol}】{self.__class__.__name__}"
 
         # 委托状态控制初始化     
@@ -78,9 +82,6 @@ class CtaTemplate(ABC):
         self.sell_trade_volume = 0       
         self.cover_trade_volume = 0    
         self.chase_interval = 10         # 拆单间隔:秒
-
-        self.signal: float = 0           # 实盘和回测记录当笔交易的信号：1 buy, 2 short, 3 sell, 4 cover
-        self.signal_list = []            # 实盘和回测缓存每笔交易的信号
 
         self.trade_number = 0            # 回测时缓存当笔交易的序号
         self.trade_net_volume = 0        # 回测时缓存当笔交易的净持仓量
@@ -640,7 +641,8 @@ class CtaTemplate(ABC):
             if not os.path.exists(file_path):
                 os.makedirs(file_path)                       # os.makedirs()创建多级目录
             else:
-                self.trade_data_dict = load_json(file_name)
+                if not self.trade_data_dict:
+                    self.trade_data_dict = load_json(file_name)
 
             _trade = deepcopy(trade).__dict__
             _trade["exchange"] = _trade.exchange.value
