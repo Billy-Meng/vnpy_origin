@@ -233,7 +233,7 @@ class CtaTemplate(ABC):
             self.last_short_cost = holding.short_price
         
         if self.show_holding_data:
-            self.write_log(f"【持仓信息】多头持仓数量：{holding.long_pos}，多头持仓均价：{holding.long_price}；空头持仓数量：{holding.short_pos}，空头持仓均价：{holding.short_price}")
+            self.write_log(f"【{self.symbol}持仓信息】多头持仓数量：{holding.long_pos}，多头持仓均价：{holding.long_price}；空头持仓数量：{holding.short_pos}，空头持仓均价：{holding.short_price}")
             self.show_holding_data = False
 
     def on_account(self, account: AccountData):
