@@ -249,16 +249,16 @@ def send_dingding(msg: str):
     program = {
         "msgtype": "text",
         "text": {"content": msg + info_time},
-        "at": {"isAtAll": true}
+        # "at": {"isAtAll": True}
     }
 
     # program = {
     #     "msgtype": "markdown",
     #     "markdown": {
-    #         "title":"标题"",
+    #         "title":"标题",
     #         "text": f"#### {msg} \n ###### {info_time}"
     #     },
-    #     "at": {"isAtAll": true}
+    #     "at": {"isAtAll": True}
     # }
 
     headers = {'Content-Type': 'application/json'}
