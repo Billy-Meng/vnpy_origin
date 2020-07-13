@@ -61,8 +61,6 @@ class CtaTemplate(ABC):
 
         self.long_cost = 0               # 实盘模式缓存最新多头持仓均价，回测模式缓存持仓均价
         self.short_cost = 0              # 实盘模式缓存最新空头持仓均价，回测模式缓存持仓均价
-        self.last_long_cost = 0          # 实盘模式缓存上一次多头持仓均价
-        self.last_short_cost = 0         # 实盘模式缓存上一次空头持仓均价
         self.show_account_data = True    # 实盘模式初始化时显示账户信息日志
         self.show_holding_data = True    # 实盘模式初始化时显示持仓信息日志
 
@@ -227,10 +225,6 @@ class CtaTemplate(ABC):
         self.position = holding
         self.long_cost = holding.long_price
         self.short_cost = holding.short_price
-
-        if not self.last_long_cost or not self.last_short_cost:
-            self.last_long_cost = holding.long_price
-            self.last_short_cost = holding.short_price
         
         if self.show_holding_data:
             self.write_log(f"【{self.symbol}持仓信息】多头持仓数量：{holding.long_pos}，多头持仓均价：{holding.long_price}；空头持仓数量：{holding.short_pos}，空头持仓均价：{holding.short_price}")
@@ -590,23 +584,25 @@ class CtaTemplate(ABC):
 
         # 实盘模式
         elif self.inited and self.engine_type == EngineType.LIVE:
-            # 获取当前持仓信息
+            # 获取持仓信息，此时持仓信息尚未更新
             holding = self.cta_engine.offset_converter.get_position_holding(self.vt_symbol)
 
             if trade.offset == Offset.OPEN:                
                 if trade.direction == Direction.LONG:
-                    msg = f"开多！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，多头持仓均价：{round(holding.long_price, 2)}。"
+                    self.long_cost = (trade.price * trade.volume + holding.long_price * holding.long_pos) / (trade.volume + holding.long_pos)
+                    msg = f"开多！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，多头持仓均价：{round(self.long_cost, 2)}。"
                     self.write_log(msg)
                     self.dingding(msg)
                 else:
-                    msg = f"开空！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，空头持仓均价：{round(holding.short_price, 2)}。"
+                    self.short_cost = (trade.price * trade.volume + holding.short_price * holding.short_pos) / (trade.volume + holding.short_pos)
+                    msg = f"开空！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，空头持仓均价：{round(self.short_cost, 2)}。"
                     self.write_log(msg)
                     self.dingding(msg)
 
             else:
                 if trade.direction == Direction.LONG:       # 买平，平空仓
-                    self.trade_pnl = (self.last_short_cost - trade.price) * trade.volume * self.size
-                    self.trade_commission = round((trade.volume * self.contract_data.open_commission + self.last_short_cost * trade.volume * self.size * self.contract_data.open_commission_ratio)
+                    self.trade_pnl = (holding.short_price - trade.price) * trade.volume * self.size
+                    self.trade_commission = round((trade.volume * self.contract_data.open_commission + holding.short_price * trade.volume * self.size * self.contract_data.open_commission_ratio)
                                             + (trade.volume * self.contract_data.close_commission + trade.price * trade.volume * self.size * self.contract_data.close_commission_ratio), 2)
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
 
@@ -615,17 +611,14 @@ class CtaTemplate(ABC):
                     self.dingding(msg)
 
                 elif trade.direction == Direction.SHORT:    # 卖平，平多仓
-                    self.trade_pnl = (trade.price - self.last_long_cost) * trade.volume * self.size
-                    self.trade_commission = round((trade.volume * self.contract_data.open_commission + self.last_long_cost * trade.volume * self.size * self.contract_data.open_commission_ratio)
+                    self.trade_pnl = (trade.price - holding.long_price) * trade.volume * self.size
+                    self.trade_commission = round((trade.volume * self.contract_data.open_commission + holding.long_price * trade.volume * self.size * self.contract_data.open_commission_ratio)
                                             + (trade.volume * self.contract_data.close_commission + trade.price * trade.volume * self.size * self.contract_data.close_commission_ratio), 2)
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
 
                     msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
                     self.dingding(msg)
-
-            self.last_long_cost = holding.long_price
-            self.last_short_cost = holding.short_price
 
         # 将每次成交的信号文本保存，以便后期复查
         self.signal_list.append(self.signal)

@@ -796,8 +796,6 @@ class CtpTdApi(TdApi):
             self.trade_data.append(data)
             return
 
-        self.query_position()       # 先更新持仓信息
-
         orderid = self.sysid_orderid_map[data["OrderSysID"]]
 
         timestamp = f"{data['TradeDate']} {data['TradeTime']}"

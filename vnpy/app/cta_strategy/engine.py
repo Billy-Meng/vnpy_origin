@@ -236,11 +236,6 @@ class CtaEngine(BaseEngine):
         else:
             strategy.pos -= trade.volume
 
-        self.trade_change_time = datetime.now()
-        
-        while self.trade_change_time > self.position_change_time:               # 待持仓信息更新后才触发 on_trade
-            sleep(0.001)
-
         self.call_strategy_func(strategy, strategy.on_trade, trade)
 
         # Sync strategy variables to data file
@@ -263,8 +258,6 @@ class CtaEngine(BaseEngine):
 
         for strategy in strategies:
             strategy.on_position(holding)
-
-        self.position_change_time = datetime.now()
 
     def process_account_event(self, event: Event):
         """"""
