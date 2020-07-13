@@ -1,4 +1,9 @@
 chinesecalendar
+jqdatasdk
+tqsdk
+gm
+empyrical
+pyecharts
 tzlocal
 six==1.13.0
 wheel

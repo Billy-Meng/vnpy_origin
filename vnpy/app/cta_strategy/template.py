@@ -645,10 +645,10 @@ class CtaTemplate(ABC):
                     self.trade_data_dict = load_json(file_name)
 
             _trade = deepcopy(trade).__dict__
-            _trade["exchange"] = _trade.exchange.value
-            _trade["direction"] = _trade.direction.value
-            _trade["offset"] = _trade.offset.value
-            _trade["datetime"] = _trade.datetime.isoformat()
+            _trade["exchange"] = trade.exchange.value
+            _trade["direction"] = trade.direction.value
+            _trade["offset"] = trade.offset.value
+            _trade["datetime"] = trade.datetime.isoformat()
             _trade["trade_pnl"] = self.trade_pnl
             _trade["commission"] = self.trade_commission
             _trade["net_pnl"] = self.net_pnl

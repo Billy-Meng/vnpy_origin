@@ -1634,6 +1634,15 @@ class BacktestingEngine:
         home_path = Path.home()
         temp_path = home_path.joinpath("Desktop")
 
+        # 生成主要参数字符串
+        param_dict = self.strategy.get_parameters()
+        for key in ["x_second", "long_period", "init_lots", "capital"]:
+            param_dict.pop(key)
+        self.main_parameters = f"{param_dict}".replace(":","=").replace("'","").replace("{","").replace("}","").replace(" ","")
+
+        # 生成交易日期范围
+        self.trade_date_range = f'{start_date.strftime("%Y%m%d")}~{end_date.strftime("%Y%m%d")}'
+
         # 保存统计数据至桌面
         if save_statistics:
             # 转换成中文
@@ -1724,7 +1733,7 @@ class BacktestingEngine:
             }
 
             if self.symbol:
-                filename  = f"策略回测统计数据[{self.symbol} {self.strategy_class.__name__}][{start_date}~{end_date}][{self.strategy.get_parameters()}]".replace(":","=").replace("'","").replace("{","").replace("}","").replace(".","。").replace(" ","") + ".txt"
+                filename  = f"回测统计数据[{self.symbol} {self.strategy_class.__name__}][{self.trade_date_range}][{self.main_parameters}].txt"
                 filepath  = temp_path.joinpath(filename)
                 
                 with open(filepath, "w+") as f:
@@ -1741,19 +1750,19 @@ class BacktestingEngine:
                             f.write(f"平空 {row.name}    \t {row.symbol}\n")
 
                 if save_csv:
-                    trade_df.to_csv(temp_path.joinpath(f"逐笔交易记录 {self.symbol} {self.strategy_class.__name__} [{start_date}~{end_date}].csv"))
-                    daily_df.to_csv(temp_path.joinpath(f"逐日盯市记录 {self.symbol} {self.strategy_class.__name__} [{start_date}~{end_date}].csv"))
+                    trade_df.to_csv(temp_path.joinpath(f"逐笔交易记录 {self.symbol} {self.strategy_class.__name__} [{self.trade_date_range}].csv"))
+                    daily_df.to_csv(temp_path.joinpath(f"逐日盯市记录 {self.symbol} {self.strategy_class.__name__} [{self.trade_date_range}].csv"))
 
             else:
-                filename  = f"投资组合统计数据[{start_date}~{end_date}].txt"
+                filename  = f"投资组合统计数据[{self.trade_date_range}].txt"
                 filepath  = temp_path.joinpath(filename)
                 
                 with open(filepath, "w+") as f:
                     [f.write(f"{key}          \t {value}\n") for key, value in statistics_cn.items()]
 
                 if save_csv:
-                    trade_df.to_csv(temp_path.joinpath(f"投资组合逐笔交易记录 [{start_date}~{end_date}].csv"))
-                    daily_df.to_csv(temp_path.joinpath(f"投资组合逐日盯市记录 [{start_date}~{end_date}].csv"))
+                    trade_df.to_csv(temp_path.joinpath(f"投资组合逐笔交易记录 [{self.trade_date_range}].csv"))
+                    daily_df.to_csv(temp_path.joinpath(f"投资组合逐日盯市记录 [{self.trade_date_range}].csv"))
 
         # 保存分析图表至桌面
         if save_chart:
@@ -1772,10 +1781,10 @@ class BacktestingEngine:
 
             # 生成文件保存路径
             if self.symbol:
-                filename  = f"综合分析图表[{self.symbol} {self.strategy_class.__name__}][{start_date}~{end_date}][{self.strategy.get_parameters()}]".replace(":","=").replace("'","").replace("{","").replace("}","").replace(".","。").replace(" ","") + ".html"
+                filename  = f"综合分析图表[{self.symbol} {self.strategy_class.__name__}][{self.trade_date_range}][{self.main_parameters}].html"
                 filepath  = temp_path.joinpath(filename)
             else:
-                filename  = f"投资组合分析图表[{start_date}~{end_date}].html"
+                filename  = f"投资组合分析图表[{self.trade_date_range}].html"
                 filepath  = temp_path.joinpath(filename)
 
             tab_chart.render(filepath)
@@ -2324,13 +2333,13 @@ class BacktestingEngine:
         tab_chart.add(self.trade_grid_chart(), "交易盈亏分布图")
         tab_chart.add(self.duration_grid_chart(), "持仓时间分布图")
         tab_chart.add(self.draw_kline_chart(), "K线 + 成交记录 + 净值曲线")
-        tab_chart.add(self.draw_grid_chart(), "K线 + 成交记录 + 技术指标")
+        # tab_chart.add(self.draw_grid_chart(), "K线 + 成交记录 + 技术指标")
 
         # 生成文件保存路径
         home_path = Path.home()
         temp_name = "Desktop"
         temp_path = home_path.joinpath(temp_name)
-        filename  = f"{self.symbol}{self.strategy_class.__name__}[{self.start}~{self.end}][{self.strategy.get_parameters()}]".replace(":","=").replace("'","").replace("{","").replace("}","").replace(".","。").replace(" ","") + ".html"
+        filename  = f"{self.symbol}{self.strategy_class.__name__}[{self.trade_date_range}][{self.main_parameters}].html"
         filepath  = temp_path.joinpath(filename)
 
         tab_chart.render(filepath)
