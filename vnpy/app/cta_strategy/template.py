@@ -584,20 +584,22 @@ class CtaTemplate(ABC):
 
         # 实盘模式
         elif self.inited and self.engine_type == EngineType.LIVE:
-            # 获取持仓信息，此时持仓信息尚未更新
+            # 获取持仓信息，此时持仓头寸数量信息已更新，但持仓均价信息尚未更新
             holding = self.cta_engine.offset_converter.get_position_holding(self.vt_symbol)
 
             if trade.offset == Offset.OPEN:                
                 if trade.direction == Direction.LONG:
-                    self.long_cost = (trade.price * trade.volume + holding.long_price * holding.long_pos) / (trade.volume + holding.long_pos)
+                    self.long_cost = (trade.price * trade.volume + holding.long_price * (holding.long_pos - trade.volume)) / holding.long_pos
                     msg = f"开多！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，多头持仓均价：{round(self.long_cost, 2)}。"
                     self.write_log(msg)
                     self.dingding(msg)
+                    # self.weixin(msg)
                 else:
-                    self.short_cost = (trade.price * trade.volume + holding.short_price * holding.short_pos) / (trade.volume + holding.short_pos)
+                    self.short_cost = (trade.price * trade.volume + holding.short_price * (holding.short_pos - trade.volume)) / holding.short_pos
                     msg = f"开空！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，空头持仓均价：{round(self.short_cost, 2)}。"
                     self.write_log(msg)
                     self.dingding(msg)
+                    # self.weixin(msg)
 
             else:
                 if trade.direction == Direction.LONG:       # 买平，平空仓
@@ -609,6 +611,7 @@ class CtaTemplate(ABC):
                     msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
                     self.dingding(msg)
+                    # self.weixin(msg)
 
                 elif trade.direction == Direction.SHORT:    # 卖平，平多仓
                     self.trade_pnl = (trade.price - holding.long_price) * trade.volume * self.size
@@ -619,6 +622,7 @@ class CtaTemplate(ABC):
                     msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
                     self.dingding(msg)
+                    # self.weixin(msg)
 
         # 将每次成交的信号文本保存，以便后期复查
         self.signal_list.append(self.signal)

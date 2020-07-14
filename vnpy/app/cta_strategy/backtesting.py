@@ -423,7 +423,7 @@ class BacktestingEngine:
         fig.update_layout(height=1000, width=1000)
         fig.show()
 
-    def run_optimization(self, optimization_setting: OptimizationSetting, output=True):
+    def run_optimization(self, optimization_setting: OptimizationSetting, output=False):
         """"""
         # Get optimization setting and target
         settings = optimization_setting.generate_setting()
@@ -437,6 +437,8 @@ class BacktestingEngine:
             self.output("优化目标未设置，请检查")
             return
 
+        self.output(f"参数优化空间：{len(settings)}")
+
         # Use multiprocessing pool for running backtesting with different setting
         # Force to use spawn method to create new process (instead of fork on Linux)
         ctx = multiprocessing.get_context("spawn")
@@ -445,16 +447,16 @@ class BacktestingEngine:
         # 生成桌面文件路径
         home_path = Path.home()
         temp_path = home_path.joinpath("Desktop")
-        filename  = f"多进程穷举参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start}~{self.end}].txt"
+        filename  = f"多进程穷举参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start.date()}~{self.end.date()}].txt"
         filepath  = temp_path.joinpath(filename)
         
         results = []
         count = 0
         for setting in settings:
             count += 1
-            if output:
-                self.output("*" * 60)
-                self.output(f"即将进行第 {count} 组参数回测")
+
+            print(f'{datetime.now()}\t{"*" * 60}')
+            print(f'{datetime.now()}\t即将进行第 {count} 组参数回测')
 
             result = (pool.apply_async(optimize, (
                 target_name,
@@ -476,8 +478,8 @@ class BacktestingEngine:
             results.append(result)
 
             value = result.get()
-            if output:
-                self.output(f"参数：{value[0]} \t 目标：{round(value[1],4)}")
+
+            print(f'{datetime.now()}\t参数：{value[0]} \t 目标：{round(value[1],4)}')
 
             # 将参数优化每一次运行的临时结果提前保存，以防系统崩溃
             with open(filepath, "a+") as f:
@@ -627,6 +629,20 @@ class BacktestingEngine:
             setting = dict(parameter_values)
             target_value = ga_optimize(parameter_values)[0]
             results.append((setting, target_value, {}))
+
+        # 生成桌面文件路径
+        home_path = Path.home()
+        temp_path = home_path.joinpath("Desktop")
+        filename  = f"遗传算法参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start.date()}~{self.end.date()}].txt"
+        filepath  = temp_path.joinpath(filename)
+
+        # 保存参数优化结果至桌面文件，并输出日志
+        with open(filepath, "w+") as f:
+            f.write(f"参数\t目标({target_name})\t统计指标\n\n")
+            for value in results:
+                if output:
+                    self.output(f"参数：{value[0]} \t 目标：{round(value[1],4)}")
+                f.write(f"{value[0]}\t{value[1]}\t{value[2]}\n\n".replace(":","=").replace("'","").replace(" ",""))
 
         return results
 
@@ -1522,16 +1538,16 @@ class BacktestingEngine:
             self.output("-" * 50)
 
         if self.trades:
-            signal_times = self.trade_data_df[["signal", "symbol"]].groupby(["signal"]).count().iterrows()
-            for ix, row in signal_times:
+            signal_times = self.trade_data_df[["signal", "symbol"]].groupby(["signal"]).count()
+            for ix, row in signal_times.iterrows():
                 if row.name < 2:
-                    self.output(f"开多 {row.name}： {row.symbol}")
+                    self.output(f"开多 {row.name}：\t {row.symbol}")
                 elif row.name < 3:
-                    self.output(f"开空 {row.name}： {row.symbol}")
+                    self.output(f"开空 {row.name}：\t {row.symbol}")
                 elif row.name < 4:
-                    self.output(f"平多 {row.name}： {row.symbol}")
+                    self.output(f"平多 {row.name}：\t {row.symbol}")
                 elif row.name < 5:
-                    self.output(f"平空 {row.name}： {row.symbol}")
+                    self.output(f"平空 {row.name}：\t {row.symbol}")
 
             self.output("-" * 50)
 
@@ -1738,16 +1754,18 @@ class BacktestingEngine:
                 
                 with open(filepath, "w+") as f:
                     [f.write(f"{key}  \t {value}\n") for key, value in statistics_cn.items()]
+
                     f.write("\n\n")
-                    for ix, row in signal_times:
+
+                    for ix, row in signal_times.iterrows():
                         if row.name < 2:
-                            f.write(f"开多 {row.name}    \t {row.symbol}\n")
+                            f.write(f"开多 {row.name} \t{row.symbol}\n")
                         elif row.name < 3:
-                            f.write(f"开空 {row.name}    \t {row.symbol}\n")
+                            f.write(f"开空 {row.name} \t{row.symbol}\n")
                         elif row.name < 4:
-                            f.write(f"平多 {row.name}    \t {row.symbol}\n")
+                            f.write(f"平多 {row.name} \t{row.symbol}\n")
                         elif row.name < 5:
-                            f.write(f"平空 {row.name}    \t {row.symbol}\n")
+                            f.write(f"平空 {row.name} \t{row.symbol}\n")
 
                 if save_csv:
                     trade_df.to_csv(temp_path.joinpath(f"逐笔交易记录 {self.symbol} {self.strategy_class.__name__} [{self.trade_date_range}].csv"))
