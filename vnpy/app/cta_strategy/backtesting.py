@@ -9,6 +9,8 @@ from pathlib import Path
 import multiprocessing
 import random
 import traceback
+import os
+import pickle
 
 import numpy as np
 from pandas import DataFrame, merge
@@ -161,6 +163,7 @@ class BacktestingEngine:
         self.trade_result_df = None
         self.trade_daily_df = None
         self.statistics = None
+        self.optimization_df = None
 
     def clear_data(self):
         """
@@ -191,6 +194,7 @@ class BacktestingEngine:
         self.trade_result_df = None
         self.trade_daily_df = None
         self.statistics = None
+        self.optimization_df = None
 
     def set_parameters(
         self,
@@ -246,45 +250,57 @@ class BacktestingEngine:
 
         self.history_data.clear()       # Clear previously loaded history data
 
-        # Load 30 days of data each time and allow for progress update
-        progress_delta = timedelta(days=30)
-        total_delta = self.end - self.start
-        interval_delta = INTERVAL_DELTA_MAP[self.interval]
+        # # Load 30 days of data each time and allow for progress update
+        # progress_delta = timedelta(days=30)
+        # total_delta = self.end - self.start
+        # interval_delta = INTERVAL_DELTA_MAP[self.interval]
 
-        start = self.start
-        end = self.start + progress_delta
-        progress = 0
+        # start = self.start
+        # end = self.start + progress_delta
+        # progress = 0
 
-        while start < self.end:
-            end = min(end, self.end)  # Make sure end time stays within set range
+        # while start < self.end:
+        #     end = min(end, self.end)  # Make sure end time stays within set range
 
-            if self.mode == BacktestingMode.BAR:
-                data = load_bar_data(
-                    self.symbol,
-                    self.exchange,
-                    self.interval,
-                    start,
-                    end
-                )
-            else:
-                data = load_tick_data(
-                    self.symbol,
-                    self.exchange,
-                    start,
-                    end
-                )
+        #     if self.mode == BacktestingMode.BAR:
+        #         data = load_bar_data(
+        #             self.symbol,
+        #             self.exchange,
+        #             self.interval,
+        #             start,
+        #             end
+        #         )
+        #     else:
+        #         data = load_tick_data(
+        #             self.symbol,
+        #             self.exchange,
+        #             start,
+        #             end
+        #         )
 
-            self.history_data.extend(data)
+        #     self.history_data.extend(data)
 
-            progress += progress_delta / total_delta
-            progress = min(progress, 1)
-            progress_bar = "#" * int(progress * 10)
-            self.output(f"加载进度：{progress_bar} [{progress:.0%}]")
+        #     progress += progress_delta / total_delta
+        #     progress = min(progress, 1)
+        #     progress_bar = "#" * int(progress * 10)
+        #     self.output(f"加载进度：{progress_bar} [{progress:.0%}]")
 
-            start = end + interval_delta
-            end += (progress_delta + interval_delta)
+        #     start = end + interval_delta
+        #     end += (progress_delta + interval_delta)
 
-        self.output(f"历史数据加载完成，数据量：{len(self.history_data)}")
+
+        # 简化历史数据加载流程
+        if self.mode == BacktestingMode.BAR:
+            data = load_bar_data(self.symbol, self.exchange, self.interval, self.start, self.end)
+        else:
+            data = load_tick_data(self.symbol, self.exchange, self.start, self.end)
+
+        self.history_data = data
+
+
+        self.output(f"历史数据加载完成，数据量：{len(self.history_data)}")        
+
+        self.get_bar_data_df()          # 获取加载的Bar历史数据，生成 DataFrame，并赋值给 self.bar_data_df
 
     def run_backtesting(self):
         """"""
@@ -329,8 +345,6 @@ class BacktestingEngine:
                 self.output("触发异常，回测终止")
                 self.output(traceback.format_exc())
                 return
-
-        self.get_bar_data_df()          # 获取加载的Bar历史数据，生成 DataFrame，并赋值给 self.bar_data_df
 
         self.output("历史数据回放结束")
 
@@ -423,7 +437,7 @@ class BacktestingEngine:
         fig.update_layout(height=1000, width=1000)
         fig.show()
 
-    def run_optimization(self, optimization_setting: OptimizationSetting, output=False):
+    def run_optimization(self, optimization_setting: OptimizationSetting, save_csv=False, output=False):
         """"""
         # Get optimization setting and target
         settings = optimization_setting.generate_setting()
@@ -452,11 +466,13 @@ class BacktestingEngine:
         
         results = []
         count = 0
+        result_dict = defaultdict(list)
+
         for setting in settings:
             count += 1
 
-            print(f'{datetime.now()}\t{"*" * 60}')
-            print(f'{datetime.now()}\t即将进行第 {count} 组参数回测')
+            print(f'{datetime.now()}\t{"*" * 150}')
+            print(f'{datetime.now()}\t正在进行第 {count} 组参数回测')
 
             result = (pool.apply_async(optimize, (
                 target_name,
@@ -479,6 +495,23 @@ class BacktestingEngine:
 
             value = result.get()
 
+            # 在字典中添加参数列表
+            value_dict = eval(value[0])
+            for k, v in value_dict.items():
+                result_dict[k].append(v)
+
+            # 在字典中添加结果列表
+            target_name_list = [
+                "total_return", "annual_return", "cagr", "sharpe_ratio", "omega_ratio", "sortino_ratio", "max_drawdown", "max_ddpercent", "average_drawdown", 
+                "max_drawdown_duration", "return_drawdown_ratio", "return_std", "rate_of_win", "profit_loss_ratio", "trade_mean"
+            ]
+
+            for target_name in target_name_list:
+                result_dict[target_name].append(value[2][target_name])
+
+            # 在字典中保存所有统计指标结果
+            result_dict["statistics"].append(value[2])
+
             print(f'{datetime.now()}\t参数：{value[0]} \t 目标：{round(value[1],4)}')
 
             # 将参数优化每一次运行的临时结果提前保存，以防系统崩溃
@@ -488,17 +521,17 @@ class BacktestingEngine:
         pool.close()
         pool.join()
 
+        # 生成多进程优化结果 DataFrame
+        self.optimization_df = DataFrame(result_dict).sort_values(target_name, ascending=False).reset_index(drop=True)
+
+        # 保存参数优化结果至桌面CSV
+        if save_csv:
+            csv_filepath = temp_path.joinpath(filename.replace("txt", "csv"))
+            self.optimization_df.to_csv(csv_filepath)
+
         # Sort results and output
         result_values = [result.get() for result in results]
         result_values.sort(reverse=True, key=lambda result: result[1])
-
-        # 保存参数优化结果至桌面文件，并输出日志
-        with open(filepath, "w+") as f:
-            f.write(f"参数\t目标({target_name})\t统计指标\n\n")
-            for value in result_values:
-                if output:
-                    self.output(f"参数：{value[0]} \t 目标：{round(value[1],4)}")
-                f.write(f"{value[0]}\t{value[1]}\t{value[2]}\n\n".replace(":","=").replace("'","").replace(" ",""))
 
         return result_values
 
@@ -1101,6 +1134,8 @@ class BacktestingEngine:
         slippage_list = self.strategy.slippage_list
         net_pnl_list = self.strategy.net_pnl_list
         balance_list = self.strategy.balance_list
+        pnl_point_list = self.strategy.pnl_point_list
+        trade_volume_list = self.strategy.trade_volume_list
         trade_duration_list = self.strategy.trade_duration_list
         trade_date_list = self.strategy.trade_date_list
         trade_start_time_list = self.strategy.trade_start_time_list
@@ -1118,12 +1153,14 @@ class BacktestingEngine:
             if (trades[-1].direction == Direction.LONG and trades[-1].offset == Offset.OPEN) \
                 or (trades[-1].direction == Direction.SHORT and (trades[-1].offset == Offset.CLOSE
                     or trades[-1].offset == Offset.CLOSETODAY or trades[-1].offset == Offset.CLOSEYESTERDAY)):
-                trade_pnl = (last_close_price - self.strategy.open_cost_price) * last_trade_net_volume * self.size
+                trade_pnl = (last_close_price - self.strategy.long_cost) * last_trade_net_volume * self.size
+                pnl_point = last_close_price - self.strategy.long_cost
                 trade_type = "多头"
             
             # 最后一笔成交为卖开或买平时，平空仓
             else:
-                trade_pnl = (self.strategy.open_cost_price - last_close_price) * last_trade_net_volume * self.size
+                trade_pnl = (self.strategy.short_cost - last_close_price) * last_trade_net_volume * self.size
+                pnl_point = self.strategy.short_cost - last_close_price
                 trade_type = "空头"
 
             if self.rate_type == RateType.FIXED:        # 固定手续费模式
@@ -1135,6 +1172,7 @@ class BacktestingEngine:
             net_pnl = trade_pnl - trade_commission - trade_slippage
             balance = round(net_pnl, 2) + self.strategy.balance
 
+            trade_volume = last_trade_net_volume + self.strategy.trade_volume
             trade_pnl = trade_pnl + self.strategy.trade_pnl
             trade_commission = trade_commission + self.strategy.trade_commission
             trade_slippage = trade_slippage + self.strategy.trade_slippage
@@ -1149,6 +1187,8 @@ class BacktestingEngine:
             slippage_list.append(trade_slippage)
             net_pnl_list.append(net_pnl)
             balance_list.append(balance)
+            pnl_point_list.append(pnl_point)
+            trade_volume_list.append(trade_volume)
             trade_duration_list.append(self.strategy.entry_minute)
             trade_date_list.append(last_datetime.date())
             trade_end_time_list.append(last_datetime)
@@ -1161,6 +1201,8 @@ class BacktestingEngine:
             "trade_slippage": slippage_list,
             "net_pnl": net_pnl_list,
             "balance": balance_list,
+            "pnl_point": pnl_point_list,
+            "trade_volume": trade_volume_list,
             "duration": trade_duration_list,
             "trade_date": trade_date_list,
             "start_time": trade_start_time_list,
@@ -1194,10 +1236,10 @@ class BacktestingEngine:
             trade_df["balance"] = trade_df["net_pnl"].cumsum() + capital
 
         # Check for init DataFrame
-        if not self.trades:
+        if trade_df is None and not self.trades:
             # 没有成交记录则设置所有统计指标为0
-            start_date = ""
-            end_date = ""
+            start_date = datetime.now().date()
+            end_date = datetime.now().date()
 
             total_days = 0
             profit_days = 0
@@ -1215,7 +1257,7 @@ class BacktestingEngine:
             lw_drawdown = 0
             average_square_drawdown = 0
             max_drawdown_duration = 0
-            max_drawdown_range = 0
+            max_drawdown_range = ""
 
             daily_return = 0
             return_std = 0
@@ -1232,12 +1274,14 @@ class BacktestingEngine:
             total_net_pnl = 0
             total_commission = 0
             total_slippage = 0
+            total_pnl_point = 0
             total_trade_count = 0
             total_trade = 0
 
             daily_net_pnl = 0
             daily_commission = 0
             daily_slippage = 0
+            daily_pnl_point = 0
             daily_trade_count = 0
             daily_trade_max = 0
             trade_volume_max = 0
@@ -1252,6 +1296,7 @@ class BacktestingEngine:
             trade_mean = 0
             average_commission = 0
             average_slippage = 0
+            average_pnl_point = 0
             trade_duration = 0
             trade_duration_max = 0
 
@@ -1318,8 +1363,10 @@ class BacktestingEngine:
             total_pnl = trade_df["trade_pnl"].sum()                                                    # 交易总盈亏
             total_commission = trade_df["trade_commission"].sum()                                      # 总交易手续费
             total_slippage = trade_df["trade_slippage"].sum()                                          # 总交易滑点费
+            total_pnl_point = trade_df["pnl_point"].sum()                                              # 总交易净盈亏点数
             average_commission = total_commission / total_trade                                        # 平均每笔手续费
             average_slippage = total_slippage / total_trade                                            # 平均每笔滑点费
+            average_pnl_point = total_pnl_point / total_trade                                          # 平均每笔净盈亏点数
 
             long_total_trade = len(trade_df[trade_df["trade_type"] == "多头"])                                                     # 多头交易笔数
             long_profit_times = len(trade_df[(trade_df["trade_type"] == "多头") & (trade_df["net_pnl"] >= 0)])                     # 多头盈利笔数
@@ -1396,9 +1443,14 @@ class BacktestingEngine:
             daily_net_pnl = total_net_pnl / total_days                # 日均盈亏
             daily_commission = total_commission / total_days          # 日均手续费
             daily_slippage = total_slippage / total_days              # 日均滑点费
+            daily_pnl_point = total_pnl_point / total_days            # 日均净盈亏点数
             daily_trade_count = total_trade / total_days              # 日均交易笔数
             daily_trade_max = int(trade_df[["trade_date", "symbol"]].groupby("trade_date").count().max())    # 单日最多交易笔数
-            trade_volume_max = self.trade_data_df.trade_volume.max()        # 单次最大成交手数
+
+            try:
+                trade_volume_max = self.trade_data_df.trade_volume.max()        # 单次最大成交手数
+            except AttributeError:
+                trade_volume_max = 0
 
             total_trade_count = daily_df["trade_count"].sum()         # 总共成交的委托数量
 
@@ -1467,12 +1519,14 @@ class BacktestingEngine:
             self.output(f"交易净盈亏： \t{total_net_pnl:,.2f}")
             self.output(f"交易手续费： \t{total_commission:,.2f}")
             self.output(f"交易滑点费： \t{total_slippage:,.2f}")
+            self.output(f"总净盈亏点数： \t{total_pnl_point:,.2f}")
             self.output(f"总成交数量： \t{total_trade_count}")
             self.output(f"总交易笔数： \t{total_trade}")
 
             self.output(f"日均盈亏：   \t{daily_net_pnl:,.2f}")
             self.output(f"日均手续费： \t{daily_commission:,.2f}")
             self.output(f"日均滑点费： \t{daily_slippage:,.2f}")
+            self.output(f"日均净盈亏点数： \t{daily_pnl_point:,.2f}")
             self.output(f"日均交易笔数：\t{daily_trade_count:,.2f}")
             self.output(f"单日最多交易笔数：\t{daily_trade_max}")
             self.output(f"单次最大成交手数：\t{trade_volume_max}")
@@ -1487,6 +1541,7 @@ class BacktestingEngine:
             self.output(f"平均每笔盈亏：\t{trade_mean:,.2f}")
             self.output(f"平均每笔手续费：\t{average_commission:,.2f}")
             self.output(f"平均每笔滑点费：\t{average_slippage:,.2f}")
+            self.output(f"平均每笔盈亏点数：\t{average_pnl_point:,.2f}")
             self.output(f"平均持仓小时：\t{trade_duration:,.2f}")
             self.output(f"最长持仓小时：\t{trade_duration_max:,.2f}")
 
@@ -1584,11 +1639,13 @@ class BacktestingEngine:
             "total_net_pnl": round(total_net_pnl,2),
             "total_commission": round(total_commission,2),
             "total_slippage": round(total_slippage,2),
+            "total_pnl_point": round(total_pnl_point,2),
             "total_trade_count": total_trade_count,
             "total_trade": total_trade,
             "daily_net_pnl": round(daily_net_pnl,2),
             "daily_commission": round(daily_commission,2),
             "daily_slippage": round(daily_slippage,2),
+            "daily_pnl_point": round(daily_pnl_point,2),
             "daily_trade_count": round(daily_trade_count,2),
             "daily_trade_max": daily_trade_max,
             "trade_volume_max": trade_volume_max,
@@ -1601,6 +1658,7 @@ class BacktestingEngine:
             "trade_mean": round(trade_mean,2),
             "average_commission": round(average_commission,2),
             "average_slippage": round(average_slippage,2),
+            "average_pnl_point": round(average_pnl_point,2),
             "trade_duration": round(trade_duration,2),
             "trade_duration_max": round(trade_duration_max,2),
 
@@ -1650,11 +1708,12 @@ class BacktestingEngine:
         home_path = Path.home()
         temp_path = home_path.joinpath("Desktop")
 
-        # 生成主要参数字符串
-        param_dict = self.strategy.get_parameters()
-        for key in ["x_second", "long_period", "init_lots", "capital"]:
-            param_dict.pop(key)
-        self.main_parameters = f"{param_dict}".replace(":","=").replace("'","").replace("{","").replace("}","").replace(" ","")
+        if self.symbol:
+            # 生成主要参数字符串
+            param_dict = self.strategy.get_parameters()
+            for key in ["x_second", "long_period", "init_lots", "capital"]:
+                param_dict.pop(key)
+            self.main_parameters = f"{param_dict}".replace(":","=").replace("'","").replace("{","").replace("}","").replace(" ","")
 
         # 生成交易日期范围
         self.trade_date_range = f'{start_date.strftime("%Y%m%d")}~{end_date.strftime("%Y%m%d")}'
@@ -1695,11 +1754,13 @@ class BacktestingEngine:
                 "交易净盈亏": f"{total_net_pnl:.2f}",
                 "交易手续费": f"{total_commission:.2f}",
                 "交易滑点费": f"{total_slippage:.2f}",
+                "总净盈亏点数": f"{total_pnl_point:.2f}",
                 "总成交数量": total_trade_count,
                 "总交易笔数": total_trade,
                 "日均盈亏": f"{daily_net_pnl:.2f}",
                 "日均手续费": f"{daily_commission:.2f}",
                 "日均滑点费": f"{daily_slippage:.2f}",
+                "日均净盈亏点数": f"{daily_pnl_point:.2f}",
                 "日均交易笔数": f"{daily_trade_count:.2f}",
                 "单日最多交易笔数": daily_trade_max,
                 "单次最大成交手数": trade_volume_max,
@@ -1712,6 +1773,7 @@ class BacktestingEngine:
                 "平均每笔盈利": f"{trade_mean:.2f}",
                 "平均每笔手续费": f"{average_commission:.2f}",
                 "平均每笔滑点费": f"{average_slippage:.2f}",
+                "平均每笔盈亏点数": f"{average_pnl_point:.2f}",
                 "平均持仓小时": f"{trade_duration:.2f}",
                 "最长持仓小时": f"{trade_duration_max:.2f}",
 
@@ -1875,7 +1937,7 @@ class BacktestingEngine:
                 label_opts = opts.LabelOpts(is_show=False),
                 is_symbol_show = False,
                 linestyle_opts = opts.LineStyleOpts(width=3, opacity=1, type_="solid", color="#8A0000"),
-            ) 
+            )
             .set_global_opts(
                 title_opts=opts.TitleOpts(title="账号净值", pos_top="0%"),
 
@@ -2542,10 +2604,39 @@ def load_bar_data(
     start: datetime,
     end: datetime
 ):
-    """"""
-    return database_manager.load_bar_data(
-        symbol, exchange, interval, start, end
-    )
+    """bar数据缓存为pkl格式到本地硬盘"""
+    dir_path = f"C:\\Users\\Administrator\\Desktop\\Pickle_Data\\"
+    file_name = f"{symbol}_{exchange.value}_{start.date()}_{end.date()}_bar"
+    pickle_path = dir_path + file_name + ".pkl"
+    data_size  =0
+
+    if not os.path.exists(pickle_path):
+        bar_data = database_manager.load_bar_data(symbol, exchange, interval, start, end)
+        pickle_file = open(pickle_path, 'wb')    
+        pickle.dump(bar_data, pickle_file)
+        pickle_file.close()
+
+    else:        
+        pickle_file = open(pickle_path,'rb')
+        bar_data =pickle.load(pickle_file)
+        pickle_file.close()
+
+    # Pickle_Data文件夹大于10G清空缓存数据
+    for dirpath, dirnames, filenames in os.walk(dir_path):
+        for file_name in filenames:         #当前目录所有文件名
+            data_size += os.path.getsize(dirpath + file_name)
+
+    if data_size / (1024 ** 3) > 10:
+        for dirpath, dirnames, filenames in os.walk(dir_path):
+            for file_name in filenames:           
+                os.remove(dirpath + file_name)
+
+    return bar_data
+
+    # 原版回测数据加载缓存方式
+    # return database_manager.load_bar_data(
+    #     symbol, exchange, interval, start, end
+    # )
 
 
 @lru_cache(maxsize=999)
@@ -2555,10 +2646,39 @@ def load_tick_data(
     start: datetime,
     end: datetime
 ):
-    """"""
-    return database_manager.load_tick_data(
-        symbol, exchange, start, end
-    )
+    """tick数据缓存为pkl格式到本地硬盘"""
+    dir_path = f"C:\\Users\\Administrator\\Desktop\\Pickle_Data\\"
+    file_name = f"{symbol}_{exchange.value}_{start.date()}_{end.date()}_tick"
+    pickle_path = dir_path + file_name + ".pkl"
+    data_size  =0
+
+    if not os.path.exists(pickle_path):
+        tick_data = database_manager.load_tick_data( symbol, exchange, start, end )
+        pickle_file = open(pickle_path,'wb')    
+        pickle.dump(tick_data,pickle_file)
+        pickle_file.close()
+
+    else:        
+        pickle_file = open(pickle_path,'rb')
+        tick_data =pickle.load(pickle_file)
+        pickle_file.close()
+
+    # Pickle_Data文件夹大于10G清空缓存数据
+    for dirpath, dirnames, filenames in os.walk(dir_path):
+        for file_name in filenames:         #当前目录所有文件名
+            data_size += os.path.getsize(dirpath + file_name)
+
+    if data_size / (1024 ** 3) > 10:
+        for dirpath, dirnames, filenames in os.walk(dir_path):
+            for file_name in filenames:           
+                os.remove(dirpath + file_name)    
+
+    return tick_data
+
+    # 原版回测数据加载缓存方式
+    # return database_manager.load_tick_data(
+    #     symbol, exchange, start, end
+    # )
 
 
 # GA related global value

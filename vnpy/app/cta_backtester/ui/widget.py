@@ -74,8 +74,10 @@ class BacktesterManager(QtWidgets.QWidget):
         for inteval in Interval:
             self.interval_combo.addItem(inteval.value)
 
-        end_dt = datetime.now()
-        start_dt = end_dt - timedelta(days=3 * 365)
+        # end_dt = datetime.now()
+        # start_dt = end_dt - timedelta(days=3 * 365)
+        start_dt = datetime(2018, 1, 1)
+        end_dt = datetime(2030, 12, 31)
 
         self.start_date_edit = QtWidgets.QDateEdit(
             QtCore.QDate(
@@ -85,7 +87,12 @@ class BacktesterManager(QtWidgets.QWidget):
             )
         )
         self.end_date_edit = QtWidgets.QDateEdit(
-            QtCore.QDate.currentDate()
+            # QtCore.QDate.currentDate()
+            QtCore.QDate(
+                end_dt.year,
+                end_dt.month,
+                end_dt.day
+            )
         )
 
         self.rate_type_combo = QtWidgets.QComboBox()
@@ -186,10 +193,10 @@ class BacktesterManager(QtWidgets.QWidget):
         # Result part
         self.statistics_monitor = StatisticsMonitor()
 
-        self.log_monitor = QtWidgets.QTextEdit()
+        self.log_monitor = QtWidgets.QTextEdit()        # 回测界面统计指标输出窗口
         self.log_monitor.setMaximumHeight(400)
 
-        self.chart = BacktesterChart()
+        self.chart = BacktesterChart()                  # 回测界面右侧图例输出窗口
         self.chart.setMinimumWidth(1000)
 
         self.trade_dialog = BacktestingResultDialog(
@@ -561,12 +568,14 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "total_net_pnl": "交易净盈亏",
         "total_commission": "交易手续费",
         "total_slippage": "交易滑点费",
+        "total_pnl_point": "总净盈亏点数",
         "total_trade_count": "总成交数量",
         "total_trade": "总交易笔数",
 
         "daily_net_pnl": "日均盈亏",
         "daily_commission": "日均手续费",
         "daily_slippage": "日均滑点费",
+        "daily_pnl_point": "日均净盈亏点数",
         "daily_trade_count": "日均交易笔数",
         "daily_trade_max": "单日最多交易笔数",
         "trade_volume_max": "单次最大成交手数",
@@ -581,6 +590,7 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "trade_mean": "平均每笔盈利",
         "average_commission": "平均每笔手续费",
         "average_slippage": "平均每笔滑点费",
+        "average_pnl_point": "平均每笔盈亏点数",
         "trade_duration": "平均持仓小时",
         "trade_duration_max": "最长持仓小时",
 

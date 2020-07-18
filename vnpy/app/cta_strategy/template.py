@@ -1,5 +1,4 @@
 # -*- coding:utf-8 -*-
-import os
 from abc import ABC
 from copy import copy, deepcopy
 from typing import Any, Callable, Union
@@ -10,7 +9,7 @@ import pandas as pd
 
 from vnpy.trader.constant import Interval, Direction, Offset, RateType
 from vnpy.trader.object import BarData, TickData, OrderData, TradeData, AccountData, ContractData
-from vnpy.trader.utility import virtual, get_file_path, save_json, load_json, send_dingding, send_weixin, popup_warning
+from vnpy.trader.utility import virtual, get_file_path, get_folder_path, save_json, load_json, send_dingding, send_weixin, popup_warning
 
 from .base import StopOrder, EngineType
 
@@ -59,8 +58,8 @@ class CtaTemplate(ABC):
         self.entry_minute  = 0           # 统计开仓后历时多少分钟
         self.exit_minute   = 0           # 统计平仓后历时多少分钟
 
-        self.long_cost = 0               # 实盘模式缓存最新多头持仓均价，回测模式缓存持仓均价
-        self.short_cost = 0              # 实盘模式缓存最新空头持仓均价，回测模式缓存持仓均价
+        self.long_cost = 0               # 实盘/回测模式缓存最新多头持仓均价
+        self.short_cost = 0              # 实盘/回测模式缓存最新空头持仓均价
         self.show_account_data = True    # 实盘模式初始化时显示账户信息日志
         self.show_holding_data = True    # 实盘模式初始化时显示持仓信息日志
 
@@ -82,20 +81,23 @@ class CtaTemplate(ABC):
         self.chase_interval = 10         # 拆单间隔:秒
 
         self.trade_number = 0            # 回测时缓存当笔交易的序号
+        self.trade_volume = 0            # 回测时缓存当笔交易的累计成交手数
         self.trade_net_volume = 0        # 回测时缓存当笔交易的净持仓量
-        self.open_cost_price = 0         # 回测时缓存当笔交易的开仓成本价
         self.trade_pnl = 0               # 回测时缓存当笔交易的盈亏金额
         self.trade_commission = 0        # 回测时缓存当笔交易的手续费
         self.trade_slippage = 0          # 回测时缓存当笔交易的滑点费
         self.net_pnl = 0                 # 回测时缓存当笔交易的净盈亏金额
+        self.pnl_point = 0               # 回测时缓存当笔交易的净盈亏点数
 
         self.trade_number_list = []      # 回测时缓存每一次成交的序号
+        self.trade_volume_list = []      # 回测时缓存每笔交易的累计成交手数
         self.trade_net_volume_list = []  # 回测时缓存每一次成交的净持仓量状态
         self.trade_type_list = []        # 回测时缓存每笔交易的多空类型
         self.trade_pnl_list = []         # 回测时缓存每笔交易的盈亏金额
         self.commission_list = []        # 回测时缓存每笔交易的手续费
         self.slippage_list = []          # 回测时缓存每笔交易的滑点费
         self.net_pnl_list = []           # 回测时缓存每笔交易的净盈亏金额
+        self.pnl_point_list = []         # 回测时缓存每笔交易的净盈亏点数
         self.balance_list = []           # 回测时缓存每笔交易结束后的Balance
         self.trade_duration_list = []    # 回测时缓存每笔交易的有效持仓时间（分钟）
         self.trade_date_list = []        # 回测时缓存每笔交易的交易日期
@@ -530,22 +532,27 @@ class CtaTemplate(ABC):
         if self.inited and self.engine_type == EngineType.BACKTESTING:
             if trade.offset == Offset.OPEN:
                 self.trade_net_volume += abs(trade.volume)
-                self.open_cost_price = (trade.price * trade.volume + self.open_cost_price * (self.trade_net_volume - trade.volume)) / self.trade_net_volume
-                self.long_cost = self.open_cost_price       # 持仓均价，保持和实盘名称一致
-                self.short_cost = self.open_cost_price      # 持仓均价，保持和实盘名称一致
+
+                if trade.direction == Direction.LONG:
+                    self.long_cost = (trade.price * trade.volume + self.long_cost * (self.trade_net_volume - trade.volume)) / self.trade_net_volume
+                else:
+                    self.short_cost = (trade.price * trade.volume + self.short_cost * (self.trade_net_volume - trade.volume)) / self.trade_net_volume
 
                 if self.rate_type == RateType.FIXED:        # 固定手续费模式
                     self.trade_commission += trade.volume * self.rate
                 else:                                       # 浮动手续费模式
                     self.trade_commission += trade.price * trade.volume * self.size * self.rate
+
                 self.trade_slippage += trade.volume * self.size * self.slippage
 
             else:
                 self.trade_net_volume -= abs(trade.volume)
                 if trade.direction == Direction.LONG:       # 买平，平空仓
-                    self.trade_pnl += (self.open_cost_price - trade.price) * trade.volume * self.size
+                    self.trade_pnl += (self.short_cost - trade.price) * trade.volume * self.size
+                    self.pnl_point += self.short_cost - trade.price
                 elif trade.direction == Direction.SHORT:    # 卖平，平多仓
-                    self.trade_pnl += (trade.price - self.open_cost_price) * trade.volume * self.size
+                    self.trade_pnl += (trade.price - self.long_cost) * trade.volume * self.size
+                    self.pnl_point += trade.price - self.long_cost
 
                 if self.rate_type == RateType.FIXED:
                     self.trade_commission += trade.volume * self.rate
@@ -560,6 +567,7 @@ class CtaTemplate(ABC):
                 self.trade_start_time_list.append(trade.datetime)
                 self.record_start_switch = False
 
+            self.trade_volume += trade.volume
             self.trade_net_volume_list.append(self.trade_net_volume)
 
             # 每完成一次完整交易
@@ -567,19 +575,24 @@ class CtaTemplate(ABC):
                 self.trade_number += 1
                 self.trade_number_list.append(self.trade_number)
                 self.trade_type_list.append("多头" if trade.direction == Direction.SHORT else "空头")
+                self.trade_volume_list.append(self.trade_volume)
                 self.trade_pnl_list.append(self.trade_pnl)
                 self.commission_list.append(self.trade_commission)
                 self.slippage_list.append(self.trade_slippage)
                 self.net_pnl_list.append(self.net_pnl)
+                self.pnl_point_list.append(self.pnl_point - self.trade_volume * self.slippage)                    # 净盈亏点数，已扣除滑点
                 self.balance_list.append(self.balance)
                 self.trade_duration_list.append(round(self.entry_minute/60, 2))
                 self.trade_date_list.append(trade.datetime.date())
                 self.trade_end_time_list.append(trade.datetime)
-                self.open_cost_price = 0
+                self.trade_volume = 0
+                self.long_cost = 0
+                self.short_cost = 0
                 self.trade_pnl = 0
                 self.trade_commission = 0
                 self.trade_slippage = 0
                 self.net_pnl = 0
+                self.pnl_point = 0
                 self.record_start_switch = True
 
         # 实盘模式
@@ -587,7 +600,9 @@ class CtaTemplate(ABC):
             # 获取持仓信息，此时持仓头寸数量信息已更新，但持仓均价信息尚未更新
             holding = self.cta_engine.offset_converter.get_position_holding(self.vt_symbol)
 
-            if trade.offset == Offset.OPEN:                
+            if trade.offset == Offset.OPEN:
+                self.pnl_point = 0
+
                 if trade.direction == Direction.LONG:
                     self.long_cost = (trade.price * trade.volume + holding.long_price * (holding.long_pos - trade.volume)) / holding.long_pos
                     msg = f"开多！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，多头持仓均价：{round(self.long_cost, 2)}。"
@@ -607,6 +622,7 @@ class CtaTemplate(ABC):
                     self.trade_commission = round((trade.volume * self.contract_data.open_commission + holding.short_price * trade.volume * self.size * self.contract_data.open_commission_ratio)
                                             + (trade.volume * self.contract_data.close_commission + trade.price * trade.volume * self.size * self.contract_data.close_commission_ratio), 2)
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
+                    self.pnl_point = holding.short_price - trade.price
 
                     msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
@@ -618,13 +634,14 @@ class CtaTemplate(ABC):
                     self.trade_commission = round((trade.volume * self.contract_data.open_commission + holding.long_price * trade.volume * self.size * self.contract_data.open_commission_ratio)
                                             + (trade.volume * self.contract_data.close_commission + trade.price * trade.volume * self.size * self.contract_data.close_commission_ratio), 2)
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
+                    self.pnl_point = trade.price - holding.long_price
 
                     msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
 
-        # 将每次成交的信号文本保存，以便后期复查
+        # 将每次成交的信号保存，以便后期复查
         self.signal_list.append(self.signal)
         self.signal = 0
 
@@ -632,14 +649,11 @@ class CtaTemplate(ABC):
         """实盘模式下实时记录成交信息至JSON文件。在 on_trade 中调用"""
         if self.inited and self.engine_type == EngineType.LIVE:
             # 判断.vntrader文件夹下是否存在vt_trade_data_record文件夹，不存在则创建文件夹
-            file_path = get_file_path(f'vt_trade_data_record/{datetime.now().date().strftime("%Y%m%d")}')
-            file_name = file_path.joinpath(f"{self.symbol_strategy}.json")
+            folder_path = get_folder_path(f'vt_trade_data_record/{self.account.accountid}/{datetime.now().date().strftime("%Y%m%d")}')
+            file_path = folder_path.joinpath(f"{self.symbol_strategy}.json")
 
-            if not os.path.exists(file_path):
-                os.makedirs(file_path)                       # os.makedirs()创建多级目录
-            else:
-                if not self.trade_data_dict:
-                    self.trade_data_dict = load_json(file_name)
+            if file_path.exists():
+                self.trade_data_dict = load_json(file_path)
 
             _trade = deepcopy(trade).__dict__
             _trade["exchange"] = trade.exchange.value
@@ -649,13 +663,15 @@ class CtaTemplate(ABC):
             _trade["trade_pnl"] = self.trade_pnl
             _trade["commission"] = self.trade_commission
             _trade["net_pnl"] = self.net_pnl
+            _trade["pnl_point"] = self.pnl_point
             _trade["signal"] = self.signal_list[-1]
             _trade["symbol"] = self.symbol
             _trade["strategy"] = self.__class__.__name__
+            _trade["accountid"] = self.account.accountid
 
             temp_dict = {_trade["datetime"]:_trade}
             self.trade_data_dict.update(temp_dict)
-            save_json(file_name, self.trade_data_dict)
+            save_json(file_path, self.trade_data_dict)
 
     def record_price_and_status(self, bar: BarData):
         """记录和更新每一分钟策略定义的各类价格和状态"""
