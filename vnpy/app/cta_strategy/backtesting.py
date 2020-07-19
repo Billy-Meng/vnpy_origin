@@ -471,8 +471,8 @@ class BacktestingEngine:
         for setting in settings:
             count += 1
 
-            print(f'{datetime.now().time()}\t{"=" * 200}')
-            print(f'{datetime.now().time()}\t正在进行第 {count} 组参数回测')
+            print(f'{"=" * 200}')
+            print(f'{datetime.now()}\t正在进行第【 {count} 】组参数回测\t优化参数：{setting}')
 
             result = (pool.apply_async(optimize, (
                 target_name,
@@ -512,10 +512,7 @@ class BacktestingEngine:
             # 在字典中保存所有统计指标结果
             result_dict["statistics"].append(value[2])
 
-            print(f'{datetime.now().time()} \t 优化参数：{value[0]}')
-            print(f'{datetime.now().time()} \t 总收益率：{value[2]["total_return"]}，年化收益率：{value[2]["annual_return"]}，年复合增长率：{value[2]["cagr"]}，夏普比率：{value[2]["sharpe_ratio"]}，Omega比率：{value[2]["omega_ratio"]}，Calmar比率：{value[2]["calmar_ratio"]}，索提诺比率：{value[2]["sortino_ratio"]}')
-            print(f'{datetime.now().time()} \t %最大回撤：{value[2]["max_ddpercent"]}，%平均回撤：{value[2]["average_drawdown"]}，%线性加权回撤：{value[2]["lw_drawdown"]}，收益回撤比：{value[2]["return_drawdown_ratio"]}，最大回撤天数：{value[2]["max_drawdown_duration"]}，最大回撤区间：{value[2]["max_drawdown_range"]}')
-            print(f'{datetime.now().time()} \t 日均净盈亏：{value[2]["daily_net_pnl"]}，笔均净盈亏：{value[2]["average_net_pnl"]}，日均交易笔数：{value[2]["daily_tade_count"]}，平均持仓小时：{value[2]["trade_duration"]}，胜率：{value[2]["rate_of_win"]}，盈亏比：{value[2]["profit_loss_ratio"]}')
+            print(f'''\t总收益率：{value[2]["total_return"]}  \t年化收益率：{value[2]["annual_return"]}\t年复合增长率：{value[2]["cagr"]}    \t夏普比率：{value[2]["sharpe_ratio"]}      \tOmega比率：{value[2]["omega_ratio"]}  \tCalmar比率：{value[2]["calmar_ratio"]}\t索提诺比率：{value[2]["sortino_ratio"]}\n\t%最大回撤：{value[2]["max_ddpercent"]} \t%平均回撤：{value[2]["average_drawdown"]}  \t%线性加权回撤：{value[2]["lw_drawdown"]}\t最大回撤金额：{value[2]["max_drawdown"]}\t收益回撤比：{value[2]["return_drawdown_ratio"]} \t最大回撤天数：{value[2]["max_drawdown_duration"]}\t最大回撤区间：{value[2]["max_drawdown_range"]}\n\t日均净盈亏：{value[2]["daily_net_pnl"]}\t笔均净盈亏：{value[2]["average_net_pnl"]}\t日均交易笔数：{value[2]["daily_trade_count"]}\t单日最多交易笔数：{value[2]["daily_trade_max"]}\t平均持仓小时：{value[2]["trade_duration"]}\t胜率：{value[2]["rate_of_win"]}\t盈亏比：{value[2]["profit_loss_ratio"]}''')
 
             # 将参数优化每一次运行的临时结果提前保存，以防系统崩溃
             with open(filepath, "a+") as f:
@@ -1471,7 +1468,7 @@ class BacktestingEngine:
             cagr = empyrical.cagr(daily_df["return"], period='daily', annualization=240) * 100                                          # 年复合增长率
             annual_volatility = empyrical.annual_volatility(daily_df["return"], alpha=2.0, annualization=240) * 100                     # 年化波动率：用来测量策略的风险性，波动越大代表策略风险越高。
             omega_ratio = empyrical.omega_ratio(daily_df["return"], risk_free=0.0, required_return=0.0, annualization=240)              # Omega比率：上涨概率比下跌概率，衡量的是收益-损失比率，一般越大越好。
-            calmar_ratio = empyrical.calmar_ratio(daily_df["return"], annualization=240)                                                # Calmar比率：描述的是收益和最大回撤之间的关系。计算方式为年化收益率与历史最大回撤之间的比率。Calmar比率数值越大，基金的业绩表现越好。反之，基金的业绩表现越差。
+            calmar_ratio = empyrical.calmar_ratio(daily_df["return"], annualization=240)                                                # Calmar比率：描述的是收益和最大回撤之间的关系。计算方式为年化复合收益率与历史最大回撤之间的比率。Calmar比率数值越大，基金的业绩表现越好。反之，基金的业绩表现越差。
             downside_risk = empyrical.downside_risk(daily_df["return"], required_return=0, annualization=240)                           # 下限风险：在基金投资中，下限风险是指基金净值增长率的下方标准差，测量的是基金的净值增长率与目标回报率或者期望回报率反向的偏差程度。
             sortino_ratio = empyrical.sortino_ratio(daily_df["return"], required_return=0, annualization=240, _downside_risk=None)      # 索提诺比率：一种衡量投资组合相对表现的方法。与夏普比率(Sharpe Ratio)有相似之处，但索提诺比率运用下偏标准差而不是总标准差，以区别不利和有利的波动。和夏普比率类似，这一比率越高，表明基金承担相同单位下行风险能获得更高的超额回报率。索提诺比率可以看做是夏普比率在衡量对冲基金/私募基金时的一种修正方式。
             R_squared = empyrical.stability_of_timeseries(daily_df["return"])                                                           # R平方：是反映业绩基准的变动对基金表现的影响，影响程度以 0～100 计。如果R平方值等于100，表示基金回报的变动完全由业绩基准的变动所致；若R平方值等于35，即35%的基金回报可归因于业绩基准的变动。简言之，R 平方值越低，由业绩基准变动导致的基金业绩的变动便越少。此外，R平方也可用来确定β系数或α系数的准确性。一般而言，基金的R平方值越高，其两个系数的准确性便越高。
@@ -1715,7 +1712,12 @@ class BacktestingEngine:
             # 生成主要参数字符串
             param_dict = self.strategy.get_parameters()
             for key in ["x_second", "long_period", "init_lots", "capital"]:
-                param_dict.pop(key)
+
+                try:
+                    param_dict.pop(key)
+                except KeyError:
+                    pass
+                    
             self.main_parameters = f"{param_dict}".replace(":","=").replace("'","").replace("{","").replace("}","").replace(" ","")
 
         # 生成交易日期范围
@@ -2613,13 +2615,16 @@ def load_bar_data(
     pickle_path = dir_path + file_name + ".pkl"
     data_size  =0
 
-    if not os.path.exists(pickle_path):
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+
+    if not os.path.exists(pickle_path):   
         bar_data = database_manager.load_bar_data(symbol, exchange, interval, start, end)
         pickle_file = open(pickle_path, 'wb')    
         pickle.dump(bar_data, pickle_file)
         pickle_file.close()
 
-    else:        
+    else:
         pickle_file = open(pickle_path,'rb')
         bar_data =pickle.load(pickle_file)
         pickle_file.close()
@@ -2655,7 +2660,10 @@ def load_tick_data(
     pickle_path = dir_path + file_name + ".pkl"
     data_size  =0
 
-    if not os.path.exists(pickle_path):
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+
+    if not os.path.exists(pickle_path):        
         tick_data = database_manager.load_tick_data( symbol, exchange, start, end )
         pickle_file = open(pickle_path,'wb')    
         pickle.dump(tick_data,pickle_file)
