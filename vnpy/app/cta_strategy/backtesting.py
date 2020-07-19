@@ -437,7 +437,7 @@ class BacktestingEngine:
         fig.update_layout(height=1000, width=1000)
         fig.show()
 
-    def run_optimization(self, optimization_setting: OptimizationSetting, save_csv=False, output=False):
+    def run_optimization(self, optimization_setting: OptimizationSetting, save_csv=True, output=False):
         """"""
         # Get optimization setting and target
         settings = optimization_setting.generate_setting()
@@ -471,8 +471,8 @@ class BacktestingEngine:
         for setting in settings:
             count += 1
 
-            print(f'{datetime.now()}\t{"*" * 150}')
-            print(f'{datetime.now()}\t正在进行第 {count} 组参数回测')
+            print(f'{datetime.now().time()}\t{"=" * 200}')
+            print(f'{datetime.now().time()}\t正在进行第 {count} 组参数回测')
 
             result = (pool.apply_async(optimize, (
                 target_name,
@@ -502,8 +502,8 @@ class BacktestingEngine:
 
             # 在字典中添加结果列表
             target_name_list = [
-                "total_return", "annual_return", "cagr", "sharpe_ratio", "omega_ratio", "sortino_ratio", "max_drawdown", "max_ddpercent", "average_drawdown", 
-                "max_drawdown_duration", "return_drawdown_ratio", "return_std", "rate_of_win", "profit_loss_ratio", "trade_mean"
+                "total_return", "annual_return", "cagr", "annual_volatility", "sharpe_ratio", "omega_ratio", "calmar_ratio", "sortino_ratio", "R_squared", "max_drawdown", "max_ddpercent", "average_drawdown", 
+                "lw_drawdown", "max_drawdown_duration", "return_drawdown_ratio", "return_std", "rate_of_win", "profit_loss_ratio", "daily_net_pnl", "average_net_pnl", "daily_trade_count", "trade_duration"
             ]
 
             for target_name in target_name_list:
@@ -512,7 +512,10 @@ class BacktestingEngine:
             # 在字典中保存所有统计指标结果
             result_dict["statistics"].append(value[2])
 
-            print(f'{datetime.now()}\t参数：{value[0]} \t 目标：{round(value[1],4)}')
+            print(f'{datetime.now().time()} \t 优化参数：{value[0]}')
+            print(f'{datetime.now().time()} \t 总收益率：{value[2]["total_return"]}，年化收益率：{value[2]["annual_return"]}，年复合增长率：{value[2]["cagr"]}，夏普比率：{value[2]["sharpe_ratio"]}，Omega比率：{value[2]["omega_ratio"]}，Calmar比率：{value[2]["calmar_ratio"]}，索提诺比率：{value[2]["sortino_ratio"]}')
+            print(f'{datetime.now().time()} \t %最大回撤：{value[2]["max_ddpercent"]}，%平均回撤：{value[2]["average_drawdown"]}，%线性加权回撤：{value[2]["lw_drawdown"]}，收益回撤比：{value[2]["return_drawdown_ratio"]}，最大回撤天数：{value[2]["max_drawdown_duration"]}，最大回撤区间：{value[2]["max_drawdown_range"]}')
+            print(f'{datetime.now().time()} \t 日均净盈亏：{value[2]["daily_net_pnl"]}，笔均净盈亏：{value[2]["average_net_pnl"]}，日均交易笔数：{value[2]["daily_tade_count"]}，平均持仓小时：{value[2]["trade_duration"]}，胜率：{value[2]["rate_of_win"]}，盈亏比：{value[2]["profit_loss_ratio"]}')
 
             # 将参数优化每一次运行的临时结果提前保存，以防系统崩溃
             with open(filepath, "a+") as f:
@@ -1293,7 +1296,7 @@ class BacktestingEngine:
             rate_of_win = 0
             profit_loss_ratio = 0
 
-            trade_mean = 0
+            average_net_pnl = 0
             average_commission = 0
             average_slippage = 0
             average_pnl_point = 0
@@ -1318,7 +1321,7 @@ class BacktestingEngine:
             long_total_loss = 0
             long_profit_loss_ratio = 0
             long_total_net_pnl = 0
-            long_trade_mean = 0
+            long_average_net_pnl = 0
             long_trade_duration = 0
             long_trade_duration_max = 0
 
@@ -1330,7 +1333,7 @@ class BacktestingEngine:
             short_total_loss = 0
             short_profit_loss_ratio = 0
             short_total_net_pnl = 0
-            short_trade_mean = 0
+            short_average_net_pnl = 0
             short_trade_duration = 0
             short_trade_duration_max = 0
 
@@ -1356,7 +1359,7 @@ class BacktestingEngine:
             profit_loss_ratio = (total_profit/profit_times) / abs(total_loss / loss_times)             # 盈亏比 = 盈利的平均金额 / 亏损的平均金额
 
             total_net_pnl = trade_df["net_pnl"].sum()                                                  # 交易净盈亏
-            trade_mean = total_net_pnl / total_trade                                                   # 平均每笔净盈亏
+            average_net_pnl = total_net_pnl / total_trade                                                   # 平均每笔净盈亏
             trade_duration = trade_df["duration"].mean()                                               # 平均持仓小时
             trade_duration_max = trade_df["duration"].max()                                            # 最长持仓小时
 
@@ -1381,7 +1384,7 @@ class BacktestingEngine:
             long_total_loss = trade_df[(trade_df["trade_type"] == "多头") & (trade_df["net_pnl"] < 0)].net_pnl.sum()               # 多头亏损总金额
             long_profit_loss_ratio = (long_total_profit/long_profit_times) / abs(long_total_loss / long_loss_times)                # 多头盈亏比
             long_total_net_pnl = trade_df[trade_df["trade_type"] == "多头"].net_pnl.sum()                                          # 多头交易净盈亏
-            long_trade_mean = long_total_net_pnl / long_total_trade                                                                # 多头平均每笔净盈亏
+            long_average_net_pnl = long_total_net_pnl / long_total_trade                                                                # 多头平均每笔净盈亏
             long_trade_duration = trade_df[trade_df["trade_type"] == "多头"].duration.mean()                                       # 多头平均持仓小时
             long_trade_duration_max = trade_df[trade_df["trade_type"] == "多头"].duration.max()                                    # 多头最长持仓小时
 
@@ -1398,7 +1401,7 @@ class BacktestingEngine:
             short_total_loss = trade_df[(trade_df["trade_type"] == "空头") & (trade_df["net_pnl"] < 0)].net_pnl.sum()               # 空头亏损总金额
             short_profit_loss_ratio = (short_total_profit/short_profit_times) / abs(short_total_loss / short_loss_times)            # 空头盈亏比
             short_total_net_pnl = trade_df[trade_df["trade_type"] == "空头"].net_pnl.sum()                                          # 空头交易净盈亏
-            short_trade_mean = short_total_net_pnl / short_total_trade                                                              # 空头平均每笔净盈亏
+            short_average_net_pnl = short_total_net_pnl / short_total_trade                                                              # 空头平均每笔净盈亏
             short_trade_duration = trade_df[trade_df["trade_type"] == "空头"].duration.mean()                                       # 空头平均持仓小时
             short_trade_duration_max = trade_df[trade_df["trade_type"] == "空头"].duration.max()                                    # 空头最长持仓小时
 
@@ -1440,7 +1443,7 @@ class BacktestingEngine:
             else:
                 max_drawdown_duration = 0
 
-            daily_net_pnl = total_net_pnl / total_days                # 日均盈亏
+            daily_net_pnl = total_net_pnl / total_days                # 日均净盈亏
             daily_commission = total_commission / total_days          # 日均手续费
             daily_slippage = total_slippage / total_days              # 日均滑点费
             daily_pnl_point = total_pnl_point / total_days            # 日均净盈亏点数
@@ -1523,7 +1526,7 @@ class BacktestingEngine:
             self.output(f"总成交数量： \t{total_trade_count}")
             self.output(f"总交易笔数： \t{total_trade}")
 
-            self.output(f"日均盈亏：   \t{daily_net_pnl:,.2f}")
+            self.output(f"日均净盈亏： \t{daily_net_pnl:,.2f}")
             self.output(f"日均手续费： \t{daily_commission:,.2f}")
             self.output(f"日均滑点费： \t{daily_slippage:,.2f}")
             self.output(f"日均净盈亏点数： \t{daily_pnl_point:,.2f}")
@@ -1538,10 +1541,10 @@ class BacktestingEngine:
             self.output(f"胜率：       \t{rate_of_win:,.2f}%")
             self.output(f"盈亏比：     \t{profit_loss_ratio:,.2f}")
 
-            self.output(f"平均每笔盈亏：\t{trade_mean:,.2f}")
+            self.output(f"平均每笔净盈亏：\t{average_net_pnl:,.2f}")
             self.output(f"平均每笔手续费：\t{average_commission:,.2f}")
             self.output(f"平均每笔滑点费：\t{average_slippage:,.2f}")
-            self.output(f"平均每笔盈亏点数：\t{average_pnl_point:,.2f}")
+            self.output(f"平均每笔净盈亏点数：\t{average_pnl_point:,.2f}")
             self.output(f"平均持仓小时：\t{trade_duration:,.2f}")
             self.output(f"最长持仓小时：\t{trade_duration_max:,.2f}")
 
@@ -1581,8 +1584,8 @@ class BacktestingEngine:
             self.output(f"多头交易净盈亏：\t{long_total_net_pnl:,.2f}")
             self.output(f"空头交易净盈亏：\t{short_total_net_pnl:,.2f}")
 
-            self.output(f"多头平均每笔净盈亏：\t{long_trade_mean:,.2f}")
-            self.output(f"空头平均每笔净盈亏：\t{short_trade_mean:,.2f}")
+            self.output(f"多头平均每笔净盈亏：\t{long_average_net_pnl:,.2f}")
+            self.output(f"空头平均每笔净盈亏：\t{short_average_net_pnl:,.2f}")
 
             self.output(f"多头平均持仓小时：\t{long_trade_duration:,.2f}")
             self.output(f"空头平均持仓小时：\t{short_trade_duration:,.2f}")
@@ -1655,7 +1658,7 @@ class BacktestingEngine:
             "loss_times": loss_times,
             "rate_of_win": round(rate_of_win,2),
             "profit_loss_ratio": round(profit_loss_ratio,2),
-            "trade_mean": round(trade_mean,2),
+            "average_net_pnl": round(average_net_pnl,2),
             "average_commission": round(average_commission,2),
             "average_slippage": round(average_slippage,2),
             "average_pnl_point": round(average_pnl_point,2),
@@ -1679,7 +1682,7 @@ class BacktestingEngine:
             "long_total_loss": round(long_total_loss,2),
             "long_profit_loss_ratio": round(long_profit_loss_ratio,2),
             "long_total_net_pnl": round(long_total_net_pnl,2),
-            "long_trade_mean": round(long_trade_mean,2),
+            "long_average_net_pnl": round(long_average_net_pnl,2),
             "long_trade_duration": round(long_trade_duration,2),
             "long_trade_duration_max": round(long_trade_duration_max,2),
 
@@ -1691,7 +1694,7 @@ class BacktestingEngine:
             "short_total_loss": round(short_total_loss,2),
             "short_profit_loss_ratio": round(short_profit_loss_ratio,2),
             "short_total_net_pnl": round(short_total_net_pnl,2),
-            "short_trade_mean": round(short_trade_mean,2),
+            "short_average_net_pnl": round(short_average_net_pnl,2),
             "short_trade_duration": round(short_trade_duration,2),
             "short_trade_duration_max": round(short_trade_duration_max,2),
         }
@@ -1757,7 +1760,7 @@ class BacktestingEngine:
                 "总净盈亏点数": f"{total_pnl_point:.2f}",
                 "总成交数量": total_trade_count,
                 "总交易笔数": total_trade,
-                "日均盈亏": f"{daily_net_pnl:.2f}",
+                "日均净盈亏": f"{daily_net_pnl:.2f}",
                 "日均手续费": f"{daily_commission:.2f}",
                 "日均滑点费": f"{daily_slippage:.2f}",
                 "日均净盈亏点数": f"{daily_pnl_point:.2f}",
@@ -1770,10 +1773,10 @@ class BacktestingEngine:
                 "交易亏损笔数": loss_times,
                 "胜率": f"{rate_of_win:.2f}%",
                 "盈亏比": f"{profit_loss_ratio:.2f}",
-                "平均每笔盈利": f"{trade_mean:.2f}",
+                "平均每笔净盈亏": f"{average_net_pnl:.2f}",
                 "平均每笔手续费": f"{average_commission:.2f}",
                 "平均每笔滑点费": f"{average_slippage:.2f}",
-                "平均每笔盈亏点数": f"{average_pnl_point:.2f}",
+                "平均每笔净盈亏点数": f"{average_pnl_point:.2f}",
                 "平均持仓小时": f"{trade_duration:.2f}",
                 "最长持仓小时": f"{trade_duration_max:.2f}",
 
@@ -1802,8 +1805,8 @@ class BacktestingEngine:
                 "空头亏损总金额": f"{short_total_loss:.2f}",
                 "多头交易净盈亏": f"{long_total_net_pnl:.2f}",
                 "空头交易净盈亏": f"{short_total_net_pnl:.2f}",
-                "多头平均每笔净盈亏": f"{long_trade_mean:.2f}",
-                "空头平均每笔净盈亏": f"{short_trade_mean:.2f}",
+                "多头平均每笔净盈亏": f"{long_average_net_pnl:.2f}",
+                "空头平均每笔净盈亏": f"{short_average_net_pnl:.2f}",
                 "多头平均持仓小时": f"{long_trade_duration:.2f}",
                 "空头平均持仓小时": f"{short_trade_duration:.2f}",
                 "多头最长持仓小时": f"{long_trade_duration_max:.2f}",
