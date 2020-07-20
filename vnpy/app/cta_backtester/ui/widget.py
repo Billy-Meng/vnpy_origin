@@ -553,16 +553,16 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "max_drawdown_duration": "最大回撤天数",
         "max_drawdown_range": "最大回撤区间",
 
-        "daily_return": "日均收益率",
-        "return_std": "收益标准差",
-        "return_drawdown_ratio": "收益回撤比",
         "sharpe_ratio": "夏普比率",
+        "sortino_ratio": "索提诺比率",
         "omega_ratio": "Omega比率",
         "calmar_ratio": "Calmar比率",
-        "downside_risk": "下限风险",
-        "sortino_ratio": "索提诺比率",
+        "return_drawdown_ratio": "收益回撤比",
         "R_squared": "R平方",
         "tail_ratio": "尾部比率",
+        "downside_risk": "下限风险",
+        "daily_return": "日均收益率",
+        "return_std": "收益标准差",
 
         "total_pnl": "交易总盈亏",
         "total_net_pnl": "交易净盈亏",
@@ -577,16 +577,16 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
         "daily_slippage": "日均滑点费",
         "daily_pnl_point": "日均净盈亏点数",
         "daily_trade_count": "日均交易笔数",
+
         "daily_trade_max": "单日最多交易笔数",
         "trade_volume_max": "单次最大成交手数",
-
         "max_profit": "单笔最大盈利",
         "max_loss": "单笔最大亏损",
+
         "profit_times": "交易盈利笔数",
         "loss_times": "交易亏损笔数",
         "rate_of_win": "胜率",
         "profit_loss_ratio": "盈亏比",
-
         "average_net_pnl": "平均每笔净盈亏",
         "average_commission": "平均每笔手续费",
         "average_slippage": "平均每笔滑点费",
@@ -605,34 +605,24 @@ class StatisticsMonitor(QtWidgets.QTableWidget):
 
         "long_rate_of_win": "多头胜率",
         "short_rate_of_win": "空头胜率",
-
         "long_profit_loss_ratio": "多头盈亏比",
         "short_profit_loss_ratio": "空头盈亏比",
-
         "long_total_trade": "多头交易笔数",
         "short_total_trade": "空头交易笔数",
-
         "long_profit_times": "多头盈利笔数",
         "short_profit_times": "空头盈利笔数",
-
         "long_loss_times": "多头亏损笔数",
         "short_loss_times": "空头亏损笔数",
-
         "long_total_profit": "多头盈利总金额",
         "short_total_profit": "空头盈利总金额",
-
         "long_total_loss": "多头亏损总金额",
         "short_total_loss": "空头亏损总金额",
-
         "long_total_net_pnl": "多头交易净盈亏",
         "short_total_net_pnl": "空头交易净盈亏",
-
         "long_trade_mean": "多头平均每笔净盈亏",
         "short_trade_mean": "空头平均每笔净盈亏",
-
         "long_trade_duration": "多头平均持仓小时",
         "short_trade_duration": "空头平均持仓小时",
-
         "long_trade_duration_max": "多头最长持仓小时",
         "short_trade_duration_max": "空头最长持仓小时",
     }

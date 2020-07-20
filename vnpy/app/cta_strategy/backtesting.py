@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable, Union
 from itertools import product
 from functools import lru_cache
-from time import time
+from time import perf_counter
 from pathlib import Path
 import multiprocessing
 import random
@@ -461,12 +461,14 @@ class BacktestingEngine:
         # 生成桌面文件路径
         home_path = Path.home()
         temp_path = home_path.joinpath("Desktop")
-        filename  = f"多进程穷举参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start.date()}~{self.end.date()}].txt"
+        filename  = f"多进程穷举参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start.strftime('%Y%m%d')}~{self.end.strftime('%Y%m%d')}].txt"
         filepath  = temp_path.joinpath(filename)
         
         results = []
         count = 0
         result_dict = defaultdict(list)
+
+        start = perf_counter()
 
         for setting in settings:
             count += 1
@@ -512,17 +514,21 @@ class BacktestingEngine:
             # 在字典中保存所有统计指标结果
             result_dict["statistics"].append(value[2])
 
-            print(f'''\t总收益率：{value[2]["total_return"]}  \t年化收益率：{value[2]["annual_return"]}\t年复合增长率：{value[2]["cagr"]}    \t夏普比率：{value[2]["sharpe_ratio"]}      \tOmega比率：{value[2]["omega_ratio"]}  \tCalmar比率：{value[2]["calmar_ratio"]}\t索提诺比率：{value[2]["sortino_ratio"]}\n\t%最大回撤：{value[2]["max_ddpercent"]} \t%平均回撤：{value[2]["average_drawdown"]}  \t%线性加权回撤：{value[2]["lw_drawdown"]}\t最大回撤金额：{value[2]["max_drawdown"]}\t收益回撤比：{value[2]["return_drawdown_ratio"]} \t最大回撤天数：{value[2]["max_drawdown_duration"]}\t最大回撤区间：{value[2]["max_drawdown_range"]}\n\t日均净盈亏：{value[2]["daily_net_pnl"]}\t笔均净盈亏：{value[2]["average_net_pnl"]}\t日均交易笔数：{value[2]["daily_trade_count"]}\t单日最多交易笔数：{value[2]["daily_trade_max"]}\t平均持仓小时：{value[2]["trade_duration"]}\t胜率：{value[2]["rate_of_win"]}\t盈亏比：{value[2]["profit_loss_ratio"]}''')
+            info_1 = (f'''\t总收益率：{value[2]["total_return"]:<10}\t年化收益率：{value[2]["annual_return"]:<10}\t年复合增长率：{value[2]["cagr"]:<10}\t夏普比率：{value[2]["sharpe_ratio"]:<16} \tCalmar比率：{value[2]["calmar_ratio"]:<10} \tOmega比率：{value[2]["omega_ratio"]:<10} \t索提诺比率：{value[2]["sortino_ratio"]}''')
+            info_2 = (f'''\t%最大回撤：{value[2]["max_ddpercent"]:<10}\t%平均回撤：{value[2]["average_drawdown"]:<10}\t%线性加权回撤：{value[2]["lw_drawdown"]:<8}\t最大回撤金额：{value[2]["max_drawdown"]:<12}\t收益回撤比：{value[2]["return_drawdown_ratio"]:<10}\t最大回撤天数：{value[2]["max_drawdown_duration"]:<10}\t最大回撤区间：{value[2]["max_drawdown_range"]}''')
+            info_3 = (f'''\t日均净盈亏：{value[2]["daily_net_pnl"]:<10}\t笔均净盈亏：{value[2]["average_net_pnl"]:<10}\t日均交易笔数：{value[2]["daily_trade_count"]:<10}\t单日最多交易笔数：{value[2]["daily_trade_max"]:<12}\t平均持仓小时：{value[2]["trade_duration"]:<10}\t%胜率：{value[2]["rate_of_win"]:<10} \t盈亏比：{value[2]["profit_loss_ratio"]}''')
+
+            print(f"{info_1}\n{info_2}\n{info_3}")
 
             # 将参数优化每一次运行的临时结果提前保存，以防系统崩溃
             with open(filepath, "a+") as f:
-                f.write(f"{value[0]}\t{value[1]}\t{value[2]}\n\n".replace(":","=").replace("'","").replace(" ",""))
+                f.write(f"{count}\t{value[0]}\t{info_1}\t{info_2}\t{info_3}\n".replace(" ",""))
 
         pool.close()
         pool.join()
 
         # 生成多进程优化结果 DataFrame
-        self.optimization_df = DataFrame(result_dict).sort_values(target_name, ascending=False).reset_index(drop=True)
+        self.optimization_df = DataFrame(result_dict).sort_values("total_return", ascending=False).reset_index(drop=True)
 
         # 保存参数优化结果至桌面CSV
         if save_csv:
@@ -533,7 +539,14 @@ class BacktestingEngine:
         result_values = [result.get() for result in results]
         result_values.sort(reverse=True, key=lambda result: result[1])
 
-        return result_values
+        end = perf_counter()
+        cost = round((end - start)/3600, 2)
+
+        self.output(f"多进程穷举算法参数优化完成，耗时 {cost} 小时")
+
+        # 使用GUI界面时输出回测结果给控件
+        if not output:
+            return result_values
 
     def run_ga_optimization(self, optimization_setting: OptimizationSetting, population_size=100, ngen_size=30, output=True):
         """"""
@@ -636,7 +649,7 @@ class BacktestingEngine:
         self.output(f"交叉概率：{cxpb:.0%}")
         self.output(f"突变概率：{mutpb:.0%}")
 
-        start = time()
+        start = perf_counter()
 
         algorithms.eaMuPlusLambda(
             pop,
@@ -650,10 +663,10 @@ class BacktestingEngine:
             halloffame=hof
         )
 
-        end = time()
-        cost = int((end - start))
+        end = perf_counter()
+        cost = round((end - start)/3600, 2)
 
-        self.output(f"遗传算法优化完成，耗时{cost}秒")
+        self.output(f"遗传算法参数优化完成，耗时 {cost} 小时")
 
         # Return result list
         results = []
@@ -666,16 +679,19 @@ class BacktestingEngine:
         # 生成桌面文件路径
         home_path = Path.home()
         temp_path = home_path.joinpath("Desktop")
-        filename  = f"遗传算法参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start.date()}~{self.end.date()}].txt"
+        filename  = f"遗传算法参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start.strftime('%Y%m%d')}~{self.end.strftime('%Y%m%d')}].txt"
         filepath  = temp_path.joinpath(filename)
 
         # 保存参数优化结果至桌面文件，并输出日志
-        with open(filepath, "w+") as f:
-            f.write(f"参数\t目标({target_name})\t统计指标\n\n")
-            for value in results:
-                if output:
-                    self.output(f"参数：{value[0]} \t 目标：{round(value[1],4)}")
-                f.write(f"{value[0]}\t{value[1]}\t{value[2]}\n\n".replace(":","=").replace("'","").replace(" ",""))
+        for value in results:
+            info_1 = (f'''\t总收益率：{value[2]["total_return"]:<10}\t年化收益率：{value[2]["annual_return"]:<10}\t年复合增长率：{value[2]["cagr"]:<10}\t夏普比率：{value[2]["sharpe_ratio"]:<16} \tCalmar比率：{value[2]["calmar_ratio"]:<10} \tOmega比率：{value[2]["omega_ratio"]:<10} \t索提诺比率：{value[2]["sortino_ratio"]}''')
+            info_2 = (f'''\t%最大回撤：{value[2]["max_ddpercent"]:<10}\t%平均回撤：{value[2]["average_drawdown"]:<10}\t%线性加权回撤：{value[2]["lw_drawdown"]:<8}\t最大回撤金额：{value[2]["max_drawdown"]:<12}\t收益回撤比：{value[2]["return_drawdown_ratio"]:<10}\t最大回撤天数：{value[2]["max_drawdown_duration"]:<10}\t最大回撤区间：{value[2]["max_drawdown_range"]}''')
+            info_3 = (f'''\t日均净盈亏：{value[2]["daily_net_pnl"]:<10}\t笔均净盈亏：{value[2]["average_net_pnl"]:<10}\t日均交易笔数：{value[2]["daily_trade_count"]:<10}\t单日最多交易笔数：{value[2]["daily_trade_max"]:<12}\t平均持仓小时：{value[2]["trade_duration"]:<10}\t%胜率：{value[2]["rate_of_win"]:<10} \t盈亏比：{value[2]["profit_loss_ratio"]}''')
+
+            print(f"{info_1}\n{info_2}\n{info_3}")
+
+            with open(filepath, "a+") as f:
+                f.write(f"{value[0]}\t{info_1}\t{info_2}\t{info_3}\n".replace(" ",""))
 
         return results
 
@@ -1478,134 +1494,8 @@ class BacktestingEngine:
             trade_daily_df = trade_df[["trade_date", "net_pnl"]].groupby("trade_date").sum()
             self.trade_daily_df = trade_daily_df.sort_index()
 
-        # Output
-        if output:
-            self.output("-" * 50)
 
-            self.output(f"首个交易日：\t{start_date}")
-            self.output(f"最后交易日：\t{end_date}")
-
-            self.output(f"总交易日：  \t{total_days}")
-            self.output(f"盈利交易日：\t{profit_days}")
-            self.output(f"亏损交易日：\t{loss_days}")
-
-            self.output(f"起始资金：  \t{capital:,.2f}")
-            self.output(f"结束资金：  \t{end_balance:,.2f}")
-
-            self.output(f"总收益率：  \t{total_return:,.2f}%")
-            self.output(f"年化收益率：  \t{annual_return:,.2f}%")
-            self.output(f"年复合增长率：  \t{cagr:,.2f}%")
-            self.output(f"年化波动率：  \t{annual_volatility:,.2f}%")
-            self.output(f"最大回撤金额:   \t{max_drawdown:,.2f}")
-            self.output(f"%最大回撤:  \t{max_ddpercent:,.2f}%")
-            self.output(f"%平均回撤:  \t{average_drawdown:,.2f}%")                           
-            self.output(f"%线性加权回撤: \t{lw_drawdown:,.2f}%")                           
-            self.output(f"%均方回撤:  \t{average_square_drawdown:,.2f}%")
-            self.output(f"最大回撤天数:   \t{max_drawdown_duration}")
-            self.output(f"最大回撤区间：  \t{max_drawdown_range}")
-
-            self.output(f"日均收益率：\t{daily_return:,.2f}%")
-            self.output(f"收益标准差：\t{return_std:,.2f}%")
-            self.output(f"收益回撤比：\t{return_drawdown_ratio:,.2f}")
-            self.output(f"夏普比率：  \t{sharpe_ratio:,.2f}")
-            self.output(f"Omega比率： \t{omega_ratio:,.2f}")
-            self.output(f"Calmar比率：\t{calmar_ratio:,.2f}")
-            self.output(f"下限风险：  \t{downside_risk:,.2f}")
-            self.output(f"索提诺比率：\t{sortino_ratio:,.2f}")
-            self.output(f"R平方：    \t{R_squared:,.2f}")
-            self.output(f"尾部比率：  \t{tail_ratio:,.2f}")
-
-            self.output(f"交易总盈亏： \t{total_pnl:,.2f}")
-            self.output(f"交易净盈亏： \t{total_net_pnl:,.2f}")
-            self.output(f"交易手续费： \t{total_commission:,.2f}")
-            self.output(f"交易滑点费： \t{total_slippage:,.2f}")
-            self.output(f"总净盈亏点数： \t{total_pnl_point:,.2f}")
-            self.output(f"总成交数量： \t{total_trade_count}")
-            self.output(f"总交易笔数： \t{total_trade}")
-
-            self.output(f"日均净盈亏： \t{daily_net_pnl:,.2f}")
-            self.output(f"日均手续费： \t{daily_commission:,.2f}")
-            self.output(f"日均滑点费： \t{daily_slippage:,.2f}")
-            self.output(f"日均净盈亏点数： \t{daily_pnl_point:,.2f}")
-            self.output(f"日均交易笔数：\t{daily_trade_count:,.2f}")
-            self.output(f"单日最多交易笔数：\t{daily_trade_max}")
-            self.output(f"单次最大成交手数：\t{trade_volume_max}")
-
-            self.output(f"单笔最大盈利：\t{max_profit:,.2f}")
-            self.output(f"单笔最大亏损：\t{max_loss:,.2f}")
-            self.output(f"交易盈利笔数：\t{profit_times}")
-            self.output(f"交易亏损笔数：\t{loss_times}")
-            self.output(f"胜率：       \t{rate_of_win:,.2f}%")
-            self.output(f"盈亏比：     \t{profit_loss_ratio:,.2f}")
-
-            self.output(f"平均每笔净盈亏：\t{average_net_pnl:,.2f}")
-            self.output(f"平均每笔手续费：\t{average_commission:,.2f}")
-            self.output(f"平均每笔滑点费：\t{average_slippage:,.2f}")
-            self.output(f"平均每笔净盈亏点数：\t{average_pnl_point:,.2f}")
-            self.output(f"平均持仓小时：\t{trade_duration:,.2f}")
-            self.output(f"最长持仓小时：\t{trade_duration_max:,.2f}")
-
-            self.output(f"盈利总金额： \t{total_profit:,.2f}")
-            self.output(f"亏损总金额： \t{total_loss:,.2f}")
-
-            self.output(f"盈利交易均值：\t{profit_mean:,.2f}")
-            self.output(f"亏损交易均值：\t{loss_mean:,.2f}")
-
-            self.output(f"盈利持仓小时：\t{profit_duration:,.2f}")
-            self.output(f"亏损持仓小时：\t{loss_duration:,.2f}")
-
-            self.output(f"盈利最长持仓：\t{profit_duration_max:,.2f}")
-            self.output(f"亏损最长持仓：\t{loss_duration_max:,.2f}")
-
-            self.output(f"多头胜率：    \t{long_rate_of_win:,.2f}%")
-            self.output(f"空头胜率：    \t{short_rate_of_win:,.2f}%")
-
-            self.output(f"多头盈亏比：  \t{long_profit_loss_ratio:,.2f}")
-            self.output(f"空头盈亏比：  \t{short_profit_loss_ratio:,.2f}")
-
-            self.output(f"多头交易笔数：\t{long_total_trade}")
-            self.output(f"空头交易笔数：\t{short_total_trade}")
-
-            self.output(f"多头盈利笔数：\t{long_profit_times}")
-            self.output(f"空头盈利笔数：\t{short_profit_times}")
-
-            self.output(f"多头亏损笔数：\t{long_loss_times}")
-            self.output(f"空头亏损笔数：\t{short_loss_times}")
-
-            self.output(f"多头盈利总金额：\t{long_total_profit:,.2f}")
-            self.output(f"空头盈利总金额：\t{short_total_profit:,.2f}")
-
-            self.output(f"多头亏损总金额：\t{long_total_loss:,.2f}")
-            self.output(f"空多亏损总金额：\t{short_total_loss:,.2f}")
-
-            self.output(f"多头交易净盈亏：\t{long_total_net_pnl:,.2f}")
-            self.output(f"空头交易净盈亏：\t{short_total_net_pnl:,.2f}")
-
-            self.output(f"多头平均每笔净盈亏：\t{long_average_net_pnl:,.2f}")
-            self.output(f"空头平均每笔净盈亏：\t{short_average_net_pnl:,.2f}")
-
-            self.output(f"多头平均持仓小时：\t{long_trade_duration:,.2f}")
-            self.output(f"空头平均持仓小时：\t{short_trade_duration:,.2f}")
-
-            self.output(f"多头最长持仓小时：\t{long_trade_duration_max:,.2f}")
-            self.output(f"空头最长持仓小时：\t{short_trade_duration_max:,.2f}")
-
-            self.output("-" * 50)
-
-        if self.trades:
-            signal_times = self.trade_data_df[["signal", "symbol"]].groupby(["signal"]).count()
-            for ix, row in signal_times.iterrows():
-                if row.name < 2:
-                    self.output(f"开多 {row.name}：\t {row.symbol}")
-                elif row.name < 3:
-                    self.output(f"开空 {row.name}：\t {row.symbol}")
-                elif row.name < 4:
-                    self.output(f"平多 {row.name}：\t {row.symbol}")
-                elif row.name < 5:
-                    self.output(f"平空 {row.name}：\t {row.symbol}")
-
-            self.output("-" * 50)
-
+        # 统计指标
         statistics = {
             "start_date": start_date,
             "end_date": end_date,
@@ -1618,6 +1508,7 @@ class BacktestingEngine:
             "annual_return": round(annual_return,2),
             "cagr": round(cagr,2),
             "annual_volatility": round(annual_volatility,2),
+
             "max_drawdown": round(max_drawdown,2),
             "max_ddpercent": round(max_ddpercent,2),
             "average_drawdown": round(average_drawdown,2),
@@ -1625,16 +1516,18 @@ class BacktestingEngine:
             "average_square_drawdown": round(average_square_drawdown,2),
             "max_drawdown_duration": max_drawdown_duration,
             "max_drawdown_range": max_drawdown_range,
-            "daily_return": round(daily_return,2),
-            "return_std": round(return_std,2),
-            "return_drawdown_ratio": round(return_drawdown_ratio,2),
+
             "sharpe_ratio": round(sharpe_ratio,2),
+            "sortino_ratio": round(sortino_ratio,2),
             "omega_ratio": round(omega_ratio,2),
             "calmar_ratio": round(calmar_ratio,2),
-            "downside_risk": round(downside_risk,2),
-            "sortino_ratio": round(sortino_ratio,2),
+            "return_drawdown_ratio": round(return_drawdown_ratio,2),
             "R_squared": round(R_squared,2),
             "tail_ratio": round(tail_ratio,2),
+            "downside_risk": round(downside_risk,2),
+            "daily_return": round(daily_return,2),
+            "return_std": round(return_std,2),
+
             "total_pnl": round(total_pnl,2),
             "total_net_pnl": round(total_net_pnl,2),
             "total_commission": round(total_commission,2),
@@ -1642,15 +1535,18 @@ class BacktestingEngine:
             "total_pnl_point": round(total_pnl_point,2),
             "total_trade_count": total_trade_count,
             "total_trade": total_trade,
+
             "daily_net_pnl": round(daily_net_pnl,2),
             "daily_commission": round(daily_commission,2),
             "daily_slippage": round(daily_slippage,2),
             "daily_pnl_point": round(daily_pnl_point,2),
             "daily_trade_count": round(daily_trade_count,2),
+
             "daily_trade_max": daily_trade_max,
             "trade_volume_max": trade_volume_max,
             "max_profit": round(max_profit,2),
             "max_loss": round(max_loss,2),
+
             "profit_times": profit_times,
             "loss_times": loss_times,
             "rate_of_win": round(rate_of_win,2),
@@ -1696,6 +1592,103 @@ class BacktestingEngine:
             "short_trade_duration_max": round(short_trade_duration_max,2),
         }
 
+        # 转换成中文
+        statistics_cn = {
+            "首个交易日": start_date,
+            "最后交易日": end_date,
+            "总交易日": total_days,
+            "盈利交易日": profit_days,
+            "亏损交易日": loss_days,
+            "起始资金": f"{capital:.2f}",
+            "结束资金": f"{end_balance:.2f}",
+            "总收益率": f"{total_return:.2f}%",
+            "年化收益率": f"{annual_return:.2f}%",
+            "年复合增长率": f"{cagr:.2f}%",
+            "年化波动率": f"{annual_volatility:.2f}%",
+
+            "最大回撤金额": f"{max_drawdown:.2f}",
+            "%最大回撤": f"{max_ddpercent:.2f}%",
+            "%平均回撤": f"{average_drawdown:.2f}%",
+            "%线性加权回撤": f"{lw_drawdown:.2f}%",
+            "%均方回撤": f"{average_square_drawdown:.2f}%",
+            "最大回撤天数": max_drawdown_duration,
+            "最大回撤区间": max_drawdown_range,
+
+            "夏普比率": f"{sharpe_ratio:.2f}",
+            "索提诺比率": f"{sortino_ratio:.2f}",
+            "Omega比率": f"{omega_ratio:.2f}",
+            "Calmar比率": f"{calmar_ratio:.2f}",
+            "收益回撤比": f"{return_drawdown_ratio:.2f}",
+            "R平方": f"{R_squared:.2f}",
+            "尾部比率": f"{tail_ratio:.2f}",
+            "下限风险": f"{downside_risk:.2f}",
+            "日均收益率": f"{daily_return:.2f}%",
+            "收益标准差": f"{return_std:.2f}%",
+
+            "交易总盈亏": f"{total_pnl:.2f}",
+            "交易净盈亏": f"{total_net_pnl:.2f}",
+            "交易手续费": f"{total_commission:.2f}",
+            "交易滑点费": f"{total_slippage:.2f}",
+            "总净盈亏点数": f"{total_pnl_point:.2f}",
+            "总成交数量": total_trade_count,
+            "总交易笔数": total_trade,
+
+            "日均净盈亏": f"{daily_net_pnl:.2f}",
+            "日均手续费": f"{daily_commission:.2f}",
+            "日均滑点费": f"{daily_slippage:.2f}",
+            "日均净盈亏点数": f"{daily_pnl_point:.2f}",
+            "日均交易笔数": f"{daily_trade_count:.2f}",
+
+            "单日最多交易笔数": daily_trade_max,
+            "单次最大成交手数": trade_volume_max,
+            "单笔最大盈利": f"{max_profit:.2f}",
+            "单笔最大亏损": f"{max_loss:.2f}",
+
+            "交易盈利笔数": profit_times,
+            "交易亏损笔数": loss_times,
+            "胜率": f"{rate_of_win:.2f}%",
+            "盈亏比": f"{profit_loss_ratio:.2f}",
+            "平均每笔净盈亏": f"{average_net_pnl:.2f}",
+            "平均每笔手续费": f"{average_commission:.2f}",
+            "平均每笔滑点费": f"{average_slippage:.2f}",
+            "平均每笔净盈亏点数": f"{average_pnl_point:.2f}",
+            "平均持仓小时": f"{trade_duration:.2f}",
+            "最长持仓小时": f"{trade_duration_max:.2f}",
+
+            "盈利总金额": f"{total_profit:.2f}",
+            "亏损总金额": f"{total_loss:.2f}",
+            "盈利交易均值": f"{profit_mean:.2f}",
+            "亏损交易均值": f"{loss_mean:.2f}",
+            "盈利持仓小时": f"{profit_duration:.2f}",
+            "亏损持仓小时": f"{loss_duration:.2f}",
+            "盈利最长持仓": f"{profit_duration_max:.2f}",
+            "亏损最长持仓": f"{loss_duration_max:.2f}",
+
+            "多头胜率": f"{long_rate_of_win:.2f}%",
+            "空头胜率": f"{short_rate_of_win:.2f}%",
+            "多头盈亏比": f"{long_profit_loss_ratio:.2f}",
+            "空头盈亏比": f"{short_profit_loss_ratio:.2f}",
+            "多头交易笔数": f"{long_total_trade}",
+            "空头交易笔数": f"{short_total_trade}",
+            "多头盈利笔数": f"{long_profit_times}",
+            "空头盈利笔数": f"{short_profit_times}",
+            "多头亏损笔数": f"{long_loss_times}",
+            "空头亏损笔数": f"{short_loss_times}",
+            "多头盈利总金额": f"{long_total_profit:.2f}",
+            "空头盈利总金额": f"{short_total_profit:.2f}",
+            "多头亏损总金额": f"{long_total_loss:.2f}",
+            "空头亏损总金额": f"{short_total_loss:.2f}",
+            "多头交易净盈亏": f"{long_total_net_pnl:.2f}",
+            "空头交易净盈亏": f"{short_total_net_pnl:.2f}",
+            "多头平均每笔净盈亏": f"{long_average_net_pnl:.2f}",
+            "空头平均每笔净盈亏": f"{short_average_net_pnl:.2f}",
+            "多头平均持仓小时": f"{long_trade_duration:.2f}",
+            "空头平均持仓小时": f"{short_trade_duration:.2f}",
+            "多头最长持仓小时": f"{long_trade_duration_max:.2f}",
+            "空头最长持仓小时": f"{short_trade_duration_max:.2f}",
+        }
+
+
         # Filter potential error infinite value
         for key, value in statistics.items():
             if value in (np.inf, -np.inf):
@@ -1704,12 +1697,36 @@ class BacktestingEngine:
 
         self.output("策略统计指标计算完成")
 
+
+        # Output
+        if output:
+            self.output("-" * 60)
+
+            for key, value in statistics_cn.items():
+                self.output(f'{key:15}\t{value}')
+
+            self.output("-" * 60)
+
+        if self.trades:
+            signal_times = self.trade_data_df[["signal", "symbol"]].groupby(["signal"]).count()
+            for ix, row in signal_times.iterrows():
+                if row.name < 2:
+                    self.output(f"开多 {row.name:<5}\t{row.symbol}")
+                elif row.name < 3:
+                    self.output(f"开空 {row.name:<5}\t{row.symbol}")
+                elif row.name < 4:
+                    self.output(f"平多 {row.name:<5}\t{row.symbol}")
+                elif row.name < 5:
+                    self.output(f"平空 {row.name:<5}\t{row.symbol}")
+
+            self.output("-" * 60)
+
         # 生成桌面路径
         home_path = Path.home()
         temp_path = home_path.joinpath("Desktop")
 
+        # 生成主要参数字符串
         if self.symbol:
-            # 生成主要参数字符串
             param_dict = self.strategy.get_parameters()
             for key in ["x_second", "long_period", "init_lots", "capital"]:
 
@@ -1725,133 +1742,48 @@ class BacktestingEngine:
 
         # 保存统计数据至桌面
         if save_statistics:
-            # 转换成中文
-            statistics_cn = {
-                "首个交易日": start_date,
-                "最后交易日": end_date,
-                "总交易日": total_days,
-                "盈利交易日": profit_days,
-                "亏损交易日": loss_days,
-                "起始资金": f"{capital:.2f}",
-                "结束资金": f"{end_balance:.2f}",
-                "总收益率": f"{total_return:.2f}%",
-                "年化收益率": f"{annual_return:.2f}%",
-                "年复合增长率": f"{cagr:.2f}%",
-                "年化波动率": f"{annual_volatility:.2f}%",
-                "最大回撤金额": f"{max_drawdown:.2f}",
-                "%最大回撤": f"{max_ddpercent:.2f}%",
-                "%平均回撤": f"{average_drawdown:.2f}%",
-                "%线性加权回撤": f"{lw_drawdown:.2f}%",
-                "%均方回撤": f"{average_square_drawdown:.2f}%",
-                "最大回撤天数": max_drawdown_duration,
-                "最大回撤区间": max_drawdown_range,
-                "日均收益率": f"{daily_return:.2f}%",
-                "收益标准差": f"{return_std:.2f}%",
-                "收益回撤比": f"{return_drawdown_ratio:.2f}",
-                "夏普比率": f"{sharpe_ratio:.2f}",
-                "Omega比率": f"{omega_ratio:.2f}",
-                "Calmar比率": f"{calmar_ratio:.2f}",
-                "下限风险": f"{downside_risk:.2f}",
-                "索提诺比率": f"{sortino_ratio:.2f}",
-                "R平方": f"{R_squared:.2f}",
-                "尾部比率": f"{tail_ratio:.2f}",
-                "交易总盈亏": f"{total_pnl:.2f}",
-                "交易净盈亏": f"{total_net_pnl:.2f}",
-                "交易手续费": f"{total_commission:.2f}",
-                "交易滑点费": f"{total_slippage:.2f}",
-                "总净盈亏点数": f"{total_pnl_point:.2f}",
-                "总成交数量": total_trade_count,
-                "总交易笔数": total_trade,
-                "日均净盈亏": f"{daily_net_pnl:.2f}",
-                "日均手续费": f"{daily_commission:.2f}",
-                "日均滑点费": f"{daily_slippage:.2f}",
-                "日均净盈亏点数": f"{daily_pnl_point:.2f}",
-                "日均交易笔数": f"{daily_trade_count:.2f}",
-                "单日最多交易笔数": daily_trade_max,
-                "单次最大成交手数": trade_volume_max,
-                "单笔最大盈利": f"{max_profit:.2f}",
-                "单笔最大亏损": f"{max_loss:.2f}",
-                "交易盈利笔数": profit_times,
-                "交易亏损笔数": loss_times,
-                "胜率": f"{rate_of_win:.2f}%",
-                "盈亏比": f"{profit_loss_ratio:.2f}",
-                "平均每笔净盈亏": f"{average_net_pnl:.2f}",
-                "平均每笔手续费": f"{average_commission:.2f}",
-                "平均每笔滑点费": f"{average_slippage:.2f}",
-                "平均每笔净盈亏点数": f"{average_pnl_point:.2f}",
-                "平均持仓小时": f"{trade_duration:.2f}",
-                "最长持仓小时": f"{trade_duration_max:.2f}",
-
-                "盈利总金额": f"{total_profit:.2f}",
-                "亏损总金额": f"{total_loss:.2f}",
-                "盈利交易均值": f"{profit_mean:.2f}",
-                "亏损交易均值": f"{loss_mean:.2f}",
-                "盈利持仓小时": f"{profit_duration:.2f}",
-                "亏损持仓小时": f"{loss_duration:.2f}",
-                "盈利最长持仓": f"{profit_duration_max:.2f}",
-                "亏损最长持仓": f"{loss_duration_max:.2f}",
-
-                "多头胜率": f"{long_rate_of_win:.2f}%",
-                "空头胜率": f"{short_rate_of_win:.2f}%",
-                "多头盈亏比": f"{long_profit_loss_ratio:.2f}",
-                "空头盈亏比": f"{short_profit_loss_ratio:.2f}",
-                "多头交易笔数": f"{long_total_trade}",
-                "空头交易笔数": f"{short_total_trade}",
-                "多头盈利笔数": f"{long_profit_times}",
-                "空头盈利笔数": f"{short_profit_times}",
-                "多头亏损笔数": f"{long_loss_times}",
-                "空头亏损笔数": f"{short_loss_times}",
-                "多头盈利总金额": f"{long_total_profit:.2f}",
-                "空头盈利总金额": f"{short_total_profit:.2f}",
-                "多头亏损总金额": f"{long_total_loss:.2f}",
-                "空头亏损总金额": f"{short_total_loss:.2f}",
-                "多头交易净盈亏": f"{long_total_net_pnl:.2f}",
-                "空头交易净盈亏": f"{short_total_net_pnl:.2f}",
-                "多头平均每笔净盈亏": f"{long_average_net_pnl:.2f}",
-                "空头平均每笔净盈亏": f"{short_average_net_pnl:.2f}",
-                "多头平均持仓小时": f"{long_trade_duration:.2f}",
-                "空头平均持仓小时": f"{short_trade_duration:.2f}",
-                "多头最长持仓小时": f"{long_trade_duration_max:.2f}",
-                "空头最长持仓小时": f"{short_trade_duration_max:.2f}",
-            }
-
+            
             if self.symbol:
                 filename  = f"回测统计数据[{self.symbol} {self.strategy_class.__name__}][{self.trade_date_range}][{self.main_parameters}].txt"
                 filepath  = temp_path.joinpath(filename)
                 
                 with open(filepath, "w+") as f:
-                    [f.write(f"{key}  \t {value}\n") for key, value in statistics_cn.items()]
+                    [f.write(f"{key:12}\t{value}\n") for key, value in statistics_cn.items()]
 
                     f.write("\n\n")
 
                     for ix, row in signal_times.iterrows():
                         if row.name < 2:
-                            f.write(f"开多 {row.name} \t{row.symbol}\n")
+                            f.write(f"开多 {row.name:<8}\t{row.symbol}\n")
                         elif row.name < 3:
-                            f.write(f"开空 {row.name} \t{row.symbol}\n")
+                            f.write(f"开空 {row.name:<8}\t{row.symbol}\n")
                         elif row.name < 4:
-                            f.write(f"平多 {row.name} \t{row.symbol}\n")
+                            f.write(f"平多 {row.name:<8}\t{row.symbol}\n")
                         elif row.name < 5:
-                            f.write(f"平空 {row.name} \t{row.symbol}\n")
+                            f.write(f"平空 {row.name:<8}\t{row.symbol}\n")
 
-                if save_csv:
-                    trade_df.to_csv(temp_path.joinpath(f"逐笔交易记录 {self.symbol} {self.strategy_class.__name__} [{self.trade_date_range}].csv"))
-                    daily_df.to_csv(temp_path.joinpath(f"逐日盯市记录 {self.symbol} {self.strategy_class.__name__} [{self.trade_date_range}].csv"))
 
             else:
                 filename  = f"投资组合统计数据[{self.trade_date_range}].txt"
                 filepath  = temp_path.joinpath(filename)
                 
                 with open(filepath, "w+") as f:
-                    [f.write(f"{key}          \t {value}\n") for key, value in statistics_cn.items()]
+                    [f.write(f"{key:12}\t{value}\n") for key, value in statistics_cn.items()]
 
-                if save_csv:
-                    trade_df.to_csv(temp_path.joinpath(f"投资组合逐笔交易记录 [{self.trade_date_range}].csv"))
-                    daily_df.to_csv(temp_path.joinpath(f"投资组合逐日盯市记录 [{self.trade_date_range}].csv"))
+
+        # 保存逐笔交易记录和逐日盯市记录至桌面CSV
+        if save_csv:
+            if self.symbol:
+                trade_df.to_csv(temp_path.joinpath(f"逐笔交易记录 {self.symbol} {self.strategy_class.__name__} [{self.trade_date_range}].csv"))
+                daily_df.to_csv(temp_path.joinpath(f"逐日盯市记录 {self.symbol} {self.strategy_class.__name__} [{self.trade_date_range}].csv"))
+
+            else:
+                trade_df.to_csv(temp_path.joinpath(f"投资组合逐笔交易记录 [{self.trade_date_range}].csv"))
+                daily_df.to_csv(temp_path.joinpath(f"投资组合逐日盯市记录 [{self.trade_date_range}].csv"))
+
 
         # 保存分析图表至桌面
         if save_chart:
-            self.show_chart(daily_df)
 
             statistics_chart = self.statistics_chart(statistics)
             daily_chart = self.daily_grid_chart(daily_df)
@@ -1873,6 +1805,7 @@ class BacktestingEngine:
                 filepath  = temp_path.joinpath(filename)
 
             tab_chart.render(filepath)
+
 
         self.statistics = statistics
 
@@ -2611,9 +2544,9 @@ def load_bar_data(
 ):
     """bar数据缓存为pkl格式到本地硬盘"""
     dir_path = f"C:\\Users\\Administrator\\Desktop\\Pickle_Data\\"
-    file_name = f"{symbol}_{exchange.value}_{start.date()}_{end.date()}_bar"
+    file_name = f'{symbol}_{exchange.value}_{start.strftime("%Y%m%d")}_{end.strftime("%Y%m%d")}_bar'
     pickle_path = dir_path + file_name + ".pkl"
-    data_size  =0
+    data_size = 0
 
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
@@ -2629,22 +2562,17 @@ def load_bar_data(
         bar_data =pickle.load(pickle_file)
         pickle_file.close()
 
-    # Pickle_Data文件夹大于10G清空缓存数据
+    # Pickle_Data文件夹超过规定GB容量则清空缓存数据
     for dirpath, dirnames, filenames in os.walk(dir_path):
         for file_name in filenames:         #当前目录所有文件名
             data_size += os.path.getsize(dirpath + file_name)
 
-    if data_size / (1024 ** 3) > 10:
+    if data_size / (1024 ** 3) > 20:
         for dirpath, dirnames, filenames in os.walk(dir_path):
             for file_name in filenames:           
                 os.remove(dirpath + file_name)
 
     return bar_data
-
-    # 原版回测数据加载缓存方式
-    # return database_manager.load_bar_data(
-    #     symbol, exchange, interval, start, end
-    # )
 
 
 @lru_cache(maxsize=999)
@@ -2656,9 +2584,9 @@ def load_tick_data(
 ):
     """tick数据缓存为pkl格式到本地硬盘"""
     dir_path = f"C:\\Users\\Administrator\\Desktop\\Pickle_Data\\"
-    file_name = f"{symbol}_{exchange.value}_{start.date()}_{end.date()}_tick"
+    file_name = f'{symbol}_{exchange.value}_{start.strftime("%Y%m%d")}_{end.strftime("%Y%m%d")}_tick'
     pickle_path = dir_path + file_name + ".pkl"
-    data_size  =0
+    data_size = 0
 
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
@@ -2674,22 +2602,17 @@ def load_tick_data(
         tick_data =pickle.load(pickle_file)
         pickle_file.close()
 
-    # Pickle_Data文件夹大于10G清空缓存数据
+    # Pickle_Data文件夹超过规定GB容量则清空缓存数据
     for dirpath, dirnames, filenames in os.walk(dir_path):
         for file_name in filenames:         #当前目录所有文件名
             data_size += os.path.getsize(dirpath + file_name)
 
-    if data_size / (1024 ** 3) > 10:
+    if data_size / (1024 ** 3) > 20:
         for dirpath, dirnames, filenames in os.walk(dir_path):
             for file_name in filenames:           
                 os.remove(dirpath + file_name)    
 
     return tick_data
-
-    # 原版回测数据加载缓存方式
-    # return database_manager.load_tick_data(
-    #     symbol, exchange, start, end
-    # )
 
 
 # GA related global value

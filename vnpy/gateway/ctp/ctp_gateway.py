@@ -1048,7 +1048,7 @@ class CtpTdApi(TdApi):
         f = shelve.open(f"{self.commission_file_path}\\vt_commission_data")
         f['data'] = self.commission_data
         f.close()
-        print(f"{datetime.now()} \t 保存手续费数据到硬盘")
+        # print(f"{datetime.now()} \t 保存手续费数据到硬盘")
     #-------------------------------------------------------------------------------------------------
     def load_margin_ratio(self):
         """从硬盘读取保证金率数据"""
@@ -1065,7 +1065,7 @@ class CtpTdApi(TdApi):
         f = shelve.open(f"{self.margin_ratio_file_path}\\vt_margin_ratio_data")
         f['data'] = self.margin_ratio_data
         f.close()
-        print(f"{datetime.now()} \t 保存保证金率数据到硬盘")
+        # print(f"{datetime.now()} \t 保存保证金率数据到硬盘")
     #-------------------------------------------------------------------------------------------------
     #commission_symbol，margin_ratio_symbol都是全市场合约列表，需要自己维护
     #-------------------------------------------------------------------------------------------------

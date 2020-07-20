@@ -60,8 +60,6 @@ class CtaTemplate(ABC):
 
         self.long_cost = 0               # 实盘/回测模式缓存最新多头持仓均价
         self.short_cost = 0              # 实盘/回测模式缓存最新空头持仓均价
-        self.show_account_data = True    # 实盘模式初始化时显示账户信息日志
-        self.show_holding_data = True    # 实盘模式初始化时显示持仓信息日志
 
         self.signal: float = 0           # 实盘和回测记录当笔交易的信号：1 buy, 2 short, 3 sell, 4 cover
         self.signal_list = []            # 实盘和回测缓存每笔交易的信号
@@ -224,24 +222,24 @@ class CtaTemplate(ABC):
         """
         Callback of position update.
         """
+        if holding.long_price != self.long_cost or holding.short_price != self.short_cost:
+            self.write_log(f"【{self.symbol}持仓信息】多头持仓数量：{holding.long_pos}，多头持仓均价：{holding.long_price}；空头持仓数量：{holding.short_pos}，空头持仓均价：{holding.short_price}")
+
         self.position = holding
         self.long_cost = holding.long_price
         self.short_cost = holding.short_price
         
-        if self.show_holding_data:
-            self.write_log(f"【{self.symbol}持仓信息】多头持仓数量：{holding.long_pos}，多头持仓均价：{holding.long_price}；空头持仓数量：{holding.short_pos}，空头持仓均价：{holding.short_price}")
-            self.show_holding_data = False
 
     def on_account(self, account: AccountData):
         """
         Callback of account update.
         """
+        if account.balance != self.balance:
+            self.write_log(f"【账户信息】账号：{account.accountid}，账户净值：{account.balance}，可用资金：{account.available}，资金使用率：{account.percent}")
+
         self.account = account
         self.balance = account.balance
 
-        if self.show_account_data:
-            self.write_log(f"【账户信息】账号：{account.accountid}，账户净值：{account.balance}，可用资金：{account.available}")
-            self.show_account_data = False
 
     def buy(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False):
         """
