@@ -622,7 +622,7 @@ class CtaTemplate(ABC):
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
                     self.pnl_point = holding.short_price - trade.price
 
-                    msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
+                    msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
@@ -634,7 +634,7 @@ class CtaTemplate(ABC):
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
                     self.pnl_point = trade.price - holding.long_price
 
-                    msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
+                    msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
@@ -689,7 +689,7 @@ class CtaTemplate(ABC):
             self.entry_minute += 1
             self.exit_minute = 0
 
-    def empty_position(self, data: Union[BarData, TickData], exit_time: time = time(14, 58)):
+    def empty_position(self, data: Union[BarData, TickData], exit_time: time = time(14, 58), lock: bool = False):
         """收盘前清仓"""
         if isinstance(data, BarData):
             if exit_time <= data.datetime.time() <= time(16, 00):
@@ -697,11 +697,11 @@ class CtaTemplate(ABC):
                 self.cancel_all()       # 撤销当前所有挂单
                 
                 if self.pos > 0:
-                    self.sell(data.close_price - 100 * self.pricetick, abs(self.pos))
+                    self.sell(data.close_price - 100 * self.pricetick, abs(self.pos), lock=lock)
                     self.signal = 3.99
 
                 elif self.pos < 0:
-                    self.cover(data.close_price + 100 * self.pricetick, abs(self.pos))
+                    self.cover(data.close_price + 100 * self.pricetick, abs(self.pos), lock=lock)
                     self.signal = 4.99
 
         else:
@@ -710,11 +710,11 @@ class CtaTemplate(ABC):
                 self.cancel_all()       # 撤销当前所有挂单
 
                 if self.pos > 0:
-                    self.sell(data.ask_price_1 - 100 * self.pricetick, abs(self.pos))
+                    self.sell(data.ask_price_1 - 100 * self.pricetick, abs(self.pos), lock=lock)
                     self.signal = 3.99
 
                 elif self.pos < 0:
-                    self.cover(data.bid_price_1 + 100 * self.pricetick, abs(self.pos))
+                    self.cover(data.bid_price_1 + 100 * self.pricetick, abs(self.pos), lock=lock)
                     self.signal = 4.99
       
 

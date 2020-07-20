@@ -11,6 +11,7 @@ import random
 import traceback
 import os
 import pickle
+import csv
 
 import numpy as np
 from pandas import DataFrame, merge
@@ -438,7 +439,9 @@ class BacktestingEngine:
         fig.show()
 
     def run_optimization(self, optimization_setting: OptimizationSetting, save_csv=True, output=False):
-        """"""
+        """""" 
+        start = perf_counter()
+
         # Get optimization setting and target
         settings = optimization_setting.generate_setting()
         target_name = optimization_setting.target_name
@@ -461,14 +464,45 @@ class BacktestingEngine:
         # 生成桌面文件路径
         home_path = Path.home()
         temp_path = home_path.joinpath("Desktop")
-        filename  = f"多进程穷举参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start.strftime('%Y%m%d')}~{self.end.strftime('%Y%m%d')}].txt"
+        filename  = f"多进程穷举参数优化结果 {self.symbol} {self.strategy_class.__name__} [{self.start.strftime('%Y%m%d')}~{self.end.strftime('%Y%m%d')}].txt"
         filepath  = temp_path.joinpath(filename)
         
+        # 统计指标字段
+        indicator_dict = {
+            "total_return": "总收益率", 
+            "annual_return": "年化收益率", 
+            "cagr": "年复合增长率", 
+            "annual_volatility": "年化波动率", 
+            "sharpe_ratio": "夏普比率", 
+            "sortino_ratio": "索提诺比率", 
+            "omega_ratio": "Omega比率", 
+            "calmar_ratio": "Calmar比率", 
+            "return_drawdown_ratio": "收益回撤比",
+            "R_squared": "R平方", 
+            "max_drawdown": "最大回撤金额", 
+            "max_ddpercent": "%最大回撤", 
+            "average_drawdown": "%平均回撤", 
+            "lw_drawdown": "%线性加权回撤", 
+            "average_square_drawdown": "%均方回撤",
+            "max_drawdown_duration": "最大回撤天数", 
+            "max_drawdown_range": "最大回撤区间", 
+            "daily_return": "日均收益率",
+            "return_std": "收益标准差", 
+            "rate_of_win": "%胜率", 
+            "profit_loss_ratio": "盈亏比", 
+            "daily_net_pnl": "日均净盈亏", 
+            "average_net_pnl": "笔均净盈亏", 
+            "daily_trade_count": "日均交易笔数", 
+            "daily_trade_max": "单日最多交易笔数",
+            "trade_volume_max": "单次最大成交手数",
+            "trade_duration": "平均持仓小时",
+            "profit_duration": "盈利持仓小时",
+            "loss_duration": "亏损持仓小时",
+        }
+
         results = []
         count = 0
         result_dict = defaultdict(list)
-
-        start = perf_counter()
 
         for setting in settings:
             count += 1
@@ -497,22 +531,6 @@ class BacktestingEngine:
 
             value = result.get()
 
-            # 在字典中添加参数列表
-            value_dict = eval(value[0])
-            for k, v in value_dict.items():
-                result_dict[k].append(v)
-
-            # 在字典中添加结果列表
-            target_name_list = [
-                "total_return", "annual_return", "cagr", "annual_volatility", "sharpe_ratio", "omega_ratio", "calmar_ratio", "sortino_ratio", "R_squared", "max_drawdown", "max_ddpercent", "average_drawdown", 
-                "lw_drawdown", "max_drawdown_duration", "return_drawdown_ratio", "return_std", "rate_of_win", "profit_loss_ratio", "daily_net_pnl", "average_net_pnl", "daily_trade_count", "trade_duration"
-            ]
-
-            for target_name in target_name_list:
-                result_dict[target_name].append(value[2][target_name])
-
-            # 在字典中保存所有统计指标结果
-            result_dict["statistics"].append(value[2])
 
             info_1 = (f'''\t总收益率：{value[2]["total_return"]:<10}\t年化收益率：{value[2]["annual_return"]:<10}\t年复合增长率：{value[2]["cagr"]:<10}\t夏普比率：{value[2]["sharpe_ratio"]:<16} \tCalmar比率：{value[2]["calmar_ratio"]:<10} \tOmega比率：{value[2]["omega_ratio"]:<10} \t索提诺比率：{value[2]["sortino_ratio"]}''')
             info_2 = (f'''\t%最大回撤：{value[2]["max_ddpercent"]:<10}\t%平均回撤：{value[2]["average_drawdown"]:<10}\t%线性加权回撤：{value[2]["lw_drawdown"]:<8}\t最大回撤金额：{value[2]["max_drawdown"]:<12}\t收益回撤比：{value[2]["return_drawdown_ratio"]:<10}\t最大回撤天数：{value[2]["max_drawdown_duration"]:<10}\t最大回撤区间：{value[2]["max_drawdown_range"]}''')
@@ -521,14 +539,41 @@ class BacktestingEngine:
             print(f"{info_1}\n{info_2}\n{info_3}")
 
             # 将参数优化每一次运行的临时结果提前保存，以防系统崩溃
+            headers = ""
+            result_info = ""
+
             with open(filepath, "a+") as f:
-                f.write(f"{count}\t{value[0]}\t{info_1}\t{info_2}\t{info_3}\n".replace(" ",""))
+                if count == 1:
+                    # 行首添加参数字段和统计指标字段
+                    field_names = ["序号",]
+                    field_names.extend([parameter for parameter in setting.keys()])
+                    field_names.extend([indicator for indicator in indicator_dict.values()])
+
+                    for name in field_names:
+                        headers += f"{name}\t"
+
+                    f.write(f"{headers}\n".replace(" ",""))
+
+                for k, v in setting.items():
+                    result_info += f"{v}\t"
+                    result_dict[k].append(v)                                # 在字典中添加优化参数
+
+                for k in indicator_dict.keys():
+                    result_info += f"{value[2][k]}\t"
+                    result_dict[k].append(value[2][k])                      # 在字典中添加指定统计指标结果
+
+                result_dict["统计指标汇总"].append(value[2])                 # 在字典中保存所有统计指标结果
+                
+                f.write(f"{count}\t{result_info}\n".replace(" ",""))
+
 
         pool.close()
         pool.join()
 
         # 生成多进程优化结果 DataFrame
         self.optimization_df = DataFrame(result_dict).sort_values("total_return", ascending=False).reset_index(drop=True)
+
+        self.optimization_df.rename(columns=indicator_dict, inplace=True)
 
         # 保存参数优化结果至桌面CSV
         if save_csv:
@@ -542,11 +587,10 @@ class BacktestingEngine:
         end = perf_counter()
         cost = round((end - start)/3600, 2)
 
+        print(f'\n{"*" * 200}')
         self.output(f"多进程穷举算法参数优化完成，耗时 {cost} 小时")
-
-        # 使用GUI界面时输出回测结果给控件
-        if not output:
-            return result_values
+        
+        return result_values
 
     def run_ga_optimization(self, optimization_setting: OptimizationSetting, population_size=100, ngen_size=30, output=True):
         """"""
@@ -679,7 +723,7 @@ class BacktestingEngine:
         # 生成桌面文件路径
         home_path = Path.home()
         temp_path = home_path.joinpath("Desktop")
-        filename  = f"遗传算法参数优化结果(目标：{target_name}) {self.symbol} {self.strategy_class.__name__} [{self.start.strftime('%Y%m%d')}~{self.end.strftime('%Y%m%d')}].txt"
+        filename  = f"遗传算法参数优化结果 {self.symbol} {self.strategy_class.__name__} [{self.start.strftime('%Y%m%d')}~{self.end.strftime('%Y%m%d')}].txt"
         filepath  = temp_path.joinpath(filename)
 
         # 保存参数优化结果至桌面文件，并输出日志
@@ -691,7 +735,7 @@ class BacktestingEngine:
             print(f"{info_1}\n{info_2}\n{info_3}")
 
             with open(filepath, "a+") as f:
-                f.write(f"{value[0]}\t{info_1}\t{info_2}\t{info_3}\n".replace(" ",""))
+                f.write(f"{value[0]}{info_1}{info_2}{info_3}\n".replace(" ",""))
 
         return results
 
