@@ -60,6 +60,7 @@ class CtaTemplate(ABC):
 
         self.long_cost = 0               # 实盘/回测模式缓存最新多头持仓均价
         self.short_cost = 0              # 实盘/回测模式缓存最新空头持仓均价
+        self.show_account_data = True    # 实盘模式每次启动策略时显示资金状况
 
         self.signal: float = 0           # 实盘和回测记录当笔交易的信号：1 buy, 2 short, 3 sell, 4 cover
         self.signal_list = []            # 实盘和回测缓存每笔交易的信号
@@ -234,8 +235,9 @@ class CtaTemplate(ABC):
         """
         Callback of account update.
         """
-        if account.balance != self.balance:
+        if self.show_account_data:
             self.write_log(f"【账户信息】账号：{account.accountid}，账户净值：{account.balance}，可用资金：{account.available}，资金使用率：{round(account.percent, 1)}%")
+            self.show_account_data = False
 
         self.account = account
         self.balance = account.balance
