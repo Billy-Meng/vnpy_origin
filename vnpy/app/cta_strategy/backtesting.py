@@ -21,8 +21,7 @@ import empyrical
 import talib
 from deap import creator, base, tools, algorithms
 
-from vnpy.trader.constant import (Direction, Offset, Exchange,
-                                  Interval, Status, RateType)
+from vnpy.trader.constant import Direction, Offset, Exchange, Interval, Status, RateType
 from vnpy.trader.database import database_manager
 from vnpy.trader.object import OrderData, TradeData, BarData, TickData
 from vnpy.trader.utility import round_to, BarGenerator
@@ -552,7 +551,7 @@ class BacktestingEngine:
                     for name in field_names:
                         headers += f"{name}\t"
 
-                    f.write(f"{headers}\n".replace(" ",""))
+                    f.write(f"\n{headers}\n".replace(" ",""))
 
                 for k, v in setting.items():
                     result_info += f"{v}\t"
@@ -2586,14 +2585,15 @@ def load_bar_data(
     start: datetime,
     end: datetime
 ):
-    """bar数据缓存为pkl格式到本地硬盘"""
-    dir_path = f"C:\\Users\\Administrator\\Desktop\\Pickle_Data\\"
-    file_name = f'{symbol}_{exchange.value}_{start.strftime("%Y%m%d")}_{end.strftime("%Y%m%d")}_bar'
-    pickle_path = dir_path + file_name + ".pkl"
+    """Bar数据缓存为pkl格式到本地硬盘"""
+    home_path = Path.home()
+    folder_path = home_path.joinpath(r"Desktop\Pickle_Data")
+    file_name = f'{symbol}_{exchange.value}_{start.strftime("%Y%m%d")}_{end.strftime("%Y%m%d")}_Bar.pkl'
+    pickle_path  = folder_path.joinpath(file_name)
     data_size = 0
 
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
 
     if not os.path.exists(pickle_path):   
         bar_data = database_manager.load_bar_data(symbol, exchange, interval, start, end)
@@ -2607,14 +2607,14 @@ def load_bar_data(
         pickle_file.close()
 
     # Pickle_Data文件夹超过规定GB容量则清空缓存数据
-    for dirpath, dirnames, filenames in os.walk(dir_path):
+    for dirpath, dirnames, filenames in os.walk(folder_path):
         for file_name in filenames:         #当前目录所有文件名
-            data_size += os.path.getsize(dirpath + file_name)
+            data_size += os.path.getsize(dirpath + "\\" + file_name)
 
     if data_size / (1024 ** 3) > 20:
-        for dirpath, dirnames, filenames in os.walk(dir_path):
+        for dirpath, dirnames, filenames in os.walk(folder_path):
             for file_name in filenames:           
-                os.remove(dirpath + file_name)
+                os.remove(dirpath + "\\" + file_name)
 
     return bar_data
 
@@ -2626,14 +2626,15 @@ def load_tick_data(
     start: datetime,
     end: datetime
 ):
-    """tick数据缓存为pkl格式到本地硬盘"""
-    dir_path = f"C:\\Users\\Administrator\\Desktop\\Pickle_Data\\"
-    file_name = f'{symbol}_{exchange.value}_{start.strftime("%Y%m%d")}_{end.strftime("%Y%m%d")}_tick'
-    pickle_path = dir_path + file_name + ".pkl"
+    """Tick数据缓存为pkl格式到本地硬盘"""
+    home_path = Path.home()
+    folder_path = home_path.joinpath(r"Desktop\Pickle_Data")
+    file_name = f'{symbol}_{exchange.value}_{start.strftime("%Y%m%d")}_{end.strftime("%Y%m%d")}_Tick.pkl'
+    pickle_path  = folder_path.joinpath(file_name)
     data_size = 0
 
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
 
     if not os.path.exists(pickle_path):        
         tick_data = database_manager.load_tick_data( symbol, exchange, start, end )
@@ -2647,14 +2648,14 @@ def load_tick_data(
         pickle_file.close()
 
     # Pickle_Data文件夹超过规定GB容量则清空缓存数据
-    for dirpath, dirnames, filenames in os.walk(dir_path):
+    for dirpath, dirnames, filenames in os.walk(folder_path):
         for file_name in filenames:         #当前目录所有文件名
-            data_size += os.path.getsize(dirpath + file_name)
+            data_size += os.path.getsize(dirpath + "\\" + file_name)
 
     if data_size / (1024 ** 3) > 20:
-        for dirpath, dirnames, filenames in os.walk(dir_path):
+        for dirpath, dirnames, filenames in os.walk(folder_path):
             for file_name in filenames:           
-                os.remove(dirpath + file_name)    
+                os.remove(dirpath + "\\" + file_name)
 
     return tick_data
 

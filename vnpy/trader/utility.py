@@ -2362,11 +2362,31 @@ class ArrayManager(object):
             return result
         return result[-1]
 
+    def upper_shadow_line(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        (High - max(Open, Close))的差价序列（K线上影线大小）
+        """
+        result = self.high - self.max_o_or_c(array=True)
+
+        if array:
+            return result
+        return result[-1]
+
+    def lower_shadow_line(self, array: bool = False) -> Union[float, np.ndarray]:
+        """
+        (High - max(Open, Close))的差价序列（K线上影线大小）
+        """
+        result = self.min_o_or_c(array=True) - self.low
+
+        if array:
+            return result
+        return result[-1]
+
     def min_o_or_c(self, array: bool = False) -> Union[float, np.ndarray]:
         """
         取 Open 或 Close 中较小值的价格序列（K线实体下沿价格）
         """
-        result = np.where(self.c_sub_o < 0, self.close, self.open)
+        result = np.where(self.c_sub_o(array=True) < 0, self.close, self.open)
 
         if array:
             return result
@@ -2376,7 +2396,7 @@ class ArrayManager(object):
         """
         取 Open 或 Close 中较大值的价格序列（K线实体上沿价格）
         """
-        result = np.where(self.c_sub_o > 0, self.close, self.open)
+        result = np.where(self.c_sub_o(array=True) > 0, self.close, self.open)
 
         if array:
             return result

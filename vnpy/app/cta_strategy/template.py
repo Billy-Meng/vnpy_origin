@@ -235,7 +235,7 @@ class CtaTemplate(ABC):
         Callback of account update.
         """
         if account.balance != self.balance:
-            self.write_log(f"【账户信息】账号：{account.accountid}，账户净值：{account.balance}，可用资金：{account.available}，资金使用率：{account.percent}")
+            self.write_log(f"【账户信息】账号：{account.accountid}，账户净值：{account.balance}，可用资金：{account.available}，资金使用率：{round(account.percent, 1)}%")
 
         self.account = account
         self.balance = account.balance
@@ -603,24 +603,24 @@ class CtaTemplate(ABC):
 
                 if trade.direction == Direction.LONG:
                     self.long_cost = (trade.price * trade.volume + holding.long_price * (holding.long_pos - trade.volume)) / holding.long_pos
-                    msg = f"开多！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，多头持仓均价：{round(self.long_cost, 2)}。"
+                    msg = f"开多！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，多头持仓均价：{round(self.long_cost, 6)}。"
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
                 else:
                     self.short_cost = (trade.price * trade.volume + holding.short_price * (holding.short_pos - trade.volume)) / holding.short_pos
-                    msg = f"开空！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，空头持仓均价：{round(self.short_cost, 2)}。"
+                    msg = f"开空！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，空头持仓均价：{round(self.short_cost, 6)}。"
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
 
             else:
                 if trade.direction == Direction.LONG:       # 买平，平空仓
-                    self.trade_pnl = (holding.short_price - trade.price) * trade.volume * self.size
+                    self.trade_pnl = round((holding.short_price - trade.price) * trade.volume * self.size, 6)
                     self.trade_commission = round((trade.volume * self.contract_data.open_commission + holding.short_price * trade.volume * self.size * self.contract_data.open_commission_ratio)
                                             + (trade.volume * self.contract_data.close_commission + trade.price * trade.volume * self.size * self.contract_data.close_commission_ratio), 2)
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
-                    self.pnl_point = holding.short_price - trade.price
+                    self.pnl_point = round(holding.short_price - trade.price, 6)
 
                     msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
@@ -628,11 +628,11 @@ class CtaTemplate(ABC):
                     # self.weixin(msg)
 
                 elif trade.direction == Direction.SHORT:    # 卖平，平多仓
-                    self.trade_pnl = (trade.price - holding.long_price) * trade.volume * self.size
+                    self.trade_pnl = round((trade.price - holding.long_price) * trade.volume * self.size, 6)
                     self.trade_commission = round((trade.volume * self.contract_data.open_commission + holding.long_price * trade.volume * self.size * self.contract_data.open_commission_ratio)
                                             + (trade.volume * self.contract_data.close_commission + trade.price * trade.volume * self.size * self.contract_data.close_commission_ratio), 2)
                     self.net_pnl = round(self.trade_pnl - self.trade_commission, 2)                   # 交易净盈亏 = 交易盈亏 - 手续费
-                    self.pnl_point = trade.price - holding.long_price
+                    self.pnl_point = round(trade.price - holding.long_price, 6)
 
                     msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
                     self.write_log(msg)
