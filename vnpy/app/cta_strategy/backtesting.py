@@ -1795,15 +1795,16 @@ class BacktestingEngine:
 
                     f.write("\n\n")
 
-                    for ix, row in signal_times.iterrows():
-                        if row.name < 2:
-                            f.write(f"开多 {row.name:<8}\t{row.symbol}\n")
-                        elif row.name < 3:
-                            f.write(f"开空 {row.name:<8}\t{row.symbol}\n")
-                        elif row.name < 4:
-                            f.write(f"平多 {row.name:<8}\t{row.symbol}\n")
-                        elif row.name < 5:
-                            f.write(f"平空 {row.name:<8}\t{row.symbol}\n")
+                    if self.trades:
+                        for ix, row in signal_times.iterrows():
+                            if row.name < 2:
+                                f.write(f"开多 {row.name:<8}\t{row.symbol}\n")
+                            elif row.name < 3:
+                                f.write(f"开空 {row.name:<8}\t{row.symbol}\n")
+                            elif row.name < 4:
+                                f.write(f"平多 {row.name:<8}\t{row.symbol}\n")
+                            elif row.name < 5:
+                                f.write(f"平空 {row.name:<8}\t{row.symbol}\n")
 
 
             else:

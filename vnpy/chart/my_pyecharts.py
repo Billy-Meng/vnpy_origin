@@ -353,8 +353,8 @@ class MyPyecharts():
                 y_axis = self.trade_data.signal.values.tolist(),
                 yaxis_index = 1,
                 symbol_size = 5,
-                label_opts = opts.LabelOpts(is_show=False),
-                itemstyle_opts = opts.ItemStyleOpts(color="#0000FF", opacity=0.1),
+                label_opts = opts.LabelOpts(is_show=True, font_size=5),
+                itemstyle_opts = opts.ItemStyleOpts(color="#0000FF", opacity=0.5),
             ) 
             .set_global_opts(legend_opts = opts.LegendOpts(is_show = False))
         )

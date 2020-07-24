@@ -2271,12 +2271,12 @@ class ArrayManager(object):
     def countif(self, condition: bool, con_key: str, n: int = 1, size: int = 500) -> int:
         """获取最近N周期满足给定条件的次数(每一次回调都需执行判断，con_key须唯一，可通过countif_dict调取)"""
         self.countif_dict[con_key].append(condition * 1)
-        deque_len = len(self.countif_dict[con_key])
+        list_len = len(self.countif_dict[con_key])
 
-        if deque_len > size:
+        if list_len > size:
             self.countif_dict[con_key].pop(0)
 
-        if deque_len >= n:
+        if list_len >= n:
             return sum(self.countif_dict[con_key][-n:])
         else:
             return 0
