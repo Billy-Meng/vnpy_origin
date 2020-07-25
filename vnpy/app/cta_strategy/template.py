@@ -57,7 +57,8 @@ class CtaTemplate(ABC):
         self.track_lowest  = 0           # 记录开仓后的最低点
         self.entry_minute  = 0           # 统计开仓后历时多少分钟
         self.exit_minute   = 0           # 统计平仓后历时多少分钟
-        self.floating_pnl  = 0           # 计算开仓后每分钟的浮动盈亏
+        self.floating_point  = 0         # 记录开仓后的浮动盈亏点数
+        self.floating_pnl = 0            # 记录开仓后的浮动盈亏金额
 
         self.long_cost = 0               # 实盘/回测模式缓存最新多头持仓均价
         self.short_cost = 0              # 实盘/回测模式缓存最新空头持仓均价
@@ -681,19 +682,22 @@ class CtaTemplate(ABC):
             self.track_lowest  = bar.low_price          # 记录开仓后的最低点
             self.entry_minute  = 0                      # 记录开仓后历时多少分钟
             self.exit_minute  += 1                      # 记录平仓后历时多少分钟
-            self.floating_pnl  = 0                      # 记录开仓后的浮动盈亏
+            self.floating_point  = 0                    # 记录开仓后的浮动盈亏点数
+            self.floating_pnl = 0                       # 记录开仓后的浮动盈亏金额
 
         elif self.pos > 0:
             self.track_highest = max(self.track_highest, bar.high_price)
             self.entry_minute += 1
             self.exit_minute = 0
-            self.floating_pnl  = (bar.close_price - self.long_cost) * abs(self.pos) * self.size
+            self.floating_point  = bar.close_price - self.long_cost
+            self.floating_pnl = self.floating_point * abs(self.pos) * self.size
 
         elif self.pos < 0:
             self.track_lowest  = min(self.track_lowest, bar.low_price)
             self.entry_minute += 1
             self.exit_minute = 0
-            self.floating_pnl  = (self.short_cost - bar.close_price) * abs(self.pos) * self.size
+            self.floating_point  = self.short_cost - bar.close_price
+            self.floating_pnl = self.floating_point * abs(self.pos) * self.size
 
     def empty_position(self, data: Union[BarData, TickData], exit_time: time = time(14, 58), lock: bool = False):
         """收盘前清仓"""
