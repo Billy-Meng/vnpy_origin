@@ -401,7 +401,7 @@ class Mt5Gateway(BaseGateway):
                     tradeid=data["deal"],
                     price=data["trans_price"],
                     volume=data["trans_volume"],
-                    datetime=datetime.now().replace(tzinfo=LOCAL_TZ),
+                    datetime=LOCAL_TZ.localize(datetime.now()),
                     gateway_name=self.gateway_name
                 )
                 self.on_trade(trade)
@@ -487,9 +487,13 @@ class Mt5Gateway(BaseGateway):
                 tick.high_price = d["last_high"]
                 tick.low_price = d["last_low"]
             else:
-                tick.last_price = (d["bid"] + d["ask"]) / 2
-                tick.high_price = (d["bid_high"] + d["ask_high"]) / 2
-                tick.low_price = (d["bid_low"] + d["ask_low"]) / 2
+                # tick.last_price = (d["bid"] + d["ask"]) / 2
+                # tick.high_price = (d["bid_high"] + d["ask_high"]) / 2
+                # tick.low_price = (d["bid_low"] + d["ask_low"]) / 2
+
+                tick.last_price = d["bid"]
+                tick.high_price = d["bid_high"]
+                tick.low_price = d["bid_low"]
 
             self.on_tick(tick)
 
@@ -576,14 +580,14 @@ class Mt5Client:
 def generate_datetime(timestamp: int) -> datetime:
     """"""
     dt = datetime.fromtimestamp(timestamp)
-    dt = dt.replace(tzinfo=LOCAL_TZ)
+    dt = LOCAL_TZ.localize(dt.replace(tzinfo=None))
     return dt
 
 
 def generate_datetime2(timestamp: int) -> datetime:
     """"""
     dt = datetime.strptime(str(timestamp), "%Y.%m.%d %H:%M")
-    dt = dt.replace(tzinfo=LOCAL_TZ)
+    dt = LOCAL_TZ.localize(dt.replace(tzinfo=None))
     return dt
 
 @dataclass

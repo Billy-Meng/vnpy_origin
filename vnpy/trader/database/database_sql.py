@@ -105,12 +105,12 @@ def init_models(db: Database, driver: Driver):
             db_bar.exchange = bar.exchange.value if isinstance(bar.exchange, Enum) else bar.exchange
             db_bar.datetime = dt
             db_bar.interval = bar.interval.value if isinstance(bar.interval, Enum) else bar.interval
-            db_bar.volume = bar.volume
-            db_bar.open_interest = bar.open_interest
             db_bar.open_price = bar.open_price
             db_bar.high_price = bar.high_price
             db_bar.low_price = bar.low_price
             db_bar.close_price = bar.close_price
+            db_bar.volume = bar.volume
+            db_bar.open_interest = bar.open_interest
 
             return db_bar
 
@@ -123,12 +123,12 @@ def init_models(db: Database, driver: Driver):
                 exchange=Exchange(self.exchange),
                 datetime=DB_TZ.localize(self.datetime.replace(tzinfo=None)),
                 interval=Interval(self.interval),
-                volume=self.volume,
                 open_price=self.open_price,
                 high_price=self.high_price,
-                open_interest=self.open_interest,
                 low_price=self.low_price,
                 close_price=self.close_price,
+                volume=self.volume,
+                open_interest=self.open_interest,
                 gateway_name="DB",
             )
             return bar

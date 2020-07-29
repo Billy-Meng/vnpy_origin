@@ -817,7 +817,7 @@ class BacktestingEngine:
             if order.offset != Offset.OPEN and self.strategy.trade_net_volume  < order.volume:
                 self.active_limit_orders.pop(order.vt_orderid)
                 print("！" * 100)
-                print(f"cross_limit_order报错！平仓委托交易数量超过可平仓净头寸！当前净持仓量：{self.strategy.trade_net_volume}，问题委托信息：{order}")
+                print(f"cross_limit_order报错！平仓委托交易数量超过可平仓净头寸！当前净持仓量：{self.strategy.trade_net_volume}，问题分支：{self.strategy.signal}，问题委托信息：{order}")
                 continue
 
             # Push order udpate with status "all traded" (filled).
@@ -911,7 +911,7 @@ class BacktestingEngine:
                 self.limit_orders[order.vt_orderid] = order
                 self.active_stop_orders.pop(stop_order.stop_orderid)
                 print("！" * 60)
-                print(f"cross_stop_order报错！平仓委托交易数量超过可平仓净头寸！当前净持仓量：{self.strategy.trade_net_volume}，问题委托信息：{order}")
+                print(f"cross_stop_order报错！平仓委托交易数量超过可平仓净头寸！当前净持仓量：{self.strategy.trade_net_volume}，问题分支：{self.strategy.signal}，问题委托信息：{order}")
                 continue
 
             # Push order udpate with status "all traded" (filled).
@@ -1212,14 +1212,14 @@ class BacktestingEngine:
             if (trades[-1].direction == Direction.LONG and trades[-1].offset == Offset.OPEN) \
                 or (trades[-1].direction == Direction.SHORT and (trades[-1].offset == Offset.CLOSE
                     or trades[-1].offset == Offset.CLOSETODAY or trades[-1].offset == Offset.CLOSEYESTERDAY)):
-                trade_pnl = (last_close_price - self.strategy.long_cost) * last_trade_net_volume * self.size
-                pnl_point = last_close_price - self.strategy.long_cost
+                trade_pnl = (last_close_price - self.strategy.cost) * last_trade_net_volume * self.size
+                pnl_point = last_close_price - self.strategy.cost
                 trade_type = "多头"
             
             # 最后一笔成交为卖开或买平时，平空仓
             else:
-                trade_pnl = (self.strategy.short_cost - last_close_price) * last_trade_net_volume * self.size
-                pnl_point = self.strategy.short_cost - last_close_price
+                trade_pnl = (self.strategy.cost - last_close_price) * last_trade_net_volume * self.size
+                pnl_point = self.strategy.cost - last_close_price
                 trade_type = "空头"
 
             if self.rate_type == RateType.FIXED:        # 固定手续费模式
@@ -2239,7 +2239,7 @@ class BacktestingEngine:
 
         drawdown_bar = (
             Bar()
-            .add_xaxis(["最大回撤金额(万)", "%最大回撤", "%平均回撤", "%线性加权回撤", "%均方回撤", "最长回撤天数"])
+            .add_xaxis(["最大回撤金额(万)", "%最大回撤", "%平均回撤", "%线性加权回撤", "%均方回撤", "最大回撤天数"])
             .add_yaxis(
                 series_name="回撤情况",
                 y_axis=[round(s["max_drawdown"]/10000, 4), round(s["max_ddpercent"], 2), round(s["average_drawdown"], 2), round(s["lw_drawdown"], 2), round(s["average_square_drawdown"], 2), int(s["max_drawdown_duration"])],
