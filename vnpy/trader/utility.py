@@ -227,7 +227,7 @@ def run_time(func):
         start_time = perf_counter()
         result = func(*args, **kwargs)
         end_time = perf_counter()
-        print (f"{func.__name__} 运行耗时： {end_time - start_time}秒")
+        print (f"{datetime.now()}\t{func.__name__} 运行耗时：{end_time - start_time}秒")
         return result
     return wrapper
 
@@ -353,7 +353,9 @@ class BarGenerator:
         on_bar: Callable = None,
         window: int = 1,
         on_window_bar: Callable = None,
-        interval: Interval = Interval.MINUTE
+        interval: Interval = Interval.MINUTE,
+        division_method: bool = False,
+        nature_day: bool = False
     ):
         """Constructor"""
         self.bar: BarData = None
@@ -374,6 +376,9 @@ class BarGenerator:
         self.last_bar: BarData = None
         self.window: int = window
         self.on_window_bar: Callable = on_window_bar
+
+        self.division_method = division_method
+        self.nature_day = nature_day
 
         self.bar_data_list = []      # 生成指定周期的Bar缓存列表
 
@@ -584,22 +589,26 @@ class BarGenerator:
 
         # X分钟K线合成
         if self.interval == Interval.MINUTE:
-            # *****************************************************************************************************
-            # 官方版本合成方式。整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
-            if not (bar.datetime.minute + 1) % self.window:
-                finished = True            
-            # *****************************************************************************************************
-            # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
-            # if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
-            #     if self.window == 1:
-            #             finished = True
-                
-            #     else:
-            #         self.interval_count += 1
-            #         if not self.interval_count % self.window:
-            #             finished = True
-            #             self.interval_count = 0
-            # *****************************************************************************************************
+            if self.division_method:
+                # 整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
+                if self.window not in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]:
+                    print("整除法合成K线，时间窗口须为 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 其中之一！")
+                    return
+                else:
+                    if not (bar.datetime.minute + 1) % self.window:
+                        finished = True
+
+            else:
+                # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
+                if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+                    if self.window == 1:
+                            finished = True
+                    
+                    else:
+                        self.interval_count += 1
+                        if not self.interval_count % self.window:
+                            finished = True
+                            self.interval_count = 0
             
         # X小时K线合成，计数切分法进行N小时K线合成，可以合成任意小时K线
         elif self.interval == Interval.HOUR:
@@ -617,13 +626,15 @@ class BarGenerator:
 
         # 日K线合成
         elif self.interval == Interval.DAILY:
-            # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
-            if self.last_bar and bar.datetime.date() != ArrayManager().RealDate(bar):
-                finished = True
+            if self.nature_day:
+                # 针对每天开盘和收盘为同一天的日K线合成，按自然交易日时间划分新的一天
+                if self.last_bar and bar.datetime.date() != self.last_bar.datetime.date():
+                    finished = True
+            else:
+                # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
+                if self.last_bar and bar.datetime.date() != ArrayManager().RealDate(bar):
+                    finished = True
 
-            # 针对每天开盘和收盘为同一天的日K线合成
-            # if self.last_bar and bar.datetime.day != self.last_bar.datetime.day:
-            #     finished = True
 
         if finished:
             self.on_window_bar(self.window_bar)
@@ -677,22 +688,26 @@ class BarGenerator:
 
         # X分钟K线合成
         if self.interval == Interval.MINUTE:
-            # *****************************************************************************************************
-            # 官方版本合成方式。整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
-            if not (bar.datetime.minute + 1) % self.window:
-                finished = True            
-            # *****************************************************************************************************
-            # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
-            # if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
-            #     if self.window == 1:
-            #             finished = True
-                
-            #     else:
-            #         self.interval_count += 1
-            #         if not self.interval_count % self.window:
-            #             finished = True
-            #             self.interval_count = 0
-            # *****************************************************************************************************
+            if self.division_method:
+                # 整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
+                if self.window not in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]:
+                    print("整除法合成K线，时间窗口须为 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 其中之一！")
+                    return
+                else:
+                    if not (bar.datetime.minute + 1) % self.window:
+                        finished = True
+
+            else:
+                # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
+                if self.last_bar and bar.datetime.minute != self.last_bar.datetime.minute:
+                    if self.window == 1:
+                            finished = True
+                    
+                    else:
+                        self.interval_count += 1
+                        if not self.interval_count % self.window:
+                            finished = True
+                            self.interval_count = 0
             
         # X小时K线合成，计数切分法进行N小时K线合成，可以合成任意小时K线
         elif self.interval == Interval.HOUR:
@@ -710,13 +725,14 @@ class BarGenerator:
 
         # 日K线合成
         elif self.interval == Interval.DAILY:
-            # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
-            if self.last_bar and bar.datetime.date() != ArrayManager().RealDate(bar):
-                finished = True
-
-            # 针对每天开盘和收盘为同一天的日K线合成
-            # if self.last_bar and bar.datetime.day != self.last_bar.datetime.day:
-            #     finished = True
+            if self.nature_day:
+                # 针对每天开盘和收盘为同一天的日K线合成，按自然交易日时间划分新的一天
+                if self.last_bar and bar.datetime.date() != self.last_bar.datetime.date():
+                    finished = True
+            else:
+                # 针对国内商品期货每天开盘时间为晚上九点，收盘时间为次日的情况
+                if self.last_bar and bar.datetime.date() != ArrayManager().RealDate(bar):
+                    finished = True
 
         if finished:
             self.bar_data_list.append(self.window_bar)
@@ -754,10 +770,11 @@ class ArrayManager(object):
     2. calculating technical indicator value
     """
 
-    def __init__(self, size: int = 100, log: bool = False):
+    def __init__(self, size: int = 100, nature_day: bool = False, log: bool = False):
         """Constructor"""
         self.count: int = 0
         self.size: int = size
+        self.nature_day: bool = nature_day
         self.log: bool = log
         self.inited: bool = False
         self.new_day: bool = False
@@ -779,6 +796,17 @@ class ArrayManager(object):
         self.count += 1
         if not self.inited and self.count >= self.size:
             self.inited = True
+
+        if self.nature_day:
+            if self.last_bar and self.last_bar.datetime.date() != bar.datetime.date():        # 按自然交易日时间划分新的一天
+                self.new_day = True
+            else:
+                self.new_day = False
+        else:
+            if self.last_bar and self.last_bar.datetime.date() != self.RealDate(bar):         # 针针对国内夜盘开盘时间为次日开盘时间
+                self.new_day = True
+            else:
+                self.new_day = False
 
         self.open_array[:-1] = self.open_array[1:]
         self.high_array[:-1] = self.high_array[1:]
@@ -802,13 +830,6 @@ class ArrayManager(object):
             self.close_array[-1] = np.log(bar.close_price)
             self.volume_array[-1] = np.log(bar.volume)
             self.open_interest_array[-1] = np.log(bar.open_interest)
-
-
-        if self.last_bar and self.last_bar.datetime.date() != bar.datetime.date():        # 按自然交易日时间划分
-        # if self.last_bar and self.last_bar.datetime.date() != self.RealDate(bar):         # 针对夜盘开盘时间为次日开盘时间
-            self.new_day = True
-        else:
-            self.new_day = False
 
         self.last_bar = bar
 
@@ -2439,10 +2460,11 @@ class ArrayManager(object):
 class DayArrayManager(object):
     """日线价格序列管理器"""
 
-    def __init__(self, size: int = 5, log: bool = False):
+    def __init__(self, size: int = 5, nature_day: bool = False, log: bool = False):
         """Constructor"""
         self.count: int = 0
         self.size: int = size
+        self.nature_day: bool = nature_day
         self.log: bool = log
         self.inited: bool = False
         self.new_day: bool = False
@@ -2463,10 +2485,18 @@ class DayArrayManager(object):
         if not self.inited and self.count >= self.size:
             self.inited = True
 
-        # if self.last_bar and self.last_bar.datetime.date() != bar.datetime.date():        # 按自然交易日时间划分
-        if self.last_bar and self.last_bar.datetime.date() != self.RealDate(bar):         # 针对夜盘开盘时间为次日开盘时间
-            self.new_day = True
+        if self.nature_day:
+            if self.last_bar and self.last_bar.datetime.date() != bar.datetime.date():        # 按自然交易日时间划分新的一天
+                self.new_day = True
+            else:
+                self.new_day = False
+        else:
+            if self.last_bar and self.last_bar.datetime.date() != self.RealDate(bar):         # 针针对国内夜盘开盘时间为次日开盘时间
+                self.new_day = True
+            else:
+                self.new_day = False
 
+        if self.new_day:
             self.open_array[:-1] = self.open_array[1:]
             self.high_array[:-1] = self.high_array[1:]
             self.low_array[:-1] = self.low_array[1:]
@@ -2491,8 +2521,6 @@ class DayArrayManager(object):
                 self.open_interest_array[-1] = np.log(bar.open_interest)
 
         else:
-            self.new_day = False
-
             if not self.log:
                 self.high_array[-1] = max(self.high_array[-1], bar.high_price)
                 self.low_array[-1] = min(self.low_array[-1], bar.low_price)

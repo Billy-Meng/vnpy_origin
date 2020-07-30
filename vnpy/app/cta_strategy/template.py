@@ -50,9 +50,6 @@ class CtaTemplate(ABC):
         self.variables.insert(7, "exit_minute")
 
         self.engine_type = self.get_engine_type()       # 初始化时获取策略引擎类型
-        self.position = None
-        self.account = None
-        self.balance = 0
 
         self.buy_orderids   = []
         self.short_orderids = []
@@ -67,9 +64,13 @@ class CtaTemplate(ABC):
         self.floating_point  = 0         # 记录开仓后的浮动盈亏点数
         self.floating_pnl = 0            # 记录开仓后的浮动盈亏金额
 
-        self.long_cost = 0               # 实盘模式缓存最新多头持仓均价
-        self.short_cost = 0              # 实盘模式缓存最新空头持仓均价
+        self.position = None             # 实盘模式记录持仓信息
+        self.account = None              # 实盘模式记录账号信息
+        self.long_cost = 0               # 实盘模式记录最新多头持仓均价
+        self.short_cost = 0              # 实盘模式记录最新空头持仓均价
         self.show_account_data = True    # 实盘模式每次启动策略时显示资金状况
+        self.balance = 0
+        self.lock = False                # 实盘模式记录发出委托是否锁仓模式
 
         self.signal: float = 0           # 实盘和回测记录当笔交易的信号：1 buy, 2 short, 3 sell, 4 cover
         self.signal_list = []            # 实盘和回测缓存每笔交易的信号
@@ -234,10 +235,7 @@ class CtaTemplate(ABC):
         """
         if holding.long_price != self.long_cost or holding.short_price != self.short_cost:
             self.write_log(f"【{self.symbol}持仓信息】多头持仓数量：{holding.long_pos}，多头持仓均价：{holding.long_price}；空头持仓数量：{holding.short_pos}，空头持仓均价：{holding.short_price}")
-
-        if holding.long_pos == holding.short_pos:
-            self.cost = 0
-
+            
         self.position = holding
         self.long_cost = holding.long_price
         self.short_cost = holding.short_price
@@ -300,6 +298,8 @@ class CtaTemplate(ABC):
         """
         Send a new order.
         """
+        self.lock = lock    # 是否锁仓
+
         if self.trading:
             vt_orderids = self.cta_engine.send_order(
                 self, direction, offset, price, volume, stop, lock, market
@@ -620,7 +620,7 @@ class CtaTemplate(ABC):
                     self.net_pnl = 0
                     self.pnl_point = 0
 
-                    msg = f"开多！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，多头持仓均价：{self.cost}。"
+                    msg = f'开多！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，多头持仓均价：{self.cost}，交易信号：{self.signal} {"【锁仓】" if self.lock else ""}'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
@@ -639,7 +639,7 @@ class CtaTemplate(ABC):
                     self.net_pnl = self.trade_pnl - self.trade_commission                 # 交易净盈亏 = 交易盈亏 - 手续费
                     self.pnl_point = round(trade.price - self.cost, 6)
 
-                    msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
+                    msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，交易信号：{self.signal}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元 {"【锁仓】" if self.lock else ""}'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
@@ -652,7 +652,7 @@ class CtaTemplate(ABC):
                     self.net_pnl = 0
                     self.pnl_point = 0
 
-                    msg = f"开空！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，空头持仓均价：{self.cost}。"
+                    msg = f'开空！成交价格：{trade.price}，成交手数：{trade.volume}手，成交时间：{trade.datetime.replace(tzinfo=None)}，空头持仓均价：{self.cost}，交易信号：{self.signal} {"【锁仓】" if self.lock else ""}'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
@@ -671,7 +671,7 @@ class CtaTemplate(ABC):
                     self.net_pnl = self.trade_pnl - self.trade_commission                 # 交易净盈亏 = 交易盈亏 - 手续费
                     self.pnl_point = round(self.cost - trade.price, 6)
 
-                    msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
+                    msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，交易信号：{self.signal}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元 {"【锁仓】" if self.lock else ""}'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
@@ -691,7 +691,7 @@ class CtaTemplate(ABC):
                     self.net_pnl = self.trade_pnl - self.trade_commission                 # 交易净盈亏 = 交易盈亏 - 手续费
                     self.pnl_point = round(self.cost - trade.price, 6)
 
-                    msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
+                    msg = f'平空！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，交易信号：{self.signal}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元 {"【锁仓】" if self.lock else ""}'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
@@ -710,7 +710,7 @@ class CtaTemplate(ABC):
                     self.net_pnl = self.trade_pnl - self.trade_commission                 # 交易净盈亏 = 交易盈亏 - 手续费
                     self.pnl_point = round(trade.price - self.cost, 6)
 
-                    msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元'
+                    msg = f'平多！平仓价格：{trade.price}，平仓手数：{trade.volume}手，平仓时间：{trade.datetime.replace(tzinfo=None)}，交易信号：{self.signal}，盈亏点数：{self.pnl_point}，平仓手续费：{self.trade_commission}，{"净盈利" if self.net_pnl >= 0 else "净亏损"}金额：{self.net_pnl}元 {"【锁仓】" if self.lock else ""}'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
