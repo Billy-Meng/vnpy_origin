@@ -590,13 +590,9 @@ class BarGenerator:
         # X分钟K线合成
         if self.interval == Interval.MINUTE:
             if self.division_method:
-                # 整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
-                if self.window not in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]:
-                    print("整除法合成N分钟K线，时间窗口须为 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 其中之一！")
-                    return
-                else:
-                    if not (bar.datetime.minute + 1) % self.window:
-                        finished = True
+                # 整除切分法进行分钟K线合成，合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟K线，可刚好被1小时整除，切分间隔一致。合成其他周期K线则切分间隔不一致。
+                if not (bar.datetime.minute + 1) % self.window:
+                    finished = True
 
             else:
                 # 计数切分法进行分钟K线合成，可以合成任意分钟K线，非整点
@@ -689,7 +685,7 @@ class BarGenerator:
         # X分钟K线合成
         if self.interval == Interval.MINUTE:
             if self.division_method:
-                # 整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
+                # 整除切分法进行分钟K线合成，合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟K线，可刚好被1小时整除，切分间隔一致。合成其他周期K线则切分间隔不一致。
                 if self.window not in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]:
                     print("整除法合成N分钟K线，时间窗口须为 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 其中之一！")
                     return
@@ -1354,9 +1350,9 @@ class ArrayManager(object):
         Aroon(下降)=[(计算期天数-最低价后的天数)/计算期天数]*100
         """
         if log:
-            result = talib.AROON(np.log(self.high), np.log(self.low), timeperiod=n)
+            aroon_up, aroon_down = talib.AROON(np.log(self.high), np.log(self.low), timeperiod=n)
         else:
-            result = talib.AROON(self.high, self.low, timeperiod=n)
+            aroon_up, aroon_down = talib.AROON(self.high, self.low, timeperiod=n)
 
         if array:
             return aroon_up, aroon_down
