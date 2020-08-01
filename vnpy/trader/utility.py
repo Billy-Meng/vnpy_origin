@@ -592,7 +592,7 @@ class BarGenerator:
             if self.division_method:
                 # 整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
                 if self.window not in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]:
-                    print("整除法合成K线，时间窗口须为 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 其中之一！")
+                    print("整除法合成N分钟K线，时间窗口须为 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 其中之一！")
                     return
                 else:
                     if not (bar.datetime.minute + 1) % self.window:
@@ -691,7 +691,7 @@ class BarGenerator:
             if self.division_method:
                 # 整除切分法进行分钟K线合成，仅限合成 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60分钟 整点 K线
                 if self.window not in [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]:
-                    print("整除法合成K线，时间窗口须为 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 其中之一！")
+                    print("整除法合成N分钟K线，时间窗口须为 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 其中之一！")
                     return
                 else:
                     if not (bar.datetime.minute + 1) % self.window:

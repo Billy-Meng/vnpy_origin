@@ -437,20 +437,25 @@ class BacktestingEngine:
         fig.update_layout(height=1000, width=1000)
         fig.show()
 
-    def run_optimization(self, optimization_setting: OptimizationSetting, save_csv=True, output=False):
+    def run_optimization(self, optimization_setting: OptimizationSetting = None, custom_setting: "list[dict]" = None, save_csv=True, output=False):
         """""" 
         start = perf_counter()
 
-        # Get optimization setting and target
-        settings = optimization_setting.generate_setting()
-        target_name = optimization_setting.target_name
+        if custom_setting is None:
+            # Get optimization setting and target
+            settings = optimization_setting.generate_setting()
+            target_name = optimization_setting.target_name
+
+            if not target_name:
+                self.output("优化目标未设置，请检查")
+                return
+
+        else:
+            settings = custom_setting
+            target_name = "total_return"
 
         if not settings:
             self.output("优化参数组合为空，请检查")
-            return
-
-        if not target_name:
-            self.output("优化目标未设置，请检查")
             return
 
         self.output(f"参数优化空间：{len(settings)}")

@@ -46,8 +46,9 @@ class CtaTemplate(ABC):
         self.variables.insert(3, "cost")
         self.variables.insert(4, "track_highest")
         self.variables.insert(5, "track_lowest")
-        self.variables.insert(6, "entry_minute")
-        self.variables.insert(7, "exit_minute")
+        self.variables.insert(6, "track_minute")
+        self.variables.insert(7, "entry_minute")
+        self.variables.insert(8, "exit_minute")
 
         self.engine_type = self.get_engine_type()       # 初始化时获取策略引擎类型
 
@@ -57,8 +58,9 @@ class CtaTemplate(ABC):
         self.cover_orderids = []
 
         self.cost = 0                    # 记录开仓均价
-        self.track_highest = 0           # 记录开仓后的最高点
-        self.track_lowest  = 0           # 记录开仓后的最低点
+        self.track_highest = 0           # 记录多单开仓后的最高点，空单入场后的回调高点
+        self.track_lowest  = 0           # 记录空单开仓后的最低点，多单入场后的回调低点
+        self.track_minute = 0            # 记录新高低点保持多少分钟
         self.entry_minute  = 0           # 统计开仓后历时多少分钟
         self.exit_minute   = 0           # 统计平仓后历时多少分钟
         self.floating_point  = 0         # 记录开仓后的浮动盈亏点数
@@ -752,22 +754,37 @@ class CtaTemplate(ABC):
     def record_price_and_status(self, bar: BarData):
         """记录和更新每一分钟策略定义的各类价格和状态"""
         if self.pos == 0:
-            self.track_highest = bar.high_price         # 记录开仓后的最高点
-            self.track_lowest  = bar.low_price          # 记录开仓后的最低点
+            self.track_highest = bar.high_price         # 记录多单开仓后的最高点
+            self.track_lowest  = bar.low_price          # 记录空单开仓后的最低点
+            self.track_minute = 0                       # 记录新高低点保持多少分钟
             self.entry_minute  = 0                      # 记录开仓后历时多少分钟
             self.exit_minute  += 1                      # 记录平仓后历时多少分钟
             self.floating_point  = 0                    # 记录开仓后的浮动盈亏点数
             self.floating_pnl = 0                       # 记录开仓后的浮动盈亏金额
 
         elif self.pos > 0:
-            self.track_highest = max(self.track_highest, bar.high_price)
+            if bar.high_price > self.track_highest:
+                self.track_highest = bar.high_price
+                self.track_lowest = bar.low_price
+                self.track_minute = 0
+            else:
+                self.track_lowest = min(self.track_lowest, bar.low_price)
+                self.track_minute += 1
+
             self.entry_minute += 1
             self.exit_minute = 0
             self.floating_point  = bar.close_price - self.cost
             self.floating_pnl = self.floating_point * self.pos * self.size
 
         elif self.pos < 0:
-            self.track_lowest  = min(self.track_lowest, bar.low_price)
+            if bar.low_price < self.track_lowest:
+                self.track_lowest  = bar.low_price
+                self.track_highest = bar.high_price
+                self.track_minute = 0
+            else:
+                self.track_highest = max(self.track_highest, bar.high_price)
+                self.track_minute += 1
+
             self.entry_minute += 1
             self.exit_minute = 0
             self.floating_point  = self.cost - bar.close_price
