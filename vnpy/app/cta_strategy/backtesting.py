@@ -1159,12 +1159,13 @@ class BacktestingEngine:
     # 新增回测统计指标
     def get_bar_data_df(self):
         """获取加载的Bar历史数据，并生成 DataFrame"""
-        bar_data = [bar.__dict__ for bar in self.history_data]
-        bar_data_df = DataFrame(bar_data)
-        bar_data_df = bar_data_df.set_index("datetime")
-        bar_data_df = bar_data_df[["symbol", "open_price", "high_price", "low_price", "close_price", "volume", "open_interest"]]
+        if self.history_data:
+            bar_data = [bar.__dict__ for bar in self.history_data]
+            bar_data_df = DataFrame(bar_data)
+            bar_data_df = bar_data_df.set_index("datetime")
+            bar_data_df = bar_data_df[["symbol", "open_price", "high_price", "low_price", "close_price", "volume", "open_interest"]]
 
-        self.bar_data_df = bar_data_df
+            self.bar_data_df = bar_data_df
 
     def get_trade_data_df(self):
         """提取成交记录，并生成 DataFrame"""

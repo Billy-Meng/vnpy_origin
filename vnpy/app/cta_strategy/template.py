@@ -811,11 +811,11 @@ class CtaTemplate(ABC):
                 self.cancel_all()       # 撤销当前所有挂单
 
                 if self.pos > 0:
-                    self.sell(data.ask_price_1 - 100 * self.pricetick, self.pos, lock=lock)
+                    self.sell(data.limit_down, self.pos, lock=lock)
                     self.signal = 3.99
 
                 elif self.pos < 0:
-                    self.cover(data.bid_price_1 + 100 * self.pricetick, abs(self.pos), lock=lock)
+                    self.cover(data.limit_up, abs(self.pos), lock=lock)
                     self.signal = 4.99
       
 
