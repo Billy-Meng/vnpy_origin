@@ -2691,6 +2691,36 @@ class DayArrayManager(object):
             return result
         return result[-1]
 
+
+class Array():
+    def __init__(self, size: int = 100):
+        self.array: np.ndarray  = np.zeros(size)
+
+    def __getitem__(self, key):
+        """Instance[key]"""
+        return self.array[key]
+
+    def __setitem__(self, key, value):
+        """Instance[key] = value"""
+        self.array[:key] = self.array[-key:]
+        self.array[key] = value
+
+    def __eq__(self, value: object):
+        """Instance == value"""
+        self.array[:-1] = self.array[1:]
+        self.array[-1] = value
+
+    def max(self, n: int):
+        return self.array[-n:].max()
+
+    def min(self, n: int):
+        return self.array[-n:].min()
+
+    def mean(self, n: int):
+        return self.array[-n:].mean()
+
+        
+
 # ======================================================================================================================================================================================================== #
 # ======================================================================================================================================================================================================== #
 
