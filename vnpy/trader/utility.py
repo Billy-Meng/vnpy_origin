@@ -940,14 +940,14 @@ class ArrayManager(object):
             return result
         return result[-1]
 
-    def ma(self, n: int, matype: int = 0, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+    def ma(self, price: np.ndarray, n: int, matype: int = 0, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Moving average.  移动平均线：matype: 0=SMA(默认), 1=EMA(指数移动平均线), 2=WMA(加权移动平均线), 3=DEMA(双指数移动平均线), 4=TEMA(三重指数移动平均线), 5=TRIMA, 6=KAMA(考夫曼自适应移动平均线), 7=MAMA, 8=T3(三重指数移动平均线)
         """
         if log:
-            result = talib.MA(np.log(self.close), timeperiod=n, matype=matype)
+            result = talib.MA(np.log(price), timeperiod=n, matype=matype)
         else:
-            result = talib.MA(self.close, timeperiod=n, matype=matype)
+            result = talib.MA(price, timeperiod=n, matype=matype)
 
         if array:
             return result
