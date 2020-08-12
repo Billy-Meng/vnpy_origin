@@ -1,4 +1,4 @@
-
+# -*- coding:utf-8 -*-
 from vnpy.event import EventEngine, Event
 from vnpy.trader.engine import BaseEngine, MainEngine
 from vnpy.trader.event import (

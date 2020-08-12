@@ -1,5 +1,4 @@
-""""""
-
+# -*- coding:utf-8 -*-
 import sys
 from threading import Thread
 from queue import Queue, Empty
@@ -256,7 +255,7 @@ class RecorderEngine(BaseEngine):
         bg = self.bar_generators.get(vt_symbol, None)
 
         if not bg:
-            bg = BarGenerator(self.record_bar)
+            bg = BarGenerator(on_bar=self.record_bar)
             self.bar_generators[vt_symbol] = bg
 
         return bg

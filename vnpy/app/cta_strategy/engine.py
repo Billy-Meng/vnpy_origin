@@ -1,12 +1,12 @@
-""""""
-
+# -*- coding:utf-8 -*-
 import importlib
 import os
 import traceback
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Union
 from datetime import datetime, timedelta
+from time import sleep
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 from tzlocal import get_localzone
@@ -26,7 +26,8 @@ from vnpy.trader.event import (
     EVENT_TICK,
     EVENT_ORDER,
     EVENT_TRADE,
-    EVENT_POSITION
+    EVENT_POSITION,
+    EVENT_ACCOUNT
 )
 from vnpy.trader.constant import (
     Direction,
@@ -38,8 +39,14 @@ from vnpy.trader.constant import (
 )
 from vnpy.trader.utility import load_json, save_json, extract_vt_symbol, round_to
 from vnpy.trader.database import database_manager
-from vnpy.trader.rqdata import rqdata_client
 from vnpy.trader.converter import OffsetConverter
+
+from vnpy.trader.datasource import datasource_client
+from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.tqdata import tqdata_client
+from vnpy.trader.datasource.jjdata import jjdata_client
+from vnpy.trader.setting import SETTINGS
 
 from .base import (
     APP_NAME,
@@ -121,17 +128,21 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_ORDER, self.process_order_event)
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
+        self.event_engine.register(EVENT_ACCOUNT, self.process_account_event)
 
     def init_rqdata(self):
         """
         Init RQData client.
         """
-        result = rqdata_client.init()
+        result = datasource_client.init()
+        data_source_api = SETTINGS["datasource.api"]
         if result:
-            self.write_log("RQData数据接口初始化成功")
+            self.write_log(f"{data_source_api}数据接口初始化成功")
+        else:
+            self.write_log(f"{data_source_api}数据接口初始化不成功")
 
     def query_bar_from_rq(
-        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
+        self, symbol: str, exchange: Exchange, interval: Interval, frequency: Union[int, str], start: datetime, end: datetime
     ):
         """
         Query bar data from RQData.
@@ -143,7 +154,18 @@ class CtaEngine(BaseEngine):
             start=start,
             end=end
         )
-        data = rqdata_client.query_history(req)
+        if SETTINGS["datasource.api"] == "jqdata":
+            data = jqdata_client.query_history(req)
+            
+        elif SETTINGS["datasource.api"] == "rqdata":
+            data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "tqdata":
+            data = tqdata_client.query_history(req, frequency)
+
+        elif SETTINGS["datasource.api"] == "jjdata":
+            data = jjdata_client.query_history(req, frequency)
+
         return data
 
     def process_tick_event(self, event: Event):
@@ -227,6 +249,26 @@ class CtaEngine(BaseEngine):
         position = event.data
 
         self.offset_converter.update_position(position)
+
+        holding = self.offset_converter.get_position_holding(position.vt_symbol)
+
+        strategies = self.symbol_strategy_map[position.vt_symbol]
+        if not strategies:
+            return
+
+        for strategy in strategies:
+            strategy.on_position(holding)
+
+    def process_account_event(self, event: Event):
+        """"""
+        account = event.data
+
+        strategies = list(self.strategies.values())
+        if not strategies:
+            return
+
+        for strategy in strategies:
+            strategy.on_account(account)
 
     def check_stop_order(self, tick: TickData):
         """"""
@@ -426,6 +468,30 @@ class CtaEngine(BaseEngine):
 
         return [stop_orderid]
 
+    def send_market_order(
+        self,
+        strategy: CtaTemplate,
+        contract: ContractData,
+        direction: Direction,
+        offset: Offset,
+        price: float,
+        volume: float,
+        lock: bool
+    ):
+        """
+        Send a limit order to server.
+        """
+        return self.send_server_order(
+            strategy,
+            contract,
+            direction,
+            offset,
+            price,
+            volume,
+            OrderType.MARKET,
+            lock
+        )
+
     def cancel_server_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
         Cancel existing order by vt_orderid.
@@ -468,7 +534,8 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         stop: bool,
-        lock: bool
+        lock: bool,
+        market: bool
     ):
         """
         """
@@ -486,6 +553,8 @@ class CtaEngine(BaseEngine):
                 return self.send_server_stop_order(strategy, contract, direction, offset, price, volume, lock)
             else:
                 return self.send_local_stop_order(strategy, direction, offset, price, volume, lock)
+        elif market:
+            return self.send_market_order(strategy, contract, direction, offset, price, volume, lock)
         else:
             return self.send_limit_order(strategy, contract, direction, offset, price, volume, lock)
 
@@ -528,14 +597,18 @@ class CtaEngine(BaseEngine):
         vt_symbol: str,
         days: int,
         interval: Interval,
+        frequency: int,
         callback: Callable[[BarData], None],
         use_database: bool
     ):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
         end = datetime.now(get_localzone())
-        start = end - timedelta(days)
+        start = end - timedelta(days=days)
         bars = []
+
+        if SETTINGS["datasource.api"] == "jjdata":
+            frequency = f"{frequency}s"
 
         # Pass gateway and RQData if use_database set to True
         if not use_database:
@@ -554,16 +627,26 @@ class CtaEngine(BaseEngine):
 
             # Try to query bars from RQData, if not found, load from database.
             else:
-                bars = self.query_bar_from_rq(symbol, exchange, interval, start, end)
+                bars = self.query_bar_from_rq(symbol, exchange, interval, frequency, start, end)
 
         if not bars:
-            bars = database_manager.load_bar_data(
-                symbol=symbol,
-                exchange=exchange,
-                interval=interval,
-                start=start,
-                end=end,
-            )
+            if frequency == "60s" or frequency == 60:
+                bars = database_manager.load_bar_data(
+                    symbol=symbol,
+                    exchange=exchange,
+                    interval="1m",
+                    start=start,
+                    end=end,
+                )
+
+            else:
+                bars = database_manager.load_bar_data(
+                    symbol=symbol,
+                    exchange=exchange,
+                    interval=interval,
+                    start=start,
+                    end=end,
+                )
 
         for bar in bars:
             callback(bar)
@@ -572,19 +655,28 @@ class CtaEngine(BaseEngine):
         self,
         vt_symbol: str,
         days: int,
-        callback: Callable[[TickData], None]
+        callback: Callable[[TickData], None],
+        use_database: bool
     ):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
-        end = datetime.now()
-        start = end - timedelta(days)
+        end = datetime.now(get_localzone())
+        start = end - timedelta(days=days)
 
-        ticks = database_manager.load_tick_data(
-            symbol=symbol,
-            exchange=exchange,
-            start=start,
-            end=end,
-        )
+        if not use_database:
+            # 从掘金加载Tick数据
+            interval = None
+            frequency = "tick"            
+            req = HistoryRequest(symbol=symbol, exchange=exchange, interval=interval, start=start, end=end)
+            ticks = jjdata_client.query_history(req, frequency)
+
+        if not ticks:
+            ticks = database_manager.load_tick_data(
+                symbol=symbol,
+                exchange=exchange,
+                start=start,
+                end=end,
+            )
 
         for tick in ticks:
             callback(tick)
@@ -762,12 +854,12 @@ class CtaEngine(BaseEngine):
         """
         Load strategy class from source code.
         """
-        path1 = Path(__file__).parent.joinpath("strategies")
-        self.load_strategy_class_from_folder(
-            path1, "vnpy.app.cta_strategy.strategies")
+        path1 = Path.cwd().joinpath("strategies")
+        self.load_strategy_class_from_folder(path1, "strategies")
 
-        path2 = Path.cwd().joinpath("strategies")
-        self.load_strategy_class_from_folder(path2, "strategies")
+        path2 = Path(__file__).parent.joinpath("strategies")
+        self.load_strategy_class_from_folder(
+            path2, "vnpy.app.cta_strategy.strategies")
 
     def load_strategy_class_from_folder(self, path: Path, module_name: str = ""):
         """

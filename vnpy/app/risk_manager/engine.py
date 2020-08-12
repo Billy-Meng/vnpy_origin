@@ -1,5 +1,4 @@
-""""""
-
+# -*- coding:utf-8 -*-
 from collections import defaultdict
 from vnpy.trader.object import OrderRequest, LogData
 from vnpy.event import Event, EventEngine, EVENT_TIMER

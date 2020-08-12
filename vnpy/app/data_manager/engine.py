@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 import csv
 from datetime import datetime
 from typing import List, Dict, Tuple
@@ -6,7 +7,11 @@ from vnpy.trader.engine import BaseEngine, MainEngine, EventEngine
 from vnpy.trader.constant import Interval, Exchange
 from vnpy.trader.object import BarData, HistoryRequest
 from vnpy.trader.database import database_manager
-from vnpy.trader.rqdata import rqdata_client
+
+from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.jjdata import jjdata_client
+from vnpy.trader.setting import SETTINGS
 
 
 APP_NAME = "DataManager"
@@ -194,7 +199,8 @@ class ManagerEngine(BaseEngine):
         req = HistoryRequest(
             symbol=symbol,
             exchange=exchange,
-            interval=Interval(interval),
+            # interval=Interval(interval),
+            interval=Interval.MINUTE,          # 设置默认下载数据均为一分钟K线数据
             start=start,
             end=datetime.now()
         )
@@ -207,12 +213,71 @@ class ManagerEngine(BaseEngine):
             data = self.main_engine.query_history(
                 req, contract.gateway_name
             )
+
+        # Otherwise use JQData to query data
+        elif SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
+            if not jqdata_client.inited:
+                jqdata_client.init()
+
+            data = jqdata_client.query_history(req)
+
         # Otherwise use RQData to query data
-        else:
+        elif SETTINGS["datasource.api"] == "rqdata":
             if not rqdata_client.inited:
                 rqdata_client.init()
 
             data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "jjdata":
+            if not jjdata_client.inited:
+                jjdata_client.init()
+
+            data = jjdata_client.query_history(req, interval)
+
+        if data:
+            database_manager.save_bar_data(data)
+            return(len(data))
+
+        return 0
+
+
+    def download_bar_data_from_datasource(
+        self,
+        symbol: str,
+        exchange: Exchange,
+        interval: str,
+        start: datetime
+    ) -> int:
+        """
+        Query bar data from DataSource.
+        """
+        req = HistoryRequest(
+            symbol=symbol,
+            exchange=exchange,
+            # interval=Interval(interval),
+            interval=Interval.MINUTE,          # 设置默认下载数据均为一分钟K线数据
+            start=start,
+            end=datetime.now()
+        )
+
+        if SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
+            if not jqdata_client.inited:
+                jqdata_client.init()
+
+            data = jqdata_client.query_history(req)
+
+        # Otherwise use RQData to query data
+        elif SETTINGS["datasource.api"] == "rqdata":
+            if not rqdata_client.inited:
+                rqdata_client.init()
+
+            data = rqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "jjdata":
+            if not jjdata_client.inited:
+                jjdata_client.init()
+
+            data = jjdata_client.query_history(req, interval)
 
         if data:
             database_manager.save_bar_data(data)

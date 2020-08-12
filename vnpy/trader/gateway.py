@@ -1,7 +1,4 @@
-"""
-
-"""
-
+# -*- coding:utf-8 -*-
 from abc import ABC, abstractmethod
 from typing import Any, Sequence, Dict, List, Optional, Callable
 from copy import copy

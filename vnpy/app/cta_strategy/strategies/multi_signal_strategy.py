@@ -23,7 +23,7 @@ class RsiSignal(CtaSignal):
         self.rsi_long = 50 + self.rsi_level
         self.rsi_short = 50 - self.rsi_level
 
-        self.bg = BarGenerator(self.on_bar)
+        self.bg = BarGenerator(on_bar=self.on_bar)
         self.am = ArrayManager()
 
     def on_tick(self, tick: TickData):
@@ -62,7 +62,7 @@ class CciSignal(CtaSignal):
         self.cci_long = self.cci_level
         self.cci_short = -self.cci_level
 
-        self.bg = BarGenerator(self.on_bar)
+        self.bg = BarGenerator(on_bar=self.on_bar)
         self.am = ArrayManager()
 
     def on_tick(self, tick: TickData):
@@ -99,7 +99,7 @@ class MaSignal(CtaSignal):
         self.fast_window = fast_window
         self.slow_window = slow_window
 
-        self.bg = BarGenerator(self.on_bar, 5, self.on_5min_bar)
+        self.bg = BarGenerator(on_bar=self.on_bar, window=5, on_window_bar=self.on_5min_bar)
         self.am = ArrayManager()
 
     def on_tick(self, tick: TickData):

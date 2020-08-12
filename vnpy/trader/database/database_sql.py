@@ -1,5 +1,6 @@
 """"""
 from datetime import datetime
+from enum import Enum
 from typing import List, Dict, Optional, Sequence, Type
 
 from peewee import (
@@ -101,15 +102,15 @@ def init_models(db: Database, driver: Driver):
             db_bar = DbBarData()
 
             db_bar.symbol = bar.symbol
-            db_bar.exchange = bar.exchange.value
+            db_bar.exchange = bar.exchange.value if isinstance(bar.exchange, Enum) else bar.exchange
             db_bar.datetime = dt
-            db_bar.interval = bar.interval.value
-            db_bar.volume = bar.volume
-            db_bar.open_interest = bar.open_interest
+            db_bar.interval = bar.interval.value if isinstance(bar.interval, Enum) else bar.interval
             db_bar.open_price = bar.open_price
             db_bar.high_price = bar.high_price
             db_bar.low_price = bar.low_price
             db_bar.close_price = bar.close_price
+            db_bar.volume = bar.volume
+            db_bar.open_interest = bar.open_interest
 
             return db_bar
 
@@ -120,14 +121,14 @@ def init_models(db: Database, driver: Driver):
             bar = BarData(
                 symbol=self.symbol,
                 exchange=Exchange(self.exchange),
-                datetime=self.datetime.replace(tzinfo=DB_TZ),
+                datetime=DB_TZ.localize(self.datetime.replace(tzinfo=None)),
                 interval=Interval(self.interval),
-                volume=self.volume,
                 open_price=self.open_price,
                 high_price=self.high_price,
-                open_interest=self.open_interest,
                 low_price=self.low_price,
                 close_price=self.close_price,
+                volume=self.volume,
+                open_interest=self.open_interest,
                 gateway_name="DB",
             )
             return bar
@@ -222,7 +223,7 @@ def init_models(db: Database, driver: Driver):
             db_tick = DbTickData()
 
             db_tick.symbol = tick.symbol
-            db_tick.exchange = tick.exchange.value
+            db_tick.exchange = tick.exchange.value if isinstance(tick.exchange, Enum) else tick.exchange
             db_tick.datetime = dt
             db_tick.name = tick.name
             db_tick.volume = tick.volume
@@ -271,7 +272,7 @@ def init_models(db: Database, driver: Driver):
             tick = TickData(
                 symbol=self.symbol,
                 exchange=Exchange(self.exchange),
-                datetime=self.datetime.replace(tzinfo=DB_TZ),
+                datetime=DB_TZ.localize(self.datetime.replace(tzinfo=None)),
                 name=self.name,
                 volume=self.volume,
                 open_interest=self.open_interest,
@@ -354,8 +355,8 @@ class SqlManager(BaseDatabaseManager):
             self.class_bar.select()
                 .where(
                 (self.class_bar.symbol == symbol)
-                & (self.class_bar.exchange == exchange.value)
-                & (self.class_bar.interval == interval.value)
+                & (self.class_bar.exchange == exchange.value if isinstance(exchange, Enum) else exchange)
+                & (self.class_bar.interval == interval.value if isinstance(interval, Enum) else interval)
                 & (self.class_bar.datetime >= start)
                 & (self.class_bar.datetime <= end)
             )
@@ -372,7 +373,7 @@ class SqlManager(BaseDatabaseManager):
             self.class_tick.select()
                 .where(
                 (self.class_tick.symbol == symbol)
-                & (self.class_tick.exchange == exchange.value)
+                & (self.class_tick.exchange == exchange.value if isinstance(exchange, Enum) else exchange)
                 & (self.class_tick.datetime >= start)
                 & (self.class_tick.datetime <= end)
             )
@@ -397,8 +398,8 @@ class SqlManager(BaseDatabaseManager):
             self.class_bar.select()
                 .where(
                 (self.class_bar.symbol == symbol)
-                & (self.class_bar.exchange == exchange.value)
-                & (self.class_bar.interval == interval.value)
+                & (self.class_bar.exchange == exchange.value if isinstance(exchange, Enum) else exchange)
+                & (self.class_bar.interval == interval.value if isinstance(interval, Enum) else interval)
             )
             .order_by(self.class_bar.datetime.desc())
             .first()
@@ -414,8 +415,8 @@ class SqlManager(BaseDatabaseManager):
             self.class_bar.select()
                 .where(
                 (self.class_bar.symbol == symbol)
-                & (self.class_bar.exchange == exchange.value)
-                & (self.class_bar.interval == interval.value)
+                & (self.class_bar.exchange == exchange.value if isinstance(exchange, Enum) else exchange)
+                & (self.class_bar.interval == interval.value if isinstance(interval, Enum) else interval)
             )
             .order_by(self.class_bar.datetime.asc())
             .first()
@@ -431,7 +432,7 @@ class SqlManager(BaseDatabaseManager):
             self.class_tick.select()
                 .where(
                 (self.class_tick.symbol == symbol)
-                & (self.class_tick.exchange == exchange.value)
+                & (self.class_tick.exchange == exchange.value if isinstance(exchange, Enum) else exchange)
             )
             .order_by(self.class_tick.datetime.desc())
             .first()
@@ -478,8 +479,8 @@ class SqlManager(BaseDatabaseManager):
         """
         query = self.class_bar.delete().where(
             (self.class_bar.symbol == symbol)
-            & (self.class_bar.exchange == exchange.value)
-            & (self.class_bar.interval == interval.value)
+            & (self.class_bar.exchange == exchange.value if isinstance(exchange, Enum) else exchange)
+            & (self.class_bar.interval == interval.value if isinstance(interval, Enum) else interval)
         )
         count = query.execute()
         return count
