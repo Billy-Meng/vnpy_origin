@@ -142,7 +142,7 @@ class CtaEngine(BaseEngine):
             self.write_log(f"{data_source_api}数据接口初始化不成功")
 
     def query_bar_from_rq(
-        self, symbol: str, exchange: Exchange, interval: Interval, frequency: Union[int, str], start: datetime, end: datetime
+        self, symbol: str, exchange: Exchange, interval: Interval, frequency: int, start: datetime, end: datetime
     ):
         """
         Query bar data from RQData.
@@ -164,7 +164,7 @@ class CtaEngine(BaseEngine):
             data = tqdata_client.query_history(req, frequency)
 
         elif SETTINGS["datasource.api"] == "jjdata":
-            data = jjdata_client.query_history(req, frequency)
+            data = jjdata_client.query_history(req, f"{frequency}s")
 
         return data
 
@@ -607,9 +607,6 @@ class CtaEngine(BaseEngine):
         start = end - timedelta(days=days)
         bars = []
 
-        if SETTINGS["datasource.api"] == "jjdata":
-            frequency = f"{frequency}s"
-
         # Pass gateway and RQData if use_database set to True
         if not use_database:
             # Query bars from gateway if available
@@ -630,7 +627,7 @@ class CtaEngine(BaseEngine):
                 bars = self.query_bar_from_rq(symbol, exchange, interval, frequency, start, end)
 
         if not bars:
-            if frequency == "60s" or frequency == 60:
+            if frequency == 60:
                 bars = database_manager.load_bar_data(
                     symbol=symbol,
                     exchange=exchange,

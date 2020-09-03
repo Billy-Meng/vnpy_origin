@@ -61,6 +61,7 @@ class CtaTemplate(ABC):
         self.track_highest = 0           # 记录多单开仓后的最高点，空单入场后的回调高点
         self.track_lowest  = 0           # 记录空单开仓后的最低点，多单入场后的回调低点
         self.track_minute = 0            # 记录新高低点保持多少分钟
+        self.track_list = [0]            # 记录开仓后近期的最高、最低点及阶段回调低点、高点
         self.entry_minute  = 0           # 统计开仓后历时多少分钟
         self.exit_minute   = 0           # 统计平仓后历时多少分钟
         self.floating_point  = 0         # 记录开仓后的浮动盈亏点数
@@ -751,12 +752,13 @@ class CtaTemplate(ABC):
             self.trade_data_dict.update(temp_dict)
             save_json(file_path, self.trade_data_dict)
 
-    def record_price_and_status(self, bar: BarData):
+    def record_price_and_status(self, bar: BarData, track_interval: int = 30):
         """记录和更新每一分钟策略定义的各类价格和状态"""
         if self.pos == 0:
-            self.track_highest = bar.high_price         # 记录多单开仓后的最高点
-            self.track_lowest  = bar.low_price          # 记录空单开仓后的最低点
+            self.track_highest = bar.high_price         # 记录多单开仓后的最高点，或空单开仓后的阶段回调高点
+            self.track_lowest  = bar.low_price          # 记录空单开仓后的最低点， 或多单开仓后的阶段回调低点
             self.track_minute = 0                       # 记录新高低点保持多少分钟
+            self.track_list = [0]                       # 记录开仓后近期的最高、最低点及阶段回调低点、高点
             self.entry_minute  = 0                      # 记录开仓后历时多少分钟
             self.exit_minute  += 1                      # 记录平仓后历时多少分钟
             self.floating_point  = 0                    # 记录开仓后的浮动盈亏点数
@@ -764,6 +766,9 @@ class CtaTemplate(ABC):
 
         elif self.pos > 0:
             if bar.high_price > self.track_highest:
+                if self.track_minute >= track_interval:
+                    self.track_list.append(0)
+
                 self.track_highest = bar.high_price
                 self.track_lowest = bar.low_price
                 self.track_minute = 0
@@ -771,6 +776,7 @@ class CtaTemplate(ABC):
                 self.track_lowest = min(self.track_lowest, bar.low_price)
                 self.track_minute += 1
 
+            self.track_list[-1] = {"highest": self.track_highest, "lowest": self.track_lowest}
             self.entry_minute += 1
             self.exit_minute = 0
             self.floating_point  = bar.close_price - self.cost
@@ -778,6 +784,9 @@ class CtaTemplate(ABC):
 
         elif self.pos < 0:
             if bar.low_price < self.track_lowest:
+                if self.track_minute >= track_interval:
+                    self.track_list.append(0)
+
                 self.track_lowest  = bar.low_price
                 self.track_highest = bar.high_price
                 self.track_minute = 0
@@ -785,6 +794,7 @@ class CtaTemplate(ABC):
                 self.track_highest = max(self.track_highest, bar.high_price)
                 self.track_minute += 1
 
+            self.track_list[-1] = {"highest": self.track_highest, "lowest": self.track_lowest}
             self.entry_minute += 1
             self.exit_minute = 0
             self.floating_point  = self.cost - bar.close_price
@@ -793,7 +803,7 @@ class CtaTemplate(ABC):
     def empty_position(self, data: Union[BarData, TickData], exit_time: time = time(14, 58), lock: bool = False):
         """收盘前清仓"""
         if isinstance(data, BarData):
-            if exit_time <= data.datetime.time() <= time(16, 00):
+            if exit_time <= data.datetime.time() <= time(16, 0):
 
                 self.cancel_all()       # 撤销当前所有挂单
                 
@@ -805,8 +815,15 @@ class CtaTemplate(ABC):
                     self.cover(data.close_price + 100 * self.pricetick, abs(self.pos), lock=lock)
                     self.signal = 4.99
 
+            if data.datetime.time() == time(14, 59):
+                if self.account.pre_balance != self.account.balance:
+                    msg = f'今日账户{self.account.accountid}{"净盈利" if self.account.balance > self.account.pre_balance else "净亏损"}金额：{self.account.balance - self.account.pre_balance}元'
+                    self.write_log(msg)
+                    self.dingding(msg)
+                    # self.weixin(msg)
+
         else:
-            if exit_time <= data.datetime.time() <= time(16, 00):
+            if exit_time <= data.datetime.time() <= time(16, 0):
 
                 self.cancel_all()       # 撤销当前所有挂单
 
@@ -817,6 +834,13 @@ class CtaTemplate(ABC):
                 elif self.pos < 0:
                     self.cover(data.limit_up, abs(self.pos), lock=lock)
                     self.signal = 4.99
+
+            if data.datetime.time() == time(15, 0):
+                if self.account.pre_balance != self.account.balance:
+                    msg = f'今日账户{self.account.accountid}{"净盈利" if self.account.balance > self.account.pre_balance else "净亏损"}金额：{self.account.balance - self.account.pre_balance}元'
+                    self.write_log(msg)
+                    self.dingding(msg)
+                    # self.weixin(msg)
       
 
 class CtaSignal(ABC):

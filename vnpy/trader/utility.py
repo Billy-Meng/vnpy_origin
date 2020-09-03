@@ -2695,13 +2695,24 @@ class DayArrayManager(object):
 class Array():
     def __init__(self, size: int = 100):
         self.array: np.ndarray  = np.zeros(size)
+        self.count: int = 0
+        self.size: int = size
+        self.inited: bool = False
 
     def __getitem__(self, key):
         """Instance[key]"""
         return self.array[key]
 
+    def __len__(self):
+        """Instance长度"""
+        return len(self.array)
+
     def __setitem__(self, key, value):
         """Instance[key] = value"""
+        self.count += 1
+        if not self.inited and self.count >= self.size:
+            self.inited = True
+
         self.array[:key] = self.array[-key:]
         self.array[key] = value
 
