@@ -9,7 +9,7 @@ import os
 import sys
 import shelve
 import requests
-import win32api, win32con
+import win32api, win32con, win32com
 from datetime import datetime, timedelta
 from time import perf_counter
 from pathlib import Path
@@ -283,6 +283,11 @@ def tradedays(start, end):
 
     return counts
 
+def voice_reminder(msg, times=3):
+	speak = win32com.client.Dispatch("SAPI.SpVoice")
+	for i in range(times):
+		speak.Speak(msg)
+
 def popup_warning(msg: str):
     """ 弹窗消息通知 """
     info_time = f'\n时间:{datetime.now().strftime("%Y-%m-%d %H:%M:%S %a")}'
@@ -299,7 +304,7 @@ def send_dingding(msg: str):
 
     program = {
         "msgtype": "text",
-        "text": {"content": msg + info_time},
+        "text": {"content": (msg + info_time).encode("utf-8")},
         # "at": {"isAtAll": True}
     }
 

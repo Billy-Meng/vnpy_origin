@@ -815,13 +815,6 @@ class CtaTemplate(ABC):
                     self.cover(data.close_price + 100 * self.pricetick, abs(self.pos), lock=lock)
                     self.signal = 4.99
 
-            if data.datetime.time() == time(14, 59):
-                if self.account.pre_balance != self.account.balance:
-                    msg = f'今日账户{self.account.accountid}{"净盈利" if self.account.balance > self.account.pre_balance else "净亏损"}金额：{self.account.balance - self.account.pre_balance}元'
-                    self.write_log(msg)
-                    self.dingding(msg)
-                    # self.weixin(msg)
-
         else:
             if exit_time <= data.datetime.time() <= time(16, 0):
 
@@ -834,14 +827,25 @@ class CtaTemplate(ABC):
                 elif self.pos < 0:
                     self.cover(data.limit_up, abs(self.pos), lock=lock)
                     self.signal = 4.99
-
-            if data.datetime.time() == time(15, 0):
+    
+    def daily_briefing(self, data: Union[BarData, TickData]):
+        """每日收盘简报"""
+        if isinstance(data, BarData):
+            if data.datetime.time() == time(14, 59):
                 if self.account.pre_balance != self.account.balance:
-                    msg = f'今日账户{self.account.accountid}{"净盈利" if self.account.balance > self.account.pre_balance else "净亏损"}金额：{self.account.balance - self.account.pre_balance}元'
+                    msg = f'今日{self.account.accountid}账户{"净盈利" if self.account.balance > self.account.pre_balance else "净亏损"}金额：{round(self.account.balance - self.account.pre_balance, 2)}元'
                     self.write_log(msg)
                     self.dingding(msg)
                     # self.weixin(msg)
-      
+        
+        else:
+            if data.datetime.time() == time(15, 0):
+                if self.account.pre_balance != self.account.balance:
+                    msg = f'今日{self.account.accountid}账户{"净盈利" if self.account.balance > self.account.pre_balance else "净亏损"}金额：{round(self.account.balance - self.account.pre_balance, 2)}元'
+                    self.write_log(msg)
+                    self.dingding(msg)
+                    # self.weixin(msg)
+
 
 class CtaSignal(ABC):
     """"""
