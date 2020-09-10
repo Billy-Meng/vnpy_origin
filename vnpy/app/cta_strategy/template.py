@@ -803,7 +803,7 @@ class CtaTemplate(ABC):
     def empty_position(self, data: Union[BarData, TickData], exit_time: time = time(14, 58), lock: bool = False):
         """收盘前清仓"""
         if isinstance(data, BarData):
-            if exit_time <= data.datetime.time() <= time(16, 0):
+            if exit_time <= data.datetime.time() <= time(15, 30):
 
                 self.cancel_all()       # 撤销当前所有挂单
                 
@@ -816,7 +816,7 @@ class CtaTemplate(ABC):
                     self.signal = 4.99
 
         else:
-            if exit_time <= data.datetime.time() <= time(16, 0):
+            if exit_time <= data.datetime.time() <= time(15, 30):
 
                 self.cancel_all()       # 撤销当前所有挂单
 
@@ -839,7 +839,7 @@ class CtaTemplate(ABC):
                     # self.weixin(msg)
         
         else:
-            if data.datetime.time() == time(15, 0):
+            if time(15, 0, 0, 0) <= data.datetime.time() < time(15, 0, 0, 900):
                 if self.account.pre_balance != self.account.balance:
                     msg = f'今日{self.account.accountid}账户{"净盈利" if self.account.balance > self.account.pre_balance else "净亏损"}金额：{round(self.account.balance - self.account.pre_balance, 2)}元'
                     self.write_log(msg)
