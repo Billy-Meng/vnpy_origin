@@ -304,7 +304,7 @@ def send_dingding(msg: str):
 
     program = {
         "msgtype": "text",
-        "text": {"content": (msg + info_time).encode("utf-8")},
+        "text": {"content": msg + info_time},
         # "at": {"isAtAll": True}
     }
 
