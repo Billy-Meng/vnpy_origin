@@ -13,7 +13,7 @@ import win32api, win32con, win32com
 from datetime import datetime, timedelta
 from time import perf_counter
 from pathlib import Path
-from typing import Callable, Dict, Tuple, Union
+from typing import Callable, Dict, Tuple, Union, Optional
 from decimal import Decimal
 from math import floor, ceil
 from collections import defaultdict
@@ -397,8 +397,8 @@ class BarGenerator:
         if not tick.last_price:
             return
 
-        # Filter tick data with older timestamp
-        if self.last_tick and tick.datetime < self.last_tick.datetime:
+        # Filter tick data with less intraday trading volume (i.e. older timestamp)
+        if self.last_tick and tick.volume and tick.volume < self.last_tick.volume:
             return
 
         if not self.bar:
