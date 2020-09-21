@@ -457,11 +457,18 @@ class Mt5Gateway(BaseGateway):
         data = packet["data"]
 
         account = AccountData(
-            accountid=data["name"],
-            balance=data["balance"],
-            frozen=data["margin"],
+            accountid=data["name"],                 # 用户名
+            balance=data["balance"],                # 账户结余
+            position_profit=data["profit"],         # 账户当前利润
+            commission=data["commission_blocked"],  # 账户当前锁定手续费金额
+            frozen=data["margin"],                  # 冻结保证金
+            available=data["free_margin"],          # 可用保证金
+            percent=data["margin_level"],           # 保证金使用率
+            date=str(datetime.now().date()),
+            time=str(datetime.now().time()),
             gateway_name=self.gateway_name
         )
+        account.equity = data["equity"]             # 账户权益
         self.on_account(account)
 
     def on_position_info(self, packet: dict) -> None:
@@ -483,6 +490,9 @@ class Mt5Gateway(BaseGateway):
                 position.volume = -d["volume"]
 
             position.price = d["price"]
+            position.cost_price = d["cost_price"]
+            position.sl_price = d["sl_price"]
+            position.tp_price = d["tp_price"]
             position.pnl = d["current_profit"]
 
             positions[position.symbol] = position
@@ -523,9 +533,13 @@ class Mt5Gateway(BaseGateway):
                 tick.high_price = d["last_high"]
                 tick.low_price = d["last_low"]
             else:
-                tick.last_price = (d["bid"] + d["ask"]) / 2
-                tick.high_price = (d["bid_high"] + d["ask_high"]) / 2
-                tick.low_price = (d["bid_low"] + d["ask_low"]) / 2
+                # tick.last_price = (d["bid"] + d["ask"]) / 2
+                # tick.high_price = (d["bid_high"] + d["ask_high"]) / 2
+                # tick.low_price = (d["bid_low"] + d["ask_low"]) / 2
+
+                tick.last_price = d["bid"]
+                tick.high_price = d["bid_high"]
+                tick.low_price = d["bid_low"]
 
             self.on_tick(tick)
 

@@ -1,6 +1,4 @@
-"""
-"""
-
+# -*- coding:utf-8 -*-
 import logging
 from logging import Logger
 import smtplib
@@ -230,6 +228,14 @@ class MainEngine:
 
         for gateway in self.gateways.values():
             gateway.close()
+
+
+    #--------------------------------------------------------------------------------------------------
+    def save_commission_margin_ratio(self):
+        """保存接口合约手续费率、保证金率数据"""
+        for gateway in self.gateways.values():
+            gateway.save_commission()
+            gateway.save_margin_ratio()
 
 
 class BaseEngine(ABC):

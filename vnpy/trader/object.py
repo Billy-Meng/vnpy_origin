@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 """
 Basic data structure used for general trading function in VN Trader.
 """
@@ -5,6 +6,8 @@ Basic data structure used for general trading function in VN Trader.
 from dataclasses import dataclass
 from datetime import datetime
 from logging import INFO
+from typing import Union
+from enum import Enum
 
 from .constant import Direction, Exchange, Interval, Offset, Status, Product, OptionType, OrderType
 
@@ -86,7 +89,7 @@ class BarData(BaseData):
     exchange: Exchange
     datetime: datetime
 
-    interval: Interval = None
+    interval: Union[Interval, str] = None
     volume: float = 0
     open_interest: float = 0
     open_price: float = 0
@@ -96,7 +99,7 @@ class BarData(BaseData):
 
     def __post_init__(self):
         """"""
-        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value if isinstance(self.exchange, Enum) else self.exchange}"
 
 
 @dataclass
@@ -123,6 +126,7 @@ class OrderData(BaseData):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
         self.vt_orderid = f"{self.gateway_name}.{self.orderid}"
+        self.untraded = self.volume - self.traded
 
     def is_active(self) -> bool:
         """
@@ -176,13 +180,12 @@ class PositionData(BaseData):
 
     symbol: str
     exchange: Exchange
-    direction: Direction
-
-    volume: float = 0
-    frozen: float = 0
-    price: float = 0
-    pnl: float = 0
-    yd_volume: float = 0
+    direction: Direction                # 交易方向
+    volume: float = 0                   # 今仓数量
+    frozen: float = 0                   # 冻结数量
+    price: float = 0                    # 开仓均价
+    pnl: float = 0                      # 持仓盈亏
+    yd_volume: float = 0                # 昨仓数量
 
     def __post_init__(self):
         """"""
@@ -197,16 +200,35 @@ class AccountData(BaseData):
     available.
     """
 
-    accountid: str
-
-    balance: float = 0
-    frozen: float = 0
+    accountid: str                      #账户ID
+    balance: float = 0                  #今日总资金
+    pre_balance: float = 0              #上个交易日总资金(币圈交易所为人民币计价总资金)
+    available: float = 0                #可用资金
+    percent: float = 0                  #资金使用率
+    frozen: float = 0                   #冻结资金
+    commission: float = 0               #手续费
+    margin: float = 0                   #占用保证金
+    close_profit: float = 0             #平仓盈亏
+    position_profit: float = 0          #持仓盈亏
+    date: str = ""                      #日期
+    time: str = ""                      #时间
 
     def __post_init__(self):
         """"""
-        self.available = self.balance - self.frozen
         self.vt_accountid = f"{self.gateway_name}.{self.accountid}"
 
+        #账户当前日期
+        if self.date and '.' in self.time:
+            if '-' in self.date:
+                self.datetime = datetime.strptime(' '.join([self.date,self.time]),'%Y-%m-%d %H:%M:%S.%f')
+            else:
+                self.datetime = datetime.strptime(' '.join([self.date,self.time]),'%Y%m%d %H:%M:%S.%f')
+        else:
+            if self.date:
+                if '-' in self.date:
+                    self.datetime = datetime.strptime(' '.join([self.date,self.time]),'%Y-%m-%d %H:%M:%S')
+                else:
+                    self.datetime = datetime.strptime(' '.join([self.date,self.time]),'%Y%m%d %H:%M:%S')
 
 @dataclass
 class LogData(BaseData):
@@ -232,8 +254,17 @@ class ContractData(BaseData):
     exchange: Exchange
     name: str
     product: Product
-    size: int
-    pricetick: float
+    size: int                                           # 合约乘数
+    pricetick: float                                    # 最小变动价位
+
+    margin_ratio : float = 0                            # 保证金比率
+    max_order_volume : float = 0                        # 限价单最大单次委托量
+    open_commission_ratio : float = 0                   # 开仓手续费率
+    open_commission : float = 0                         # 开仓手续费
+    close_commission_ratio : float = 0                  # 平仓手续费率
+    close_commission : float = 0                        # 平仓手续费  
+    close_commission_today_ratio : float = 0            # 平今手续费率
+    close_commission_today : float = 0                  # 平今手续费
 
     min_volume: float = 1           # minimum trading volume of the contract
     stop_supported: bool = False    # whether server supports stop order

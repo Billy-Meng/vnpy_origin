@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 """
 Defines constants and objects used in CtaStrategy App.
 """
@@ -47,6 +48,8 @@ EVENT_CTA_STRATEGY = "eCtaStrategy"
 EVENT_CTA_STOPORDER = "eCtaStopOrder"
 
 INTERVAL_DELTA_MAP = {
+    Interval.SECOND: timedelta(seconds=1),
+    Interval.SECOND_5: timedelta(seconds=5),
     Interval.MINUTE: timedelta(minutes=1),
     Interval.HOUR: timedelta(hours=1),
     Interval.DAILY: timedelta(days=1),

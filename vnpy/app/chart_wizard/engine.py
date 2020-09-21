@@ -1,4 +1,4 @@
-""""""
+# -*- coding:utf-8 -*-
 from datetime import datetime
 from threading import Thread
 
@@ -6,7 +6,9 @@ from vnpy.event import Event, EventEngine
 from vnpy.trader.engine import BaseEngine, MainEngine
 from vnpy.trader.constant import Interval
 from vnpy.trader.object import HistoryRequest, ContractData
-from vnpy.trader.rqdata import rqdata_client
+from vnpy.trader.datasource.rqdata import rqdata_client
+from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.setting import SETTINGS
 
 
 APP_NAME = "ChartWizard"
@@ -21,7 +23,17 @@ class ChartWizardEngine(BaseEngine):
         """"""
         super().__init__(main_engine, event_engine, APP_NAME)
 
-        rqdata_client.init()
+        if SETTINGS["datasource.api"] == "jqdata":
+            if not jqdata_client.inited:
+                jqdata_client.init()
+
+        elif SETTINGS["datasource.api"] == "rqdata":
+            if not rqdata_client.inited:
+                rqdata_client.init()
+
+        elif SETTINGS["datasource.api"] == "tqdata":
+            if not tqdata_client.inited:
+                tqdata_client.init()
 
     def query_history(
         self,
@@ -57,7 +69,11 @@ class ChartWizardEngine(BaseEngine):
 
         if contract.history_data:
             data = self.main_engine.query_history(req, contract.gateway_name)
-        else:
+        
+        elif SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
+            data = jqdata_client.query_history(req)
+
+        elif SETTINGS["datasource.api"] == "rqdata":
             data = rqdata_client.query_history(req)
 
         event = Event(EVENT_CHART_HISTORY, data)

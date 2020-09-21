@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, Sequence, List
 
@@ -8,6 +8,8 @@ from vnpy.trader.constant import Exchange, Interval
 from vnpy.trader.object import BarData, TickData
 
 from .database import BaseDatabaseManager, Driver, DB_TZ
+
+TZ_OFFSET = int(datetime.now(DB_TZ).utcoffset().total_seconds()/60/60)      # 当前时区偏移量（东八区）
 
 
 def init(_: Driver, settings: dict):
@@ -63,6 +65,29 @@ class DbBarData(Document):
         ]
     }
 
+    @staticmethod
+    def from_bar(bar: BarData):
+        """
+        Generate DbBarData object from BarData.
+        """
+        dt = bar.datetime.astimezone(DB_TZ)
+        dt = dt.replace(tzinfo=None)
+
+        db_bar = DbBarData()
+
+        db_bar.symbol = bar.symbol
+        db_bar.exchange = bar.exchange.value if isinstance(bar.exchange, Enum) else bar.exchange
+        db_bar.datetime = dt
+        db_bar.interval = bar.interval.value if isinstance(bar.interval, Enum) else bar.interval
+        db_bar.volume = bar.volume
+        db_bar.open_interest = bar.open_interest
+        db_bar.open_price = bar.open_price
+        db_bar.high_price = bar.high_price
+        db_bar.low_price = bar.low_price
+        db_bar.close_price = bar.close_price
+
+        return db_bar
+
     def to_bar(self):
         """
         Generate BarData object from DbBarData.
@@ -70,7 +95,7 @@ class DbBarData(Document):
         bar = BarData(
             symbol=self.symbol,
             exchange=Exchange(self.exchange),
-            datetime=self.datetime.replace(tzinfo=DB_TZ),
+            datetime=DB_TZ.localize(self.datetime + timedelta(hours=TZ_OFFSET)),    # 转换成东八区时间
             interval=Interval(self.interval),
             volume=self.volume,
             open_interest=self.open_interest,
@@ -141,6 +166,59 @@ class DbTickData(Document):
         ],
     }
 
+    @staticmethod
+    def from_tick(tick: TickData):
+        """
+        Generate DbTickData object from TickData.
+        """
+        dt = tick.datetime.astimezone(DB_TZ)
+        dt = dt.replace(tzinfo=None)
+
+        db_tick = DbTickData()
+
+        db_tick.symbol = tick.symbol
+        db_tick.exchange = tick.exchange.value if isinstance(tick.exchange, Enum) else tick.exchange
+        db_tick.datetime = dt
+        db_tick.name = tick.name
+        db_tick.volume = tick.volume
+        db_tick.open_interest = tick.open_interest
+        db_tick.last_price = tick.last_price
+        db_tick.last_volume = tick.last_volume
+        db_tick.limit_up = tick.limit_up
+        db_tick.limit_down = tick.limit_down
+        db_tick.open_price = tick.open_price
+        db_tick.high_price = tick.high_price
+        db_tick.low_price = tick.low_price
+        db_tick.pre_close = tick.pre_close
+
+        db_tick.bid_price_1 = tick.bid_price_1
+        db_tick.ask_price_1 = tick.ask_price_1
+        db_tick.bid_volume_1 = tick.bid_volume_1
+        db_tick.ask_volume_1 = tick.ask_volume_1
+
+        if tick.bid_price_2:
+            db_tick.bid_price_2 = tick.bid_price_2
+            db_tick.bid_price_3 = tick.bid_price_3
+            db_tick.bid_price_4 = tick.bid_price_4
+            db_tick.bid_price_5 = tick.bid_price_5
+
+            db_tick.ask_price_2 = tick.ask_price_2
+            db_tick.ask_price_3 = tick.ask_price_3
+            db_tick.ask_price_4 = tick.ask_price_4
+            db_tick.ask_price_5 = tick.ask_price_5
+
+            db_tick.bid_volume_2 = tick.bid_volume_2
+            db_tick.bid_volume_3 = tick.bid_volume_3
+            db_tick.bid_volume_4 = tick.bid_volume_4
+            db_tick.bid_volume_5 = tick.bid_volume_5
+
+            db_tick.ask_volume_2 = tick.ask_volume_2
+            db_tick.ask_volume_3 = tick.ask_volume_3
+            db_tick.ask_volume_4 = tick.ask_volume_4
+            db_tick.ask_volume_5 = tick.ask_volume_5
+
+        return db_tick
+
     def to_tick(self):
         """
         Generate TickData object from DbTickData.
@@ -148,7 +226,7 @@ class DbTickData(Document):
         tick = TickData(
             symbol=self.symbol,
             exchange=Exchange(self.exchange),
-            datetime=self.datetime.replace(tzinfo=DB_TZ),
+            datetime=DB_TZ.localize(self.datetime + timedelta(hours=TZ_OFFSET)),    # 转换成东八区时间
             name=self.name,
             volume=self.volume,
             open_interest=self.open_interest,
@@ -203,8 +281,8 @@ class MongoManager(BaseDatabaseManager):
     ) -> Sequence[BarData]:
         s = DbBarData.objects(
             symbol=symbol,
-            exchange=exchange.value,
-            interval=interval.value,
+            exchange=exchange.value if isinstance(exchange, Enum) else exchange,
+            interval=interval.value if isinstance(interval, Enum) else interval,
             datetime__gte=start,
             datetime__lte=end,
         )
@@ -216,7 +294,7 @@ class MongoManager(BaseDatabaseManager):
     ) -> Sequence[TickData]:
         s = DbTickData.objects(
             symbol=symbol,
-            exchange=exchange.value,
+            exchange=exchange.value if isinstance(exchange, Enum) else exchange,
             datetime__gte=start,
             datetime__lte=end,
         )
@@ -241,7 +319,9 @@ class MongoManager(BaseDatabaseManager):
             updates.pop("set__vt_symbol")
             (
                 DbBarData.objects(
-                    symbol=d.symbol, interval=d.interval.value, datetime=d.datetime
+                    symbol=d.symbol,
+                    interval=d.interval.value if isinstance(d.interval, Enum) else d.interval,
+                    datetime=d.datetime
                 ).update_one(upsert=True, **updates)
             )
 
@@ -252,7 +332,9 @@ class MongoManager(BaseDatabaseManager):
             updates.pop("set__vt_symbol")
             (
                 DbTickData.objects(
-                    symbol=d.symbol, exchange=d.exchange.value, datetime=d.datetime
+                    symbol=d.symbol,
+                    exchange=d.exchange.value if isinstance(d.exchange, Enum) else d.exchange,
+                    datetime=d.datetime
                 ).update_one(upsert=True, **updates)
             )
 
@@ -262,8 +344,8 @@ class MongoManager(BaseDatabaseManager):
         s = (
             DbBarData.objects(
                 symbol=symbol,
-                exchange=exchange.value,
-                interval=interval.value
+                exchange=exchange.value if isinstance(exchange, Enum) else exchange,
+                interval=interval.value if isinstance(interval, Enum) else interval
             )
             .order_by("-datetime")
             .first()
@@ -278,8 +360,8 @@ class MongoManager(BaseDatabaseManager):
         s = (
             DbBarData.objects(
                 symbol=symbol,
-                exchange=exchange.value,
-                interval=interval.value
+                exchange=exchange.value if isinstance(exchange, Enum) else exchange,
+                interval=interval.value if isinstance(interval, Enum) else interval
             )
             .order_by("+datetime")
             .first()
@@ -292,7 +374,10 @@ class MongoManager(BaseDatabaseManager):
         self, symbol: str, exchange: "Exchange"
     ) -> Optional["TickData"]:
         s = (
-            DbTickData.objects(symbol=symbol, exchange=exchange.value)
+            DbTickData.objects(
+                symbol=symbol,
+                exchange=exchange.value if isinstance(exchange, Enum) else exchange
+            )
             .order_by("-datetime")
             .first()
         )
@@ -335,8 +420,8 @@ class MongoManager(BaseDatabaseManager):
         """
         count = DbBarData.objects(
             symbol=symbol,
-            exchange=exchange.value,
-            interval=interval.value
+            exchange=exchange.value if isinstance(exchange, Enum) else exchange,
+            interval=interval.value if isinstance(interval, Enum) else interval
         ).delete()
 
         return count

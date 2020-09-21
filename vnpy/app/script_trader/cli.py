@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 from typing import Sequence, Type
 
 from vnpy.event import EventEngine, Event
