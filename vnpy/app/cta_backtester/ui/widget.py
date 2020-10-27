@@ -5,7 +5,7 @@ from copy import copy
 
 import numpy as np
 import pyqtgraph as pg
-
+import talib
 
 from vnpy.trader.constant import Interval, Direction, Offset, RateType
 from vnpy.trader.engine import MainEngine
@@ -1314,7 +1314,11 @@ class CandleChartDialog(QtWidgets.QDialog):
         self.updated = True
         self.chart.update_history(history)
 
+        self.close_data = []
+
         for ix, bar in enumerate(history):
+            self.close_data.append(bar.close_price)
+
             self.ix_bar_map[ix] = bar
             self.dt_ix_map[bar.datetime] = ix
 
@@ -1422,6 +1426,28 @@ class CandleChartDialog(QtWidgets.QDialog):
         trade_scatter = pg.ScatterPlotItem(scatter_data)
         self.items.append(trade_scatter)
         candle_plot.addItem(trade_scatter)
+
+        # 画布林带
+        boll_window = 20
+        boll_mid = talib.SMA(np.array(self.close_data), boll_window)
+        boll_std = talib.STDDEV(np.array(self.close_data), boll_window)
+        boll_up = boll_mid + boll_std * 2
+        boll_down = boll_mid - boll_std * 2
+
+        boll_color = QtGui.QColor("blue")
+        pen = pg.mkPen(boll_color, width=1, style=QtCore.Qt.SolidLine)
+        boll_x = list(range(len(boll_up)))
+        boll_up_line = pg.PlotCurveItem(boll_x[boll_window:], boll_up[boll_window:], pen=pen)
+        boll_down_line = pg.PlotCurveItem(boll_x[boll_window:], boll_down[boll_window:], pen=pen)
+        boll_mid_line = pg.PlotCurveItem(boll_x[boll_window:], boll_mid[boll_window:], pen=pen)
+
+        candle_plot.addItem(boll_up_line)
+        candle_plot.addItem(boll_down_line)
+        candle_plot.addItem(boll_mid_line)
+
+        self.items.append(boll_up_line)
+        self.items.append(boll_down_line)
+        self.items.append(boll_mid_line)
 
     def clear_data(self):
         """"""
