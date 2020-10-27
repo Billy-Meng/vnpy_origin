@@ -9,6 +9,7 @@ import os
 import sys
 import shelve
 import requests
+import smtplib
 import win32api, win32con, win32com
 from datetime import datetime, timedelta
 from time import perf_counter
@@ -17,6 +18,7 @@ from typing import Callable, Dict, Tuple, Union, Optional
 from decimal import Decimal
 from math import floor, ceil
 from collections import defaultdict
+from email.message import EmailMessage
 
 import numpy as np
 import pandas as pd
@@ -336,6 +338,28 @@ def send_weixin(msg: str):
     for sckey in weixin_sckey_list:
         url = f"https://sc.ftqq.com/{sckey}.send"
         requests.get(url, params=program)
+
+def send_email(subject: str, content: str, receiver: str = ""):
+    """发送电子邮件"""
+    msg = EmailMessage()
+    msg["From"] = SETTINGS["email.sender"]
+    msg["To"] = SETTINGS["email.receiver"]
+    msg["Subject"] = subject
+    msg.set_content(content)
+
+    # 开启发信服务
+    server = smtplib.SMTP_SSL(SETTINGS["email.server"])
+    # 设置发件人邮箱的域名和端口
+    server.connect(SETTINGS["email.server"], SETTINGS["email.port"])
+    # 登录发信邮箱
+    server.login(SETTINGS["email.username"], SETTINGS["email.password"])
+    # 发送邮件
+    if not receiver:
+        server.sendmail(SETTINGS["email.sender"], SETTINGS["email.receiver"], msg.as_string())
+    else:
+        server.sendmail(SETTINGS["email.sender"], receiver, msg.as_string())
+    # 关闭服务器
+    server.quit()
 
 
 class BarGenerator:
