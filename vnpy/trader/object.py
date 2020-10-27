@@ -121,6 +121,7 @@ class OrderData(BaseData):
     traded: float = 0
     status: Status = Status.SUBMITTING
     datetime: datetime = None
+    reference: str = ""
 
     def __post_init__(self):
         """"""
@@ -329,6 +330,7 @@ class OrderRequest:
             offset=self.offset,
             price=self.price,
             volume=self.volume,
+            reference=self.reference,
             gateway_name=gateway_name,
         )
         return order

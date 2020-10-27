@@ -429,7 +429,7 @@ class BarGenerator:
             new_minute = True
         
         # 官方版本合成方式。从每分钟的00秒开始，到本分钟59秒，合成一分钟bar，bar的时间戳为合成起始时间。Bug:会丢失交易所休市时最后一两个推送的Tick数据。
-        elif self.bar.datetime.minute != tick.datetime.minute:
+        elif (self.bar.datetime.minute != tick.datetime.minute) or (self.bar.datetime.hour != tick.datetime.hour):
         
         # 从每分钟的50秒开始，到下一分钟的49秒，合成一分钟bar
         # elif tick.datetime.second >= 50 and self.last_tick.datetime.second < 50:
@@ -1311,14 +1311,14 @@ class ArrayManager(object):
             return result
         return result[-1]
 
-    def ultosc(self, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
+    def ultosc(self, time_period1: int = 7, time_period2: int = 14, time_period3: int = 28, array: bool = False, log: bool = False) -> Union[float, np.ndarray]:
         """
         Ultimate Oscillator. 终极波动指标：UOS是一种多方位功能的指标，除了趋势确认及超买超卖方面的作用之外，它的“突破”讯号不仅可以提供最适当的交易时机之外，更可以进一步加强指标的可靠度。
         """
         if log:
-            result = talib.ULTOSC(np.log(self.high), np.log(self.low), np.log(self.close))
+            result = talib.ULTOSC(np.log(self.high), np.log(self.low), np.log(self.close), time_period1, time_period2, time_period3)
         else:
-            result = talib.ULTOSC(self.high, self.low, self.close)
+            result = talib.ULTOSC(self.high, self.low, self.close, time_period1, time_period2, time_period3)
 
         if array:
             return result

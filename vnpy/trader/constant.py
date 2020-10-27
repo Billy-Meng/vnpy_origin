@@ -156,6 +156,7 @@ class Interval(Enum):
     """
     Interval of bar data.
     """
+    TICK = "tick"
     SECOND = "1s"
     SECOND_5 = "5s"
     MINUTE = "1m"
@@ -163,10 +164,10 @@ class Interval(Enum):
     DAILY = "d"
     WEEKLY = "w"
 
-
 class RateType(Enum):
     """
     手续费模式
     """
     FLOAT = "浮动手续费"
     FIXED = "固定手续费"
+

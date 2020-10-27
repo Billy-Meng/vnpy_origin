@@ -11,7 +11,7 @@ from rqdatac.share.errors import AuthenticationFailed
 
 from .setting import SETTINGS
 from .constant import Exchange, Interval
-from .object import BarData, HistoryRequest
+from .object import BarData, TickData, HistoryRequest
 
 
 INTERVAL_VT2RQ = {
