@@ -142,6 +142,9 @@ class Exchange(Enum):
     # 香港交易所
     HKEX = "HKEX"
 
+    # 食糖购销系统
+    SR = "SR"
+
 
 class Currency(Enum):
     """
