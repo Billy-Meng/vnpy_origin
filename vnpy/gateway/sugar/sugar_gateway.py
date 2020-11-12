@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Callable, Type, Union
 from types import TracebackType
 from functools import lru_cache
 import requests
+import wmi
 
 from vnpy.api.rest import RestClient, Request
 from vnpy.trader.constant import (
@@ -72,8 +73,6 @@ class SugarGateway(BaseGateway):
         "开放账号": "",
         "加密KEY": "",
         "TOKEN": "",
-        "IP地址": "",
-        "MAC地址": "",      # CMD运行"getmac"获取物理地址
         "会话线程": 8,
     }
 
@@ -99,11 +98,9 @@ class SugarGateway(BaseGateway):
         open_account = setting["开放账号"]
         key = setting["加密KEY"]
         token = setting["TOKEN"]
-        ip_address = setting["IP地址"]
-        mac_address = setting["MAC地址"]
         session_number = setting["会话线程"]
 
-        self.rest_api.connect(open_account, key, token, ip_address, mac_address, session_number)
+        self.rest_api.connect(open_account, key, token, session_number)
 
         self.init_query()
 
@@ -176,8 +173,8 @@ class SugarRestApi(RestClient):
         self.open_account: str = ""
         self.key: str = ""
         self.token: str = ""
-        self.ip_address: str = ""
-        self.mac_address: str = ""
+        self.ip_address: str = self.get_ip_address()
+        self.mac_address: str = self.get_mac_address()
 
         self.subscribe_symbol: set = set()
         self.trade_businessNo: set = set()
@@ -192,8 +189,6 @@ class SugarRestApi(RestClient):
         open_account: str,
         key: str,
         token: str,
-        ip_address: str,
-        mac_address: str,
         session_number: int,
     ) -> None:
         """
@@ -202,8 +197,6 @@ class SugarRestApi(RestClient):
         self.open_account = open_account
         self.key = key
         self.token = token
-        self.ip_address = ip_address
-        self.mac_address = mac_address
 
         self.init(REST_HOST)
         self.start(session_number)
@@ -765,6 +758,22 @@ class SugarRestApi(RestClient):
         sign_str = get_sha1_secret_str(body_str)
 
         return sign_str
+        
+    def get_ip_address(self):
+        """获取计算机公网IP地址"""
+        f = requests.get("http://myip.dnsomatic.com")
+        ip_address = f.text
+        return ip_address
+        
+    def get_mac_address(self):
+        """获取计算机MAC物理地址(CMD运行"getmac"获取物理地址)"""
+        c = wmi.WMI()
+
+        mac_address = ""
+        for interface in c.Win32_NetworkAdapterConfiguration(IPEnabled=1):
+            mac_address = interface.MACAddress
+
+        return mac_address
 
 
 @lru_cache(maxsize=999, typed=True)
