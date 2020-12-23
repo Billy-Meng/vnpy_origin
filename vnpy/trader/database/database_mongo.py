@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, Sequence, List
+from tzlocal import get_localzone
 
 from mongoengine import DateTimeField, Document, FloatField, StringField, connect
 
@@ -10,6 +11,9 @@ from vnpy.trader.object import BarData, TickData
 from .database import BaseDatabaseManager, Driver, DB_TZ
 
 TZ_OFFSET = int(datetime.now(DB_TZ).utcoffset().total_seconds()/60/60)      # 当前时区偏移量（东八区）
+
+
+LOCAL_TZ = get_localzone()
 
 
 def init(_: Driver, settings: dict):
@@ -283,8 +287,8 @@ class MongoManager(BaseDatabaseManager):
             symbol=symbol,
             exchange=exchange.value if isinstance(exchange, Enum) else exchange,
             interval=interval.value if isinstance(interval, Enum) else interval,
-            datetime__gte=start,
-            datetime__lte=end,
+            datetime__gte=convert_tz(start),
+            datetime__lte=convert_tz(end),
         )
         data = [db_bar.to_bar() for db_bar in s]
         return data
@@ -295,8 +299,8 @@ class MongoManager(BaseDatabaseManager):
         s = DbTickData.objects(
             symbol=symbol,
             exchange=exchange.value if isinstance(exchange, Enum) else exchange,
-            datetime__gte=start,
-            datetime__lte=end,
+            datetime__gte=convert_tz(start),
+            datetime__lte=convert_tz(end),
         )
         data = [db_tick.to_tick() for db_tick in s]
         return data
@@ -429,3 +433,11 @@ class MongoManager(BaseDatabaseManager):
     def clean(self, symbol: str):
         DbTickData.objects(symbol=symbol).delete()
         DbBarData.objects(symbol=symbol).delete()
+
+
+def convert_tz(dt: datetime):
+    """"""
+    if not dt.tzinfo:
+        dt = LOCAL_TZ.localize(dt)
+    dt = dt.astimezone(DB_TZ)
+    return dt.replace(tzinfo=None)

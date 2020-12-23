@@ -127,6 +127,7 @@ class BacktestingEngine:
         self.size = 1
         self.pricetick = 0
         self.capital = 1_000_000
+        self.risk_free: float = 0.02
         self.mode = BacktestingMode.BAR
         self.inverse = False
 
@@ -209,7 +210,8 @@ class BacktestingEngine:
         capital: int = 0,
         end: datetime = None,
         mode: BacktestingMode = BacktestingMode.BAR,
-        inverse: bool = False
+        inverse: bool = False,
+        risk_free: float = 0
     ):
         """"""
         self.mode = mode
@@ -229,6 +231,7 @@ class BacktestingEngine:
         self.end = end
         self.mode = mode
         self.inverse = inverse
+        self.risk_free = risk_free
 
     def add_strategy(self, strategy_class: type, setting: dict):
         """"""
@@ -251,8 +254,9 @@ class BacktestingEngine:
         self.history_data.clear()       # Clear previously loaded history data
 
         # # Load 30 days of data each time and allow for progress update
-        # progress_delta = timedelta(days=30)
-        # total_delta = self.end - self.start
+        # total_days = (self.end - self.start).days
+        # progress_days = int(total_days / 10)
+        # progress_delta = timedelta(days=progress_days)
         # interval_delta = INTERVAL_DELTA_MAP[self.interval]
 
         # start = self.start
@@ -260,6 +264,9 @@ class BacktestingEngine:
         # progress = 0
 
         # while start < self.end:
+        #     progress_bar = "#" * int(progress * 10 + 1)
+        #     self.output(f"加载进度：{progress_bar} [{progress:.0%}]")
+
         #     end = min(end, self.end)  # Make sure end time stays within set range
 
         #     if self.mode == BacktestingMode.BAR:
@@ -280,13 +287,11 @@ class BacktestingEngine:
 
         #     self.history_data.extend(data)
 
-        #     progress += progress_delta / total_delta
+        #     progress += progress_days / total_days
         #     progress = min(progress, 1)
-        #     progress_bar = "#" * int(progress * 10)
-        #     self.output(f"加载进度：{progress_bar} [{progress:.0%}]")
 
         #     start = end + interval_delta
-        #     end += (progress_delta + interval_delta)
+        #     end += progress_delta
 
 
         # 简化历史数据加载流程
@@ -297,8 +302,7 @@ class BacktestingEngine:
 
         self.history_data = data
 
-
-        self.output(f"历史数据加载完成，数据量：{len(self.history_data)}")        
+        self.output(f"历史数据加载完成，数据量：{len(self.history_data)}")
 
         self.get_bar_data_df()          # 获取加载的Bar历史数据，生成 DataFrame，并赋值给 self.bar_data_df
 
@@ -338,13 +342,27 @@ class BacktestingEngine:
         self.output("开始回放历史数据")
 
         # Use the rest of history data for running backtesting
-        for data in self.history_data[ix:]:
-            try:
-                func(data)
-            except Exception:
-                self.output("触发异常，回测终止")
-                self.output(traceback.format_exc())
-                return
+        backtesting_data = self.history_data[ix:]
+        if not backtesting_data:
+            self.output("历史数据不足，回测终止")
+            return
+
+        total_size = len(backtesting_data)
+        batch_size = int(total_size / 10)
+
+        for ix, i in enumerate(range(0, total_size, batch_size)):
+            batch_data = backtesting_data[i: i + batch_size]
+            for data in batch_data:
+                try:
+                    func(data)
+                except Exception:
+                    self.output("触发异常，回测终止")
+                    self.output(traceback.format_exc())
+                    return
+
+            progress = min(ix / 10, 1)
+            progress_bar = "=" * (ix + 1)
+            self.output(f"回放进度：{progress_bar} [{progress:.0%}]")
 
         self.strategy.on_stop()
         self.output("历史数据回放结束")
@@ -658,7 +676,7 @@ class BacktestingEngine:
         ga_mode = self.mode
         ga_inverse = self.inverse
 
-        # Set up genetic algorithem
+        # Set up genetic algorithm
         toolbox = base.Toolbox()
         toolbox.register("individual", tools.initIterate, creator.Individual, generate_parameter)
         toolbox.register("population", tools.initRepeat, list, toolbox.individual)

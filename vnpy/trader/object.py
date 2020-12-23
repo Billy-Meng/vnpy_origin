@@ -255,7 +255,7 @@ class ContractData(BaseData):
     exchange: Exchange
     name: str
     product: Product
-    size: int                                           # 合约乘数
+    size: float                                         # 合约乘数
     pricetick: float                                    # 最小变动价位
 
     margin_ratio : float = 0                            # 保证金比率
