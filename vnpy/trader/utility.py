@@ -403,6 +403,7 @@ class BarGenerator:
         self.interval_count: int = 0
         
         self.last_bar: BarData = None
+
         self.window: int = window
         self.on_window_bar: Callable = on_window_bar
 
@@ -609,9 +610,13 @@ class BarGenerator:
         # Otherwise, update high/low price into window bar
         else:
             self.window_bar.high_price = max(
-                self.window_bar.high_price, bar.high_price)
+                self.window_bar.high_price,
+                bar.high_price
+            )
             self.window_bar.low_price = min(
-                self.window_bar.low_price, bar.low_price)
+                self.window_bar.low_price,
+                bar.low_price
+            )
 
         # Update close price/volume into window bar
         self.window_bar.close_price = bar.close_price

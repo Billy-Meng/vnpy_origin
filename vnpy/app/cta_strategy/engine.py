@@ -40,6 +40,7 @@ from vnpy.trader.constant import (
 from vnpy.trader.utility import load_json, save_json, extract_vt_symbol, round_to
 from vnpy.trader.database import database_manager
 from vnpy.trader.converter import OffsetConverter
+from vnpy.trader.database import database_manager
 
 from vnpy.trader.datasource import datasource_client
 from vnpy.trader.datasource.rqdata import rqdata_client

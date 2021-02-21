@@ -33,3 +33,4 @@ QScintilla==2.11.4
 plotly
 quickfix
 trading-calendars
+influxdb
