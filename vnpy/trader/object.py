@@ -123,6 +123,8 @@ class OrderData(BaseData):
     datetime: datetime = None
     reference: str = ""
 
+    entrustNo: str = ""     # suger_gateway 委托单特殊字段
+
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"

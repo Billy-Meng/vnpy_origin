@@ -30,6 +30,7 @@ class SpreadAlgoTemplate:
         payup: int,
         interval: int,
         lock: bool,
+        offset_convert: bool
     ):
         """"""
         self.algo_engine = algo_engine
@@ -45,6 +46,7 @@ class SpreadAlgoTemplate:
         self.payup: int = payup
         self.interval = interval
         self.lock = lock
+        self.offset_convert = offset_convert
 
         if direction == Direction.LONG:
             self.target = volume
@@ -315,7 +317,9 @@ class SpreadAlgoTemplate:
             price,
             volume,
             direction,
-            self.lock
+            self.offset,
+            self.lock,
+            self.offset_convert
         )
 
         self.leg_orders[vt_symbol].extend(vt_orderids)

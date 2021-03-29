@@ -555,7 +555,8 @@ class SpreadAlgoEngine:
         volume: float,
         payup: int,
         interval: int,
-        lock: bool
+        lock: bool,
+        offset_convert: bool
     ) -> str:
         # Find spread object
         spread = self.spreads.get(spread_name, None)
@@ -579,7 +580,8 @@ class SpreadAlgoEngine:
             volume,
             payup,
             interval,
-            lock
+            lock,
+            offset_convert
         )
         self.algos[algoid] = algo
 
@@ -621,27 +623,49 @@ class SpreadAlgoEngine:
         price: float,
         volume: float,
         direction: Direction,
-        lock: bool
+        offset: Offset,
+        lock: bool,
+        offset_convert: bool,
     ) -> List[str]:
         """"""
         holding = self.offset_converter.get_position_holding(vt_symbol)
         contract = self.main_engine.get_contract(vt_symbol)
 
-        if direction == Direction.LONG:
-            available = holding.short_pos - holding.short_pos_frozen
-        else:
-            available = holding.long_pos - holding.long_pos_frozen
+        if offset_convert:
+            if direction == Direction.LONG:
+                available = holding.short_pos - holding.short_pos_frozen
+            else:
+                available = holding.long_pos - holding.long_pos_frozen
 
-        # If no position to close, just open new
-        if not available:
-            offset = Offset.OPEN
-        # If enougth position to close, just close old
-        elif volume < available:
-            offset = Offset.CLOSE
-        # Otherwise, just close existing position
+            # If no position to close, just open new
+            if not available:
+                offset = Offset.OPEN
+            # If enougth position to close, just close old
+            elif volume < available:
+                offset = Offset.CLOSE
+            # Otherwise, just close existing position
+            else:
+                volume = available
+                offset = Offset.CLOSE
+        
         else:
-            volume = available
-            offset = Offset.CLOSE
+            if offset == Offset.CLOSE:
+                if direction == Direction.LONG:
+                    short_available = holding.short_pos - holding.short_pos_frozen
+                    if not short_available:
+                        self.write_algo_log(algo, f"合约腿{contract}剩余可平空单数量为零！")
+                        return []
+
+                    elif volume > short_available:
+                        volume = short_available
+                else:
+                    long_available = holding.long_pos - holding.long_pos_frozen
+                    if not long_available:
+                        self.write_algo_log(algo, f"合约腿{contract}剩余可平多单数量为零！")
+                        return []
+
+                    elif volume > long_available:
+                        volume = long_available
 
         original_req = OrderRequest(
             symbol=contract.symbol,

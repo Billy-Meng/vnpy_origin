@@ -39,8 +39,8 @@ from vnpy.trader.object import (
 )
 
 
-REST_HOST = "http://seedtest.ap-ec.cn/CT-OPEN-SERVER"       # 测试环境访问主路径
-# REST_HOST = "http://seed.ap-ec.cn/CT-OPEN-SERVER"           # 生产环境访问主路径
+# REST_HOST = "http://seedtest.ap-ec.cn/CT-OPEN-SERVER"       # 测试环境访问主路径
+REST_HOST = "http://seed.ap-ec.cn/CT-OPEN-SERVER"           # 生产环境访问主路径
 
 CALLBACK_TYPE = Callable[[dict, "Request"], Any]
 ON_FAILED_TYPE = Callable[[int, "Request"], Any]
@@ -328,7 +328,6 @@ class SugarRestApi(RestClient):
             on_error=self.on_send_order_error,
             on_failed=self.on_send_order_failed
         )
-        order.__setattr__("entrustNo", None)
         self.gateway.on_order(order)
 
         return order.vt_orderid
@@ -525,7 +524,7 @@ class SugarRestApi(RestClient):
             timestamp = f'{d["tradingDate"]} {d["entrustTime"]}'
             dt = CHINA_TZ.localize(datetime.strptime(timestamp, "%Y%m%d %H%M%S"))
 
-            entrustNo = d["entrustNo"]
+            entrustNo = str(d["entrustNo"])
             orderid = self.gateway.orders.get(entrustNo, None)
 
             if not orderid:
@@ -544,14 +543,33 @@ class SugarRestApi(RestClient):
                     status=STATUS_SUGAR2VT.get(d["entrustStatusStr"], None),
                     datetime=dt
                 )
-                order.__setattr__("entrustNo", entrustNo)
+                order.entrustNo = entrustNo
                 self.gateway.orders[entrustNo] = orderid
 
                 self.gateway.on_order(order)
 
             else:
                 order: OrderData = self.gateway.orders.get(orderid, None)
-                if order.status == Status.NOTTRADED and d["entrustStatusStr"] != "已报":
+                if order.status == Status.SUBMITTING:
+                    if d["entrustStatusStr"] == "已报":
+                        order.status = Status.NOTTRADED
+                        self.gateway.on_order(order)
+
+                    elif d["entrustStatusStr"] == "已成":
+                        order.status = Status.ALLTRADED
+                        order.traded = int(d["businessAmount"])
+                        self.gateway.on_order(order)
+                    
+                    elif d["entrustStatusStr"] == "部成":
+                        order.status = Status.PARTTRADED
+                        order.traded = int(d["businessAmount"])
+                        self.gateway.on_order(order)
+
+                    elif d["entrustStatusStr"] == "废单":
+                        order.status = Status.REJECTED
+                        self.gateway.on_order(order)
+
+                elif order.status == Status.NOTTRADED and d["entrustStatusStr"] != "已报":
                     if d["entrustStatusStr"] == "已撤" or d["entrustStatusStr"] == "部撤":
                         order.status = Status.CANCELLED
                         self.gateway.on_order(order)
@@ -597,7 +615,7 @@ class SugarRestApi(RestClient):
             return
 
         for d in responseBody["items"][::-1]:
-            orderid = self.gateway.orders.get(d["entrustNo"], None)
+            orderid = self.gateway.orders.get(str(d["entrustNo"]), None)
             if not orderid:
                 continue
 
@@ -633,8 +651,8 @@ class SugarRestApi(RestClient):
             self.gateway.on_order(order)
             return
 
-        entrustNo = data["data"]["responseBody"]["entrustNo"]
-        order.__setattr__("entrustNo", entrustNo)
+        entrustNo = str(data["data"]["responseBody"]["entrustNo"])
+        order.entrustNo = entrustNo
         self.gateway.orders[entrustNo] = order.orderid
 
         self.gateway.on_order(order)

@@ -257,6 +257,11 @@ class SpreadAlgoWidget(QtWidgets.QFrame):
             ["否", "是"]
         )
 
+        self.offset_convert = QtWidgets.QComboBox()
+        self.offset_convert.addItems(
+            ["是", "否"]
+        )
+
         self.class_combo = QtWidgets.QComboBox()
 
         add_button = QtWidgets.QPushButton("添加策略")
@@ -281,14 +286,15 @@ class SpreadAlgoWidget(QtWidgets.QFrame):
         remove_spread_button.clicked.connect(self.remove_spread)
 
         form = QtWidgets.QFormLayout()
-        form.addRow("价差", self.name_line)
-        form.addRow("方向", self.direction_combo)
-        form.addRow("开平", self.offset_combo)
-        form.addRow("价格", self.price_line)
-        form.addRow("数量", self.volume_line)
-        form.addRow("超价", self.payup_line)
-        form.addRow("间隔", self.interval_line)
-        form.addRow("锁仓", self.lock_combo)
+        form.addRow("价差名称", self.name_line)
+        form.addRow("交易方向", self.direction_combo)
+        form.addRow("开仓平仓", self.offset_combo)
+        form.addRow("目标价格", self.price_line)
+        form.addRow("交易数量", self.volume_line)
+        form.addRow("超价跳数", self.payup_line)
+        form.addRow("间隔秒数", self.interval_line)
+        form.addRow("是否锁仓", self.lock_combo)
+        form.addRow("开平转换", self.offset_convert)
         form.addRow(button_start)
 
         vbox = QtWidgets.QVBoxLayout()
@@ -322,8 +328,14 @@ class SpreadAlgoWidget(QtWidgets.QFrame):
         else:
             lock = False
 
+        offset_convert_str = self.offset_convert.currentText()
+        if offset_convert_str == "是":
+            offset_convert = True
+        else:
+            offset_convert = False
+
         self.spread_engine.start_algo(
-            name, direction, offset, price, volume, payup, interval, lock
+            name, direction, offset, price, volume, payup, interval, lock, offset_convert
         )
 
     def add_spread(self):

@@ -24,13 +24,14 @@ class SpreadTakerAlgo(SpreadAlgoTemplate):
         volume: float,
         payup: int,
         interval: int,
-        lock: bool
+        lock: bool,
+        offset_convert: bool
     ):
         """"""
         super().__init__(
             algo_engine, algoid, spread,
             direction, offset, price, volume,
-            payup, interval, lock
+            payup, interval, lock, offset_convert
         )
 
     def on_tick(self, tick: TickData):
