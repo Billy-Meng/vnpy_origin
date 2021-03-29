@@ -161,7 +161,6 @@ class Interval(Enum):
     """
     TICK = "tick"
     SECOND = "1s"
-    SECOND_5 = "5s"
     MINUTE = "1m"
     HOUR = "1h"
     DAILY = "d"
