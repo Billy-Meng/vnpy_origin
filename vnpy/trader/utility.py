@@ -707,7 +707,8 @@ class BarGenerator:
                 gateway_name=bar.gateway_name,
                 open_price=bar.open_price,
                 high_price=bar.high_price,
-                low_price=bar.low_price
+                low_price=bar.low_price,
+                volume=bar.volume
             )
 
         # Otherwise, update high/low price into window bar
@@ -789,7 +790,42 @@ class BarGenerator:
 
         return bar_data_df
 
-    def generate(self) -> None:
+    def on_hour_bar(self, bar: BarData) -> None:
+        """"""
+        if self.window == 1:
+            self.on_window_bar(bar)
+        else:
+            if not self.window_bar:
+                self.window_bar = BarData(
+                    symbol=bar.symbol,
+                    exchange=bar.exchange,
+                    datetime=bar.datetime,
+                    gateway_name=bar.gateway_name,
+                    open_price=bar.open_price,
+                    high_price=bar.high_price,
+                    low_price=bar.low_price
+                )
+            else:
+                self.window_bar.high_price = max(
+                    self.window_bar.high_price,
+                    bar.high_price
+                )
+                self.window_bar.low_price = min(
+                    self.window_bar.low_price,
+                    bar.low_price
+                )
+
+            self.window_bar.close_price = bar.close_price
+            self.window_bar.volume += int(bar.volume)
+            self.window_bar.open_interest = bar.open_interest
+
+            self.interval_count += 1
+            if not self.interval_count % self.window:
+                self.interval_count = 0
+                self.on_window_bar(self.window_bar)
+                self.window_bar = None
+
+    def generate(self) -> Optional[BarData]:
         """
         Generate the bar data and call callback immediately.
         """

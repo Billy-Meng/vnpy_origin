@@ -211,7 +211,8 @@ class BacktestingEngine:
         end: datetime = None,
         mode: BacktestingMode = BacktestingMode.BAR,
         inverse: bool = False,
-        risk_free: float = 0
+        risk_free: float = 0,
+        annual_days: int = 240
     ):
         """"""
         self.mode = mode
@@ -232,6 +233,7 @@ class BacktestingEngine:
         self.mode = mode
         self.inverse = inverse
         self.risk_free = risk_free
+        self.annual_days = annual_days
 
     def add_strategy(self, strategy_class: type, setting: dict):
         """"""
@@ -1013,7 +1015,8 @@ class BacktestingEngine:
         volume: float,
         stop: bool,
         lock: bool,
-        market: bool
+        market: bool,
+        net: bool
     ):
         """"""
         price = round_to(price, self.pricetick)

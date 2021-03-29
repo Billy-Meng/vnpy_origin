@@ -256,35 +256,35 @@ class CtaTemplate(ABC):
         self.balance = account.balance
 
 
-    def buy(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False):
+    def buy(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False, net: bool = False):
         """
         Send buy order to open a long position.
         """
-        vt_orderid = self.send_order(Direction.LONG, Offset.OPEN, price, abs(volume), stop, lock, market)
+        vt_orderid = self.send_order(Direction.LONG, Offset.OPEN, price, abs(volume), stop, lock, market, net)
         self.buy_orderids.extend(vt_orderid)
         return vt_orderid
 
-    def sell(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False):
+    def sell(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False, net: bool = False):
         """
         Send sell order to close a long position.
         """
-        vt_orderid = self.send_order(Direction.SHORT, Offset.CLOSE, price, abs(volume), stop, lock, market)
+        vt_orderid = self.send_order(Direction.SHORT, Offset.CLOSE, price, abs(volume), stop, lock, market, net)
         self.sell_orderids.extend(vt_orderid)
         return vt_orderid
 
-    def short(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False):
+    def short(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False, net: bool = False):
         """
         Send short order to open as short position.
         """
-        vt_orderid = self.send_order(Direction.SHORT, Offset.OPEN, price, abs(volume), stop, lock, market)
+        vt_orderid = self.send_order(Direction.SHORT, Offset.OPEN, price, abs(volume), stop, lock, market, net)
         self.short_orderids.extend(vt_orderid)
         return vt_orderid
 
-    def cover(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False):
+    def cover(self, price: float, volume: float, stop: bool = False, lock: bool = False, market: bool = False, net: bool = False):
         """
         Send cover order to close a short position.
         """
-        vt_orderid = self.send_order(Direction.LONG, Offset.CLOSE, price, abs(volume), stop, lock, market)
+        vt_orderid = self.send_order(Direction.LONG, Offset.CLOSE, price, abs(volume), stop, lock, market, net)
         self.cover_orderids.extend(vt_orderid)
         return vt_orderid
 
@@ -296,7 +296,8 @@ class CtaTemplate(ABC):
         volume: float,
         stop: bool = False,
         lock: bool = False,
-        market: bool = False
+        market: bool = False,
+        net: bool = False
     ):
         """
         Send a new order.
@@ -305,7 +306,7 @@ class CtaTemplate(ABC):
 
         if self.trading:
             vt_orderids = self.cta_engine.send_order(
-                self, direction, offset, price, volume, stop, lock, market
+                self, direction, offset, price, volume, stop, lock, market, net
             )
             return vt_orderids
         else:

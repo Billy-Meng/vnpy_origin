@@ -8,7 +8,10 @@ from vnpy.trader.constant import Interval
 from vnpy.trader.object import HistoryRequest, ContractData
 from vnpy.trader.datasource.rqdata import rqdata_client
 from vnpy.trader.datasource.jqdata import jqdata_client
+from vnpy.trader.datasource.tqdata import tqdata_client
 from vnpy.trader.setting import SETTINGS
+from vnpy.trader.utility import extract_vt_symbol
+from vnpy.trader.database import database_manager
 
 
 APP_NAME = "ChartWizard"
@@ -57,24 +60,35 @@ class ChartWizardEngine(BaseEngine):
         end: datetime
     ) -> None:
         """"""
-        contract: ContractData = self.main_engine.get_contract(vt_symbol)
+        symbol, exchange = extract_vt_symbol(vt_symbol)
 
         req = HistoryRequest(
-            symbol=contract.symbol,
-            exchange=contract.exchange,
+            symbol=symbol,
+            exchange=exchange,
             interval=interval,
             start=start,
             end=end
         )
 
-        if contract.history_data:
-            data = self.main_engine.query_history(req, contract.gateway_name)
-        
-        elif SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
-            data = jqdata_client.query_history(req)
+        contract: ContractData = self.main_engine.get_contract(vt_symbol)
+        if contract:
+            if contract.history_data:
+                data = self.main_engine.query_history(req, contract.gateway_name)
+            
+            elif SETTINGS["datasource.api"] == "jqdata" or SETTINGS["datasource.api"] == "tqdata":
+                data = jqdata_client.query_history(req)
 
-        elif SETTINGS["datasource.api"] == "rqdata":
-            data = rqdata_client.query_history(req)
+            elif SETTINGS["datasource.api"] == "rqdata":
+                data = rqdata_client.query_history(req)
+
+        else:
+            data = database_manager.load_bar_data(
+                symbol,
+                exchange,
+                interval,
+                start,
+                end
+            )
 
         event = Event(EVENT_CHART_HISTORY, data)
         self.event_engine.put(event)

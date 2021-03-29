@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 from functools import lru_cache
 from parser import expr
+from tzlocal import get_localzone
 
 from vnpy.trader.object import (
     TickData, PositionData, TradeData, ContractData, BarData
@@ -18,6 +19,8 @@ EVENT_SPREAD_POS = "eSpreadPos"
 EVENT_SPREAD_LOG = "eSpreadLog"
 EVENT_SPREAD_ALGO = "eSpreadAlgo"
 EVENT_SPREAD_STRATEGY = "eSpreadStrategy"
+
+LOCAL_TZ = get_localzone()
 
 
 class LegData:
@@ -263,7 +266,7 @@ class SpreadData:
                 self.ask_volume = min(self.ask_volume, adjusted_ask_volume)
 
             # Update calculate time
-            self.datetime = datetime.now()
+            self.datetime = datetime.now(LOCAL_TZ)
 
     def calculate_pos(self):
         """"""
@@ -474,7 +477,7 @@ class AdvancedSpreadData(SpreadData):
             self.ask_price = round_to(self.ask_price, self.pricetick)
 
         # Update calculate time
-        self.datetime = datetime.now()
+        self.datetime = datetime.now(LOCAL_TZ)
 
     def parse_formula(self, formula: str, data: Dict[str, float]):
         """"""

@@ -189,7 +189,8 @@ class StrategyEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        lock: bool
+        lock: bool,
+        net: bool,
     ):
         """
         Send a new order to server.
@@ -216,7 +217,7 @@ class StrategyEngine(BaseEngine):
         )
 
         # Convert with offset converter
-        req_list = self.offset_converter.convert_order_request(original_req, lock)
+        req_list = self.offset_converter.convert_order_request(original_req, lock, net)
 
         # Send Orders
         vt_orderids = []

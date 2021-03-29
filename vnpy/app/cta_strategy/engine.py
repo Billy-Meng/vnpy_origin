@@ -309,7 +309,8 @@ class CtaEngine(BaseEngine):
                     stop_order.offset,
                     price,
                     stop_order.volume,
-                    stop_order.lock
+                    stop_order.lock,
+                    stop_order.net
                 )
 
                 # Update stop order status if placed successfully
@@ -339,7 +340,8 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         type: OrderType,
-        lock: bool
+        lock: bool,
+        net: bool
     ):
         """
         Send a new order to server.
@@ -357,14 +359,13 @@ class CtaEngine(BaseEngine):
         )
 
         # Convert with offset converter
-        req_list = self.offset_converter.convert_order_request(original_req, lock)
+        req_list = self.offset_converter.convert_order_request(original_req, lock, net)
 
         # Send Orders
         vt_orderids = []
 
         for req in req_list:
-            vt_orderid = self.main_engine.send_order(
-                req, contract.gateway_name)
+            vt_orderid = self.main_engine.send_order(req, contract.gateway_name)
 
             # Check if sending order successful
             if not vt_orderid:
@@ -388,7 +389,8 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        lock: bool
+        lock: bool,
+        net: bool
     ):
         """
         Send a limit order to server.
@@ -401,7 +403,8 @@ class CtaEngine(BaseEngine):
             price,
             volume,
             OrderType.LIMIT,
-            lock
+            lock,
+            net
         )
 
     def send_server_stop_order(
@@ -412,7 +415,8 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        lock: bool
+        lock: bool,
+        net: bool
     ):
         """
         Send a stop order to server.
@@ -428,7 +432,8 @@ class CtaEngine(BaseEngine):
             price,
             volume,
             OrderType.STOP,
-            lock
+            lock,
+            net
         )
 
     def send_local_stop_order(
@@ -438,7 +443,8 @@ class CtaEngine(BaseEngine):
         offset: Offset,
         price: float,
         volume: float,
-        lock: bool
+        lock: bool,
+        net: bool
     ):
         """
         Create a new local stop order.
@@ -454,7 +460,8 @@ class CtaEngine(BaseEngine):
             volume=volume,
             stop_orderid=stop_orderid,
             strategy_name=strategy.strategy_name,
-            lock=lock
+            lock=lock,
+            net=net
         )
 
         self.stop_orders[stop_orderid] = stop_order
@@ -534,7 +541,8 @@ class CtaEngine(BaseEngine):
         volume: float,
         stop: bool,
         lock: bool,
-        market: bool
+        market: bool,
+        net: bool
     ):
         """
         """
@@ -549,13 +557,19 @@ class CtaEngine(BaseEngine):
 
         if stop:
             if contract.stop_supported:
-                return self.send_server_stop_order(strategy, contract, direction, offset, price, volume, lock)
+                return self.send_server_stop_order(
+                    strategy, contract, direction, offset, price, volume, lock, net
+                )
             else:
-                return self.send_local_stop_order(strategy, direction, offset, price, volume, lock)
+                return self.send_local_stop_order(strategy, direction, offset, price, volume, lock, net)
+                
         elif market:
-            return self.send_market_order(strategy, contract, direction, offset, price, volume, lock)
+            return self.send_market_order(strategy, contract, direction, offset, price, volume, lock, net)
+
         else:
-            return self.send_limit_order(strategy, contract, direction, offset, price, volume, lock)
+            return self.send_limit_order(
+                strategy, contract, direction, offset, price, volume, lock, net
+            )
 
     def cancel_order(self, strategy: CtaTemplate, vt_orderid: str):
         """
