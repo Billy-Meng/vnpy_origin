@@ -70,6 +70,8 @@ STOP_STATUS_MAP = {
     Status.REJECTED: StopOrderStatus.CANCELLED
 }
 
+LOCAL_TZ = get_localzone()
+
 
 class CtaEngine(BaseEngine):
     """"""
@@ -207,6 +209,7 @@ class CtaEngine(BaseEngine):
                 volume=order.volume,
                 stop_orderid=order.vt_orderid,
                 strategy_name=strategy.strategy_name,
+                datetime=order.datetime,
                 status=STOP_STATUS_MAP[order.status],
                 vt_orderids=[order.vt_orderid],
             )
@@ -460,6 +463,7 @@ class CtaEngine(BaseEngine):
             volume=volume,
             stop_orderid=stop_orderid,
             strategy_name=strategy.strategy_name,
+            datetime=datetime.now(LOCAL_TZ),
             lock=lock,
             net=net
         )
@@ -616,8 +620,8 @@ class CtaEngine(BaseEngine):
     ):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
-        end = datetime.now(get_localzone())
-        start = end - timedelta(days=days)
+        end = datetime.now(LOCAL_TZ)
+        start = end - timedelta(days)
         bars = []
 
         # Pass gateway and RQData if use_database set to True
@@ -670,8 +674,8 @@ class CtaEngine(BaseEngine):
     ):
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
-        end = datetime.now(get_localzone())
-        start = end - timedelta(days=days)
+        end = datetime.now(LOCAL_TZ)
+        start = end - timedelta(days)
 
         if not use_database:
             # 从掘金加载Tick数据
@@ -867,6 +871,7 @@ class CtaEngine(BaseEngine):
         # Remove from strategies
         self.strategies.pop(strategy_name)
 
+        self.write_log(f"策略{strategy.strategy_name}移除移除成功")
         return True
 
     def load_strategy_class(self):
@@ -1022,7 +1027,7 @@ class CtaEngine(BaseEngine):
         Create cta engine log event.
         """
         if strategy:
-            msg = f"{strategy.strategy_name}: {msg}"
+            msg = f"[{strategy.strategy_name}]  {msg}"
 
         log = LogData(msg=msg, gateway_name=APP_NAME)
         event = Event(type=EVENT_CTA_LOG, data=log)

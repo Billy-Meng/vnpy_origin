@@ -35,3 +35,6 @@ plotly
 quickfix
 trading-calendars
 influxdb
+vnpy_ctp
+vnpy_ctptest
+vnpy_okex
