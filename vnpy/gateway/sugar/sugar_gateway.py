@@ -52,7 +52,7 @@ STATUS_SUGAR2VT = {
     "已撤": Status.CANCELLED,
     "部成": Status.PARTTRADED,
     "已成": Status.ALLTRADED,
-    "废单": Status.REJECTED,
+    "废单": Status.INVALID,
 }
 
 DIRECTION_VT2SUGAR = {Direction.LONG: "1", Direction.SHORT: "2"}
@@ -73,6 +73,7 @@ class SugarGateway(BaseGateway):
         "开放账号": "",
         "加密KEY": "",
         "TOKEN": "",
+        "IP地址": "",
         "会话线程": 8,
     }
 
@@ -98,9 +99,10 @@ class SugarGateway(BaseGateway):
         open_account = setting["开放账号"]
         key = setting["加密KEY"]
         token = setting["TOKEN"]
+        ip_address = setting["IP地址"]
         session_number = setting["会话线程"]
 
-        self.rest_api.connect(open_account, key, token, session_number)
+        self.rest_api.connect(open_account, key, token, ip_address, session_number)
 
         self.init_query()
 
@@ -173,11 +175,11 @@ class SugarRestApi(RestClient):
         self.open_account: str = ""
         self.key: str = ""
         self.token: str = ""
-        self.ip_address: str = self.get_ip_address()
+        self.ip_address: str = ""
         self.mac_address: str = self.get_mac_address()
 
         self.subscribe_symbol: set = set()
-        self.trade_businessNo: set = set()
+        self.trade_id: set = set()
 
         self.order_count = 0
 
@@ -189,6 +191,7 @@ class SugarRestApi(RestClient):
         open_account: str,
         key: str,
         token: str,
+        ip_address: str,
         session_number: int,
     ) -> None:
         """
@@ -197,6 +200,7 @@ class SugarRestApi(RestClient):
         self.open_account = open_account
         self.key = key
         self.token = token
+        self.ip_address = ip_address
 
         self.init(REST_HOST)
         self.start(session_number)
@@ -369,7 +373,7 @@ class SugarRestApi(RestClient):
                 exchange=Exchange.SR,
                 name=d["goodsName"],
                 pricetick=1,
-                size=10,
+                size=1,
                 min_volume=1,
                 margin_ratio=0.1,
                 product=Product.SPOT,
@@ -554,6 +558,10 @@ class SugarRestApi(RestClient):
                     if d["entrustStatusStr"] == "已报":
                         order.status = Status.NOTTRADED
                         self.gateway.on_order(order)
+                    
+                    elif d["entrustStatusStr"] == "已撤" or d["entrustStatusStr"] == "部撤":
+                        order.status = Status.CANCELLED
+                        self.gateway.on_order(order)
 
                     elif d["entrustStatusStr"] == "已成":
                         order.status = Status.ALLTRADED
@@ -566,7 +574,7 @@ class SugarRestApi(RestClient):
                         self.gateway.on_order(order)
 
                     elif d["entrustStatusStr"] == "废单":
-                        order.status = Status.REJECTED
+                        order.status = Status.INVALID
                         self.gateway.on_order(order)
 
                 elif order.status == Status.NOTTRADED and d["entrustStatusStr"] != "已报":
@@ -585,7 +593,7 @@ class SugarRestApi(RestClient):
                         self.gateway.on_order(order)
 
                     elif d["entrustStatusStr"] == "废单":
-                        order.status = Status.REJECTED
+                        order.status = Status.INVALID
                         self.gateway.on_order(order)
 
                 elif order.status == Status.PARTTRADED:
@@ -599,9 +607,39 @@ class SugarRestApi(RestClient):
                         order.traded = int(d["businessAmount"])
                         self.gateway.on_order(order)
                         
-                    elif d["entrustStatusStr"] == "部撤":
+                    elif d["entrustStatusStr"] == "部撤" or d["entrustStatusStr"] == "已撤":
                         order.status = Status.CANCELLED
                         self.gateway.on_order(order)
+
+                    elif d["entrustStatusStr"] == "废单":
+                        order.status = Status.INVALID
+                        self.gateway.on_order(order)
+                
+                elif order.status == Status.EXCEPTION or order.status == Status.ERROR:
+                    if d["entrustStatusStr"] == "已报":
+                        order.status = Status.NOTTRADED
+                        self.gateway.on_order(order)
+
+                    elif d["entrustStatusStr"] == "已撤" or d["entrustStatusStr"] == "部撤":
+                        order.status = Status.CANCELLED
+                        self.gateway.on_order(order)
+
+                    elif d["entrustStatusStr"] == "已成":
+                        order.status = Status.ALLTRADED
+                        order.traded = int(d["businessAmount"])
+                        self.gateway.on_order(order)
+                    
+                    elif d["entrustStatusStr"] == "部成":
+                        order.status = Status.PARTTRADED
+                        order.traded = int(d["businessAmount"])
+                        self.gateway.on_order(order)
+
+                    elif d["entrustStatusStr"] == "废单":
+                        order.status = Status.INVALID
+                        self.gateway.on_order(order)
+
+                    print(f"{datetime.now()}\t订单状态异常，信息：{d}")
+                    print("*"*80)
 
         self.callback_dt = datetime.now()
 
@@ -619,9 +657,9 @@ class SugarRestApi(RestClient):
             if not orderid:
                 continue
 
-            businessNo = d["businessNo"]
+            id = d["id"]
             
-            if businessNo not in self.trade_businessNo:
+            if id not in self.trade_id:
                 timestamp = f'{d["tradingDate"]} {d["businessTime"]}'
                 dt = CHINA_TZ.localize(datetime.strptime(timestamp, "%Y%m%d %H%M%S"))
                 order: OrderData = self.gateway.orders.get(orderid, None)                
@@ -630,7 +668,7 @@ class SugarRestApi(RestClient):
                     symbol=order.symbol,
                     exchange=Exchange.SR,
                     orderid=order.orderid,
-                    tradeid=businessNo,
+                    tradeid=id,
                     direction=order.direction,
                     offset=order.offset,
                     price=int(d["businessPrice"]),
@@ -639,15 +677,16 @@ class SugarRestApi(RestClient):
                     gateway_name=self.gateway_name,
                 )
 
-                self.trade_businessNo.add(businessNo)
+                self.trade_id.add(id)
                 self.gateway.on_trade(trade)
+
             
     def on_send_order(self, data: dict, request: Request) -> None:
         """"""
         order: OrderData = request.extra
 
         if self.check_error(data, "委托"):
-            order.status = Status.REJECTED
+            order.status = Status.EXCEPTION
             self.gateway.on_order(order)
             return
 
@@ -662,7 +701,7 @@ class SugarRestApi(RestClient):
         Callback when sending order failed on server.
         """
         order = request.extra
-        order.status = Status.REJECTED
+        order.status = Status.EXCEPTION
         self.gateway.on_order(order)
 
         msg = f"委托失败，状态码：{status_code}，信息：{request.response.text}"
@@ -679,7 +718,7 @@ class SugarRestApi(RestClient):
         Callback when sending order caused exception.
         """
         order = request.extra
-        order.status = Status.REJECTED
+        order.status = Status.ERROR
         self.gateway.on_order(order)
 
         # Record exception if not ConnectionError
@@ -694,7 +733,8 @@ class SugarRestApi(RestClient):
             return
 
         if self.check_error(data, "撤单"):
-            order.status = Status.REJECTED
+            order.status = Status.EXCEPTION
+
         else:
             order.status = Status.CANCELLED
             self.gateway.write_log(f"委托撤单成功：{order.orderid}")

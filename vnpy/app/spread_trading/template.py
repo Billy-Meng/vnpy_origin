@@ -233,7 +233,7 @@ class SpreadAlgoTemplate:
         self.orders[order.vt_orderid] = order
 
         # Remove order from active list if rejected or cancelled
-        if order.status in {Status.REJECTED, Status.CANCELLED}:
+        if order.status in {Status.REJECTED, Status.CANCELLED, Status.INVALID}:
             vt_orderids = self.leg_orders[order.vt_symbol]
             if order.vt_orderid in vt_orderids:
                 vt_orderids.remove(order.vt_orderid)
@@ -407,6 +407,7 @@ class SpreadAlgoTemplate:
                 self.traded_price += leg_price * price_multiplier
 
             self.traded_price = round_to(self.traded_price, spread.pricetick)
+
         # Advanced spread
         else:
             data = {}
