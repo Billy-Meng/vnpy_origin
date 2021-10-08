@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 import importlib
-import os
+import glob
 import traceback
 from collections import defaultdict
 from pathlib import Path
@@ -515,17 +515,11 @@ class StrategyEngine(BaseEngine):
         """
         Load strategy class from certain folder.
         """
-        for dirpath, dirnames, filenames in os.walk(str(path)):
-            for filename in filenames:
-                if filename.endswith(".py"):
-                    strategy_module_name = ".".join(
-                        [module_name, filename.replace(".py", "")])
-                elif filename.endswith(".pyd"):
-                    strategy_module_name = ".".join(
-                        [module_name, filename.split(".")[0]])
-                else:
-                    continue
-
+        for suffix in ["py", "pyd"]:
+            pathname = f"{path}/*.{suffix}"
+            for filepath in glob.glob(pathname):
+                stem = Path(filepath).stem
+                strategy_module_name = f"{module_name}.{stem}"
                 self.load_strategy_class_from_module(strategy_module_name)
 
     def load_strategy_class_from_module(self, module_name: str):

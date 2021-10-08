@@ -352,7 +352,7 @@ class PositionHolding:
                 yd_req.volume = yd_volume
                 reqs.append(yd_req)
 
-            if volume_left:
+            if volume_left > 0:
                 open_volume = volume_left
 
                 open_req = copy(req)
@@ -375,7 +375,7 @@ class PositionHolding:
                 close_req.volume = close_volume
                 reqs.append(close_req)
 
-            if volume_left:
+            if volume_left > 0:
                 open_volume = volume_left
 
                 open_req = copy(req)
