@@ -16,7 +16,6 @@ import ast
 import os
 import platform
 import re
-import sys
 
 from setuptools import Extension, find_packages, setup
 
@@ -70,11 +69,7 @@ def get_install_requires():
         "pyzmq",
         "QScintilla"
     ]
-    if not is_psycopg2_exists():
-        install_requires.append("psycopg2-binary")
 
-    if sys.version_info.minor < 7:
-        install_requires.append("dataclasses")
     return install_requires
 
 
@@ -108,42 +103,6 @@ def get_ext_modules():
         extra_link_args = ["-lstdc++"]
         runtime_library_dirs = ["$ORIGIN"]
 
-    vnxtpmd = Extension(
-        "vnpy.api.xtp.vnxtpmd",
-        [
-            "vnpy/api/xtp/vnxtp/vnxtpmd/vnxtpmd.cpp",
-        ],
-        include_dirs=["vnpy/api/xtp/include",
-                      "vnpy/api/xtp/vnxtp"],
-        define_macros=[],
-        undef_macros=[],
-        library_dirs=["vnpy/api/xtp/libs", "vnpy/api/xtp"],
-        libraries=["xtptraderapi", "xtpquoteapi"],
-        extra_compile_args=compiler_flags,
-        extra_link_args=extra_link_args,
-        runtime_library_dirs=runtime_library_dirs,
-        depends=[],
-        language="cpp",
-    )
-
-    vnxtptd = Extension(
-        "vnpy.api.xtp.vnxtptd",
-        [
-            "vnpy/api/xtp/vnxtp/vnxtptd/vnxtptd.cpp",
-        ],
-        include_dirs=["vnpy/api/xtp/include",
-                      "vnpy/api/xtp/vnxtp"],
-        define_macros=[],
-        undef_macros=[],
-        library_dirs=["vnpy/api/xtp/libs", "vnpy/api/xtp"],
-        libraries=["xtptraderapi", "xtpquoteapi"],
-        extra_compile_args=compiler_flags,
-        extra_link_args=extra_link_args,
-        runtime_library_dirs=runtime_library_dirs,
-        depends=[],
-        language="cpp",
-    )
-
     vnksgoldmd = Extension(
         "vnpy.api.ksgold.vnksgoldmd",
         [
@@ -173,42 +132,6 @@ def get_ext_modules():
         undef_macros=[],
         library_dirs=["vnpy/api/ksgold/libs", "vnpy/api/ksgold"],
         libraries=["ksgoldquotmarketdataapi", "ksgoldtraderapi"],
-        extra_compile_args=compiler_flags,
-        extra_link_args=extra_link_args,
-        runtime_library_dirs=runtime_library_dirs,
-        depends=[],
-        language="cpp",
-    )
-
-    vnsgitmd = Extension(
-        "vnpy.api.sgit.vnsgitmd",
-        [
-            "vnpy/api/sgit/vnsgit/vnsgitmd/vnsgitmd.cpp",
-        ],
-        include_dirs=["vnpy/api/sgit/include",
-                      "vnpy/api/sgit/vnsgit"],
-        define_macros=[],
-        undef_macros=[],
-        library_dirs=["vnpy/api/sgit/libs", "vnpy/api/sgit"],
-        libraries=["crypto", "sgitquotapi", "sgittradeapi", "ssl"],
-        extra_compile_args=compiler_flags,
-        extra_link_args=extra_link_args,
-        runtime_library_dirs=runtime_library_dirs,
-        depends=[],
-        language="cpp",
-    )
-
-    vnsgittd = Extension(
-        "vnpy.api.sgit.vnsgittd",
-        [
-            "vnpy/api/sgit/vnsgit/vnsgittd/vnsgittd.cpp",
-        ],
-        include_dirs=["vnpy/api/sgit/include",
-                      "vnpy/api/sgit/vnsgit"],
-        define_macros=[],
-        undef_macros=[],
-        library_dirs=["vnpy/api/sgit/libs", "vnpy/api/sgit"],
-        libraries=["crypto", "sgitquotapi", "sgittradeapi", "ssl"],
         extra_compile_args=compiler_flags,
         extra_link_args=extra_link_args,
         runtime_library_dirs=runtime_library_dirs,
@@ -258,42 +181,6 @@ def get_ext_modules():
         language="cpp",
     )
 
-    vnrohonmd = Extension(
-        "vnpy.api.rohon.vnrohonmd",
-        [
-            "vnpy/api/rohon/vnrohon/vnrohonmd/vnrohonmd.cpp",
-        ],
-        include_dirs=["vnpy/api/rohon/include",
-                      "vnpy/api/rohon/vnrohon"],
-        define_macros=[],
-        undef_macros=[],
-        library_dirs=["vnpy/api/rohon/libs", "vnpy/api/rohon"],
-        libraries=["thostmduserapi_se", "thosttraderapi_se", "LinuxDataCollect", "rohonbase"],
-        extra_compile_args=compiler_flags,
-        extra_link_args=extra_link_args,
-        runtime_library_dirs=runtime_library_dirs,
-        depends=[],
-        language="cpp",
-    )
-
-    vnrohontd = Extension(
-        "vnpy.api.rohon.vnrohontd",
-        [
-            "vnpy/api/rohon/vnrohon/vnrohontd/vnrohontd.cpp",
-        ],
-        include_dirs=["vnpy/api/rohon/include",
-                      "vnpy/api/rohon/vnrohon"],
-        define_macros=[],
-        undef_macros=[],
-        library_dirs=["vnpy/api/rohon/libs", "vnpy/api/rohon"],
-        libraries=["thostmduserapi_se", "thosttraderapi_se", "LinuxDataCollect", "rohonbase"],
-        extra_compile_args=compiler_flags,
-        extra_link_args=extra_link_args,
-        runtime_library_dirs=runtime_library_dirs,
-        depends=[],
-        language="cpp",
-    )
-
     if platform.system() == "Windows":
         # use pre-built pyd for windows ( support python 3.7 only )
         ext_modules = []
@@ -301,41 +188,17 @@ def get_ext_modules():
         ext_modules = []
     else:
         ext_modules = [
-            vnxtptd, vnxtpmd,
-            vnsgittd, vnsgitmd,
             vnksgoldmd, vnksgoldtd,
-            vnnhmd, vnnhfutures, vnnhstock,
-            vnrohontd, vnrohonmd,
+            vnnhmd, vnnhfutures, vnnhstock
         ]
 
-    ext_modules = check_extension_build_flag(
-        ext_modules, "VNPY_BUILD_XTP", vnxtptd)
-    ext_modules = check_extension_build_flag(
-        ext_modules, "VNPY_BUILD_XTP", vnxtpmd)
-    ext_modules = check_extension_build_flag(
-        ext_modules, "VNPY_BUILD_sgit", vnsgittd)
-    ext_modules = check_extension_build_flag(
-        ext_modules, "VNPY_BUILD_sgit", vnsgitmd)
     ext_modules = check_extension_build_flag(
         ext_modules, "VNPY_BUILD_ksgold", vnksgoldmd)
     ext_modules = check_extension_build_flag(
         ext_modules, "VNPY_BUILD_ksgold", vnksgoldtd)
-    ext_modules = check_extension_build_flag(
-        ext_modules, "VNPY_BUILD_ROHON", vnrohontd)
-    ext_modules = check_extension_build_flag(
-        ext_modules, "VNPY_BUILD_ROHON", vnrohonmd)
 
     return ext_modules
 
-
-parallel = os.environ.get('VNPY_BUILD_PARALLEL', None)
-if parallel:
-    if parallel == 'auto':
-        parallel = os.cpu_count()
-    if parallel != 'no':
-        from ci.parallel_build_distutils import patch_distutils
-
-        patch_distutils(int(parallel))
 
 setup(
     name="vnpy",

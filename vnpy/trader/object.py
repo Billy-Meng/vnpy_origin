@@ -39,6 +39,7 @@ class TickData(BaseData):
 
     name: str = ""
     volume: float = 0
+    turnover: float = 0
     open_interest: float = 0
     last_price: float = 0
     last_volume: float = 0
@@ -93,6 +94,7 @@ class BarData(BaseData):
 
     interval: Union[Interval, str] = None
     volume: float = 0
+    turnover: float = 0
     open_interest: float = 0
     open_price: float = 0
     high_price: float = 0
@@ -137,10 +139,7 @@ class OrderData(BaseData):
         """
         Check if the order is active.
         """
-        if self.status in ACTIVE_STATUSES:
-            return True
-        else:
-            return False
+        return self.status in ACTIVE_STATUSES
 
     def create_cancel_request(self) -> "CancelRequest":
         """
@@ -314,6 +313,12 @@ class QuoteData(BaseData):
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
         self.vt_quoteid = f"{self.gateway_name}.{self.quoteid}"
 
+    def is_active(self) -> bool:
+        """
+        Check if the quote is active.
+        """
+        return self.status in ACTIVE_STATUSES
+
     def create_cancel_request(self) -> "CancelRequest":
         """
         Create cancel request object from quote.
@@ -435,7 +440,7 @@ class QuoteRequest:
         quote = QuoteData(
             symbol=self.symbol,
             exchange=self.exchange,
-            quoteid=self.quoteid,
+            quoteid=quoteid,
             bid_price=self.bid_price,
             bid_volume=self.bid_volume,
             ask_price=self.ask_price,

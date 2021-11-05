@@ -1,4 +1,5 @@
-# -*- coding:utf-8 -*-
+""""""
+
 import importlib
 import glob
 import traceback
@@ -37,14 +38,9 @@ from vnpy.trader.constant import (
     Offset
 )
 from vnpy.trader.utility import load_json, save_json, extract_vt_symbol, round_to
+from vnpy.trader.datafeed import BaseDatafeed, get_datafeed
 from vnpy.trader.converter import OffsetConverter
-from vnpy.trader.database import database_manager
-
-from vnpy.trader.datasource import datasource_client
-from vnpy.trader.datasource.rqdata import rqdata_client
-from vnpy.trader.datasource.jqdata import jqdata_client
-from vnpy.trader.datasource.tqdata import tqdata_client
-from vnpy.trader.setting import SETTINGS
+from vnpy.trader.database import BaseDatabase, get_database
 
 from .base import (
     APP_NAME,
@@ -78,10 +74,12 @@ class StrategyEngine(BaseEngine):
 
         self.offset_converter: OffsetConverter = OffsetConverter(self.main_engine)
 
+        self.database: BaseDatabase = get_database()
+        self.datafeed: BaseDatafeed = get_datafeed()
+
     def init_engine(self):
         """
         """
-        self.init_rqdata()
         self.load_strategy_class()
         self.load_strategy_setting()
         self.load_strategy_data()
@@ -99,22 +97,11 @@ class StrategyEngine(BaseEngine):
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
 
-    def init_rqdata(self):
-        """
-        Init JQData or RQData client.
-        """
-        result = datasource_client.init()
-        data_source_api = SETTINGS["datasource.api"]
-        if result:
-            self.write_log(f"{data_source_api}数据接口初始化成功")
-        else:
-            self.write_log(f"{data_source_api}数据接口初始化不成功")
-
-    def query_bar_from_rq(
-        self, symbol: str, exchange: Exchange, interval: Interval, tq_interval: int, start: datetime, end: datetime
+    def query_bar_from_datafeed(
+        self, symbol: str, exchange: Exchange, interval: Interval, start: datetime, end: datetime
     ):
         """
-        Query bar data from JQData or RQData.
+        Query bar data from datafeed.
         """
         req = HistoryRequest(
             symbol=symbol,
@@ -123,15 +110,7 @@ class StrategyEngine(BaseEngine):
             start=start,
             end=end
         )
-        if SETTINGS["datasource.api"] == "jqdata":
-            data = jqdata_client.query_history(req)
-
-        elif SETTINGS["datasource.api"] == "rqdata":
-            data = rqdata_client.query_history(req)
-
-        elif SETTINGS["datasource.api"] == "tqdata":
-            data = tqdata_client.query_history(req, tq_interval)
-
+        data = self.datafeed.query_bar_history(req)
         return data
 
     def process_tick_event(self, event: Event):
@@ -252,7 +231,18 @@ class StrategyEngine(BaseEngine):
         req = order.create_cancel_request()
         self.main_engine.cancel_order(req, order.gateway_name)
 
-    def load_bars(self, strategy: StrategyTemplate, days: int, interval: Interval, tq_interval: int):
+    def get_pricetick(self, strategy: StrategyTemplate, vt_symbol: str):
+        """
+        Return contract pricetick data.
+        """
+        contract = self.main_engine.get_contract(vt_symbol)
+
+        if contract:
+            return contract.pricetick
+        else:
+            return None
+
+    def load_bars(self, strategy: StrategyTemplate, days: int, interval: Interval):
         """"""
         vt_symbols = strategy.vt_symbols
         dts: Set[datetime] = set()
@@ -260,7 +250,7 @@ class StrategyEngine(BaseEngine):
 
         # Load data from rqdata/gateway/database
         for vt_symbol in vt_symbols:
-            data = self.load_bar(vt_symbol, days, interval, tq_interval)
+            data = self.load_bar(vt_symbol, days, interval)
 
             for bar in data:
                 dts.add(bar.datetime)
@@ -295,13 +285,9 @@ class StrategyEngine(BaseEngine):
                     )
                     bars[vt_symbol] = bar
 
-            if tq_interval and tq_interval < 60:
-                self.call_strategy_func(strategy, strategy.on_second_bars, bars)
+            self.call_strategy_func(strategy, strategy.on_bars, bars)
 
-            elif not tq_interval or tq_interval == 60:
-                self.call_strategy_func(strategy, strategy.on_bars, bars)
-
-    def load_bar(self, vt_symbol: str, days: int, interval: Interval, tq_interval: int) -> List[BarData]:
+    def load_bar(self, vt_symbol: str, days: int, interval: Interval) -> List[BarData]:
         """"""
         symbol, exchange = extract_vt_symbol(vt_symbol)
         end = datetime.now(get_localzone())
@@ -319,12 +305,12 @@ class StrategyEngine(BaseEngine):
                 end=end
             )
             data = self.main_engine.query_history(req, contract.gateway_name)
-        # Try to query bars from RQData, if not found, load from database.
+        # Try to query bars from datafeed, if not found, load from database.
         else:
-            data = self.query_bar_from_rq(symbol, exchange, interval, tq_interval, start, end)
+            data = self.query_bar_from_datafeed(symbol, exchange, interval, start, end)
 
         if not data:
-            data = database_manager.load_bar_data(
+            data = self.database.load_bar_data(
                 symbol=symbol,
                 exchange=exchange,
                 interval=interval,

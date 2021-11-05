@@ -1,9 +1,10 @@
 from typing import List, Dict
 from datetime import datetime
 
-from vnpy.app.portfolio_strategy import StrategyTemplate, StrategyEngine
 from vnpy.trader.utility import BarGenerator, ArrayManager
 from vnpy.trader.object import TickData, BarData
+from vnpy.app.portfolio_strategy import StrategyTemplate, StrategyEngine
+from vnpy.app.portfolio_strategy.utility import PortfolioBarGenerator
 
 
 class TrendFollowingStrategy(StrategyTemplate):
@@ -46,9 +47,6 @@ class TrendFollowingStrategy(StrategyTemplate):
         """"""
         super().__init__(strategy_engine, strategy_name, vt_symbols, setting)
 
-        self.bgs: Dict[str, BarGenerator] = {}
-        self.ams: Dict[str, ArrayManager] = {}
-
         self.rsi_data: Dict[str, float] = {}
         self.atr_data: Dict[str, float] = {}
         self.atr_ma: Dict[str, float] = {}
@@ -59,14 +57,12 @@ class TrendFollowingStrategy(StrategyTemplate):
         self.last_tick_time: datetime = None
 
         # Obtain contract info
+        self.ams: Dict[str, ArrayManager] = {}
         for vt_symbol in self.vt_symbols:
-            def on_bar(bar: BarData):
-                """"""
-                pass
-
-            self.bgs[vt_symbol] = BarGenerator(on_bar)
             self.ams[vt_symbol] = ArrayManager()
             self.targets[vt_symbol] = 0
+
+        self.pbg = PortfolioBarGenerator(self.on_bars)
 
     def on_init(self):
         """
@@ -95,19 +91,7 @@ class TrendFollowingStrategy(StrategyTemplate):
         """
         Callback of new tick data update.
         """
-        if (
-            self.last_tick_time
-            and self.last_tick_time.minute != tick.datetime.minute
-        ):
-            bars = {}
-            for vt_symbol, bg in self.bgs.items():
-                bars[vt_symbol] = bg.generate()
-            self.on_bars(bars)
-
-        bg: BarGenerator = self.bgs[tick.vt_symbol]
-        bg.update_tick(tick)
-
-        self.last_tick_time = tick.datetime
+        self.pbg.update_tick(tick)
 
     def on_bars(self, bars: Dict[str, BarData]):
         """"""
@@ -117,8 +101,12 @@ class TrendFollowingStrategy(StrategyTemplate):
         for vt_symbol, bar in bars.items():
             am: ArrayManager = self.ams[vt_symbol]
             am.update_bar(bar)
+
+        for vt_symbol, bar in bars.items():
+            am: ArrayManager = self.ams[vt_symbol]
             if not am.inited:
                 return
+
             atr_array = am.atr(self.atr_window, array=True)
             self.atr_data[vt_symbol] = atr_array[-1]
             self.atr_ma[vt_symbol] = atr_array[-self.atr_ma_window:].mean()
